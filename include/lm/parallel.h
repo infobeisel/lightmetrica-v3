@@ -70,24 +70,45 @@ using ProgressUpdateFunc = std::function<void(long long processed)>;
 
 /*!
     \brief Parallel for loop.
+<<<<<<< HEAD
     \param num_samples Total number of samples.
     \param process_func Callback function called for each iteration.
     \param progress_func Callback function called for each progress update.
+=======
+    \param numSamples Total number of samples.
+    \param processFunc Callback function called for each iteration.
+    \param beforeFunc Callback function called for each thread, before any processFunc invocation is made.
+    \param afterFunc Callback function called for each thread, after all processFunc are made.
+>>>>>>> 0fda741... implement before and after in parallel::foreach. create renderer_pt_info.cpp
 
     \rst
     We provide an abstraction for the parallel loop specifialized for rendering purpose.
-    \endrst
+    \endrstbeforeFunc
 */
+<<<<<<< HEAD
 LM_PUBLIC_API void foreach(long long num_samples, const ParallelProcessFunc& process_func, const ProgressUpdateFunc& progress_func);
+=======
+LM_PUBLIC_API void foreach(long long numSamples, const ParallelProcessFunc& processFunc,
+ const ParallelProcessFunc& beforeFunc = [&](auto,auto) {} , const ParallelProcessFunc& afterFunc = [&](auto,auto) {} );
+>>>>>>> 0fda741... implement before and after in parallel::foreach. create renderer_pt_info.cpp
 
 /*!
     \brief Parallel for loop.
     \param num_samples Total number of samples.
     \param process_func Callback function called for each iteration.
 */
+<<<<<<< HEAD
 LM_INLINE void foreach(long long num_samples, const ParallelProcessFunc& process_func) {
     foreach(num_samples, process_func, [](long long) {});
 }
+=======
+class ParallelContext : public Component {
+public:
+    virtual int numThreads() const = 0;
+    virtual bool mainThread() const = 0;
+    virtual void foreach(long long numSamples, const ParallelProcessFunc& processFunc, const ParallelProcessFunc& beforeFunc = [](auto,auto) {}, const ParallelProcessFunc& afterFunc = [](auto,auto) {}) const = 0;
+};
+>>>>>>> 0fda741... implement before and after in parallel::foreach. create renderer_pt_info.cpp
 
 /*!
     @}
