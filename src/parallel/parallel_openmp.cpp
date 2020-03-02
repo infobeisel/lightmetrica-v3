@@ -37,71 +37,32 @@ public:
         return omp_get_thread_num() == 0;
     }
 
-<<<<<<< HEAD
-    virtual void foreach(long long numSamples, const ParallelProcessFunc& processFunc, const ProgressUpdateFunc& progressUpdateFunc) const override {
-=======
-    virtual void foreach(long long numSamples, const ParallelProcessFunc& processFunc,
-    const ParallelProcessFunc& beforeFunc, const ParallelProcessFunc& afterFunc) const override {
+    virtual void foreach(long long numSamples, const ParallelProcessFunc& processFunc, const ProgressUpdateFunc& progressUpdateFunc,
+    const ParallelProcessFunc& before_func, const ParallelProcessFunc& after_func) const override {
         // Processed number of samples
         std::atomic<long long> processed = 0;
 
->>>>>>> 0fda741... implement before and after in parallel::foreach. create renderer_pt_info.cpp
         // Captured exceptions inside the parallel loop
         std::atomic<bool> done = false;
         std::exception_ptr exp;
         std::mutex explock;
 
-        // Execute parallel loop
-<<<<<<< HEAD
-        std::atomic<long long> processed = 0;
-        #pragma omp parallel for schedule(dynamic, 1)
-        for (long long i = 0; i < numSamples; i++) {
-            // Spin the loop if cancellation is requested
-            if (done) {
-                continue;
-            }
-
-            // OpenMP prohibits to throw exception inside parallel region
-            // and to catch in the outer context.
-            // cf. p.10
-            // https://www.openmp.org/wp-content/uploads/cspec20_bars.pdf
-            // A throw executed inside a parallel region must cause execution to resume within
-            // the dynamic extent of the same structured block, and it must be caught by the
-            // same thread that threw the exception.
-            try {
-                const int thread_id = omp_get_thread_num();
-
-                #if LM_PLATFORM_WINDOWS
-                // Set process group
-                GROUP_AFFINITY mask;
-                if (GetNumaNodeProcessorMaskEx(thread_id % 2, &mask)) {
-                    SetThreadGroupAffinity(GetCurrentThread(), &mask, nullptr);
-                }
-                #endif
-
-                // Dispatch user-defined process
-                processFunc(i, thread_id);
-
-                // Update processed number of samples
-                if (thread_local long long count = 0; ++count >= progress_update_interval_) {
-                    processed += count;
-                    count = 0;
-                }
-
-                // Update progress
-                if (thread_id == 0) {
-                    progressUpdateFunc(processed);
-=======
-        progress::ScopedReport progress_(numSamples);
         #pragma omp parallel 
         {
-            {
+            try {
                 const int threadId = omp_get_thread_num();
-                beforeFunc(-1, threadId);
+                before_func(-1, threadId);
+            } catch (...) {
+                    // Capture exception
+                    // pick the last one if some of the threads throw exceptions simultaneously
+                    std::unique_lock<std::mutex> lock(explock);
+                    exp = std::current_exception();
+                    done = true;
             }
+
             #pragma omp barrier
 
-            #pragma omp for schedule(dynamic, 1)
+            #pragma for schedule(dynamic, 1)
             for (long long i = 0; i < numSamples; i++) {
                 // Spin the loop if cancellation is requested
                 if (done) {
@@ -116,36 +77,45 @@ public:
                 // the dynamic extent of the same structured block, and it must be caught by the
                 // same thread that threw the exception.
                 try {
-                    const int threadId = omp_get_thread_num();
-                    processFunc(i, threadId);
+                    const int thread_id = omp_get_thread_num();
+
+                    #if LM_PLATFORM_WINDOWS
+                    // Set process group
+                    GROUP_AFFINITY mask;
+                    if (GetNumaNodeProcessorMaskEx(thread_id % 2, &mask)) {
+                        SetThreadGroupAffinity(GetCurrentThread(), &mask, nullptr);
+                    }
+                    #endif
+
+                    // Dispatch user-defined process
+                    processFunc(i, thread_id);
 
                     // Update processed number of samples
-                    constexpr long long UpdateInterval = 100;
-                    if (thread_local long long count = 0; ++count >= UpdateInterval) {
+                    if (thread_local long long count = 0; ++count >= progress_update_interval_) {
                         processed += count;
                         count = 0;
                     }
 
                     // Update progress
-                    if (threadId == 0) {
-                        progress::update(processed);
+                    if (thread_id == 0) {
+                        progressUpdateFunc(processed);
                     }
-                }
-                catch (...) {
-                    // Capture exception
-                    // pick the last one if some of the threads throw exceptions simultaneously
+                } catch (...) {
                     std::unique_lock<std::mutex> lock(explock);
                     exp = std::current_exception();
                     done = true;
->>>>>>> 0fda741... implement before and after in parallel::foreach. create renderer_pt_info.cpp
                 }
+                
             }
             #pragma omp barrier
-            {
+            try {
                 const int threadId = omp_get_thread_num();
                 afterFunc(-1, threadId);
+            } catch (...) {
+                    std::unique_lock<std::mutex> lock(explock);
+                    exp = std::current_exception();
+                    done = true;
             }
-
         }
         
         // Rethrow exception if available

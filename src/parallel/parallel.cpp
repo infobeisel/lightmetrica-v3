@@ -26,14 +26,9 @@ LM_PUBLIC_API bool main_thread() {
     return Instance::get().main_thread();
 }
 
-<<<<<<< HEAD
-LM_PUBLIC_API void foreach(long long num_samples, const ParallelProcessFunc& process_func, const ProgressUpdateFunc& progress_func) {
-	Instance::get().foreach(num_samples, process_func, progress_func);
-=======
-LM_PUBLIC_API void foreach(long long numSamples, const ParallelProcessFunc& processFunc,
-    const ParallelProcessFunc& beforeFunc, const ParallelProcessFunc& afterFunc) {
-    Instance::get().foreach(numSamples, processFunc, beforeFunc, afterFunc);
->>>>>>> 0fda741... implement before and after in parallel::foreach. create renderer_pt_info.cpp
+LM_PUBLIC_API void foreach(long long num_samples, const ParallelProcessFunc& process_func, const ProgressUpdateFunc& progress_func,
+    const ParallelProcessFunc& before_func, const ParallelProcessFunc& after_func) {
+	Instance::get().foreach(num_samples, process_func, progress_func, before_func, after_func);
 }
 
 LM_NAMESPACE_END(LM_NAMESPACE::parallel)
