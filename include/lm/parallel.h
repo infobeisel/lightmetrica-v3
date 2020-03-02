@@ -73,13 +73,13 @@ using ProgressUpdateFunc = std::function<void(long long processed)>;
     \param num_samples Total number of samples.
     \param process_func Callback function called for each iteration.
     \param progress_func Callback function called for each progress update.
-    \param beforeFunc Callback function called for each thread, before any process_func invocation is made.
-    \param afterFunc Callback function called for each thread, after all process_func are made.
+    \param before_func Callback function called for each thread, before any process_func invocation is made.
+    \param after_func Callback function called for each thread, after all process_func are made.
     \rst
     We provide an abstraction for the parallel loop specifialized for rendering purpose.
     \endrst
 */
-LM_PUBLIC_API void foreach(long long num_samples, const ParallelProcessFunc& process_func, const ProgressUpdateFunc& progress_func = [&](auto,auto) {} ,
+LM_PUBLIC_API void foreach(long long num_samples, const ParallelProcessFunc& process_func, const ProgressUpdateFunc& progress_func = [&](auto) {} ,
  const ParallelProcessFunc& before_func = [&](auto,auto) {} , const ParallelProcessFunc& after_func = [&](auto,auto) {} );
 
 /*!

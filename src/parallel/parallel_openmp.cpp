@@ -110,7 +110,7 @@ public:
             #pragma omp barrier
             try {
                 const int threadId = omp_get_thread_num();
-                afterFunc(-1, threadId);
+                after_func(-1, threadId);
             } catch (...) {
                     std::unique_lock<std::mutex> lock(explock);
                     exp = std::current_exception();

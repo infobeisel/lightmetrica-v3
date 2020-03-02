@@ -29,7 +29,9 @@ class ParallelContext : public Component {
 public:
     virtual int num_threads() const = 0;
     virtual bool main_thread() const = 0;
-    virtual void foreach(long long numSamples, const ParallelProcessFunc& processFunc, const ProgressUpdateFunc& progressFunc) const = 0;
+    
+    virtual void foreach(long long num_samples, const ParallelProcessFunc& process_func, const ProgressUpdateFunc& progress_func = [&](auto) {} ,
+ const ParallelProcessFunc& before_func = [&](auto,auto) {} , const ParallelProcessFunc& after_func = [&](auto,auto) {} ) const = 0;
 };
 
 /*!
