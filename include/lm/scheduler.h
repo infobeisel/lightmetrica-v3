@@ -36,9 +36,11 @@ public:
     /*!
         \brief Dispatch scheduler.
         \param process Callback function for parallel loop.
+        \param before_func Callback function that will be called on each thread before any process callback is called
+        \param after_func Callback function that will be called on thread after all process callbacks are called
         \return Processed samples per pixel.
     */
-    virtual long long run(const ProcessFunc& process) const = 0;
+    virtual long long run(const ProcessFunc& process, const ProcessFunc& before_func = [&](auto,auto,auto) {} , const ProcessFunc& after_func = [&](auto,auto,auto) {}) const = 0;
 };
 
 /*!

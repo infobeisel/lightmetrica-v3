@@ -34,7 +34,7 @@ public:
         film_ = json::comp_ref<Film>(prop, "output");
     }
 
-    virtual long long run(const ProcessFunc& process) const override {
+    virtual long long run(const ProcessFunc& process, const ProcessFunc& before_func, const ProcessFunc& after_func) const override {
         const auto numPixels = film_->num_pixels();
         progress::ScopedReport progress_ctx_(numPixels * spp_);
         
@@ -43,7 +43,11 @@ public:
             process(index / spp_, index % spp_, threadid);
         }, [&](long long processed) {
             progress::update(processed);
-        });
+        }, [&](auto index,auto tid) {
+            before_func(index / spp_, index % spp_,tid);
+         }, [&](auto index,auto tid) {
+            after_func(index / spp_, index % spp_,tid);
+         });
 
         return spp_;
     }
@@ -74,7 +78,7 @@ public:
         film_ = json::comp_ref<Film>(prop, "output");
     }
     
-    virtual long long run(const ProcessFunc& process) const override {
+    virtual long long run(const ProcessFunc& process, const ProcessFunc& before_func, const ProcessFunc& after_func) const override {
         const auto numPixels = film_->num_pixels();
         progress::ScopedTimeReport progress_ctx_(render_time_);
         
@@ -89,6 +93,10 @@ public:
                 const auto now = high_resolution_clock::now();
                 const auto elapsed = duration_cast<milliseconds>(now - start).count() / 1000.0;
                 progress::update_time(elapsed);
+            }, [&](auto index,auto tid) {
+                before_func(index, spp, tid);
+            }, [&](auto index,auto tid) {
+                after_func(index, spp, tid);
             });
 
             // Update processed spp
@@ -125,12 +133,16 @@ public:
         num_samples_ = json::value<long long>(prop, "num_samples");
     }
 
-    virtual long long run(const ProcessFunc& process) const override {
+    virtual long long run(const ProcessFunc& process, const ProcessFunc& before_func, const ProcessFunc& after_func) const override {
         progress::ScopedReport progress_ctx_(num_samples_);
         parallel::foreach(num_samples_, [&](long long index, int threadid) {
             process(0, index, threadid);
         }, [&](long long processed) {
             progress::update(processed);
+        }, [&](auto index,auto tid) {
+            before_func(0, index, tid);
+        }, [&](auto index,auto tid) {
+            after_func(0, index, tid);
         });
 
         return num_samples_;
@@ -158,7 +170,7 @@ public:
         samples_per_iter_ = json::value<long long>(prop, "samples_per_iter", 1000000);
     }
 
-    virtual long long run(const ProcessFunc& process) const override {
+    virtual long long run(const ProcessFunc& process, const ProcessFunc& before_func, const ProcessFunc& after_func) const override {
         progress::ScopedTimeReport progress_ctx_(render_time_);
         const auto start = std::chrono::high_resolution_clock::now();
         long long processed = 0;
@@ -171,6 +183,10 @@ public:
                 const auto now = high_resolution_clock::now();
                 const auto elapsed = duration_cast<milliseconds>(now - start).count() / 1000.0;
                 progress::update_time(elapsed);
+            },  [&](auto index,auto tid) {
+                before_func(0, processed + index, tid);
+            }, [&](auto index,auto tid) {
+                after_func(0, processed + index, tid);
             });
 
             // Update processed samples
