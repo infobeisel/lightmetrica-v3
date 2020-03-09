@@ -9,6 +9,7 @@
 #include <lm/scene.h>
 #include <lm/film.h>
 #include <lm/scheduler.h>
+#include <lm/stats.h>
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
@@ -82,11 +83,26 @@ public:
 
     virtual void render() const override {
 		scene_->require_renderable();
-
+        LM_INFO("starting pt render");
         // Clear film
         film_->clear();
         const auto size = film_->size();
 
+        size_t entryCount = size.w * size.h;
+
+        typedef int HasHit;
+        std::function<bool(bool&,bool&)> hasHitMerger = [&] (bool &v_old, bool &v_new) {return v_old || v_new;};
+
+        stats::clearGlobal<HasHit,size_t,bool>();
+        stats::reserveGlobal<HasHit,size_t,bool>(entryCount);
+        scheduler::Scheduler::ProcessFunc before = [&] (long long pixel_index, long long, int threadid) {
+            stats::clear<HasHit,size_t,bool>();
+            stats::reserve<HasHit,size_t,bool>(entryCount);
+
+        };
+        scheduler::Scheduler::ProcessFunc after = [&] (long long pixel_index, long long, int threadid) {
+            stats::mergeToGlobal<HasHit,size_t,bool>(hasHitMerger);
+        };
         // Dispatch rendering
         const auto processed = sched_->run([&](long long pixel_index, long long, int threadid) {
             // Per-thread random number generator
@@ -200,6 +216,8 @@ public:
 
                 // Intersection to next surface
                 const auto hit = scene_->intersect(s->ray());
+                //update stats
+                stats::insert<HasHit, size_t, bool>(pixel_index, hit.has_value(), hasHitMerger );
                 if (!hit) {
                     break;
                 }
@@ -258,8 +276,17 @@ public:
                 wi = -s->wo;
                 sp = *hit;
             }
-        });
+        }, before, after);
 
+        //log stats
+        auto keyValueMap = stats::getGlobal<HasHit,size_t,bool>();
+        size_t hits = 0;
+        for(auto kvpair : keyValueMap) {
+            if(kvpair.second)
+                hits++;
+        }
+        double hitRate = static_cast<double>(hits) / static_cast<double>(keyValueMap.size());
+        LM_INFO(" {} pixels hit sth", hitRate);
         // ----------------------------------------------------------------------------------------
         
         // Rescale film

@@ -62,7 +62,7 @@ public:
 
             #pragma omp barrier
 
-            #pragma for schedule(dynamic, 1)
+            #pragma omp for schedule(dynamic, 1)
             for (long long i = 0; i < numSamples; i++) {
                 // Spin the loop if cancellation is requested
                 if (done) {
