@@ -10,22 +10,25 @@
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
+/*
+\rst
+.. function:: phase::isotropic
+
+    Isotropic phase function.
+\endrst
+*/
 class Phase_Isotropic final : public Phase {
 public:
-    virtual bool is_specular(const PointGeometry&) const override {
-        return false;
-    }
-
-    virtual std::optional<PhaseDirectionSample> sample(Rng& rng, const PointGeometry& geom, Vec3) const override {
+    virtual std::optional<DirectionSample> sample_direction(const DirectionSampleU& us, const PointGeometry& geom, Vec3) const override {
         LM_UNUSED(geom);
         assert(geom.degenerated);
-        return PhaseDirectionSample{
-            math::sample_uniform_sphere(rng),
+        return DirectionSample{
+            math::sample_uniform_sphere(us.ud),
             Vec3(1_f)
         };
     }
 
-    virtual Float pdf(const PointGeometry& geom, Vec3, Vec3) const override {
+    virtual Float pdf_direction(const PointGeometry& geom, Vec3, Vec3) const override {
         LM_UNUSED(geom);
         assert(geom.degenerated);
         return math::pdf_uniform_sphere();
