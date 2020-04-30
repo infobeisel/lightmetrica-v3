@@ -64,25 +64,38 @@ pybind11::module
 
 )
 
+#arepolibs contains all dependencies for arepo 
+#arepoloader is the plugin library
+
+add_library(arepoloader SHARED "arepoloader.h" "arepoloader.cpp"  )
+target_link_libraries(arepoloader PRIVATE liblm arepolibs)
+
+target_compile_definitions(arepoloader PRIVATE -DLM_AREPO_EXPORTS)
+set_target_properties(arepoloader PROPERTIES PREFIX "")
+set_target_properties(arepoloader PROPERTIES DEBUG_POSTFIX "-debug")
+set_target_properties(arepoloader PROPERTIES FOLDER "lm/plugin")
+set_target_properties(arepoloader PROPERTIES
+ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+
+
 find_package(pybind11 REQUIRED)
 add_library(arepopy MODULE "py_arepoloader.cpp")
-target_link_libraries(arepopy PRIVATE liblm pybind11::module)
+target_link_libraries(arepopy PRIVATE liblm pybind11::module arepoloader)
 set_target_properties(arepopy PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}" SUFFIX "${PYTHON_MODULE_EXTENSION}")
 set_target_properties(arepopy PROPERTIES FOLDER "lm/plugin")
 set_target_properties(arepopy PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 
-
-include(LmAddPlugin)
-
-
-
-
-lm_add_plugin(
-        NAME arepoloader
-        LIBRARIES arepolibs
-        SOURCES
-            "arepoloader.cpp")
+#dont needed?
+#include(LmAddPlugin)
+#lm_add_plugin(
+#        NAME arepoloader
+#        LIBRARIES arepolibs
+#        SOURCES
+#            "arepoloader.cpp")
 
 
 

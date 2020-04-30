@@ -17,69 +17,81 @@
 #include "arepoloader.h"
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
-Volume_Arepo::Volume_Arepo() {
 
-}   
 
-Volume_Arepo::~Volume_Arepo() {
+class Volume_Arepo_Impl final : public Volume_Arepo {
 
-}
-void Volume_Arepo::construct(const Json& prop)  {
+    private:
+    Float scale_;
+    Bound bound_;
+    Float max_scalar_;
 
-    const auto configPath = json::value<std::string>(prop, "configpath");
-    const auto cutoutPath = json::value<std::string>(prop, "cutoutpath");
-    std::cout << "hello Arepo2OpenVDB" << std::endl;
-    ConfigSet Config;
-    Config.ReadFile( configPath );
-    Arepo arepo = Arepo(cutoutPath, Config.paramFilename);
-    int argc = 0;
+public:
+    Volume_Arepo_Impl() ;
+    ~Volume_Arepo_Impl();
 
-    arepo.Init(&argc,nullptr);
-    arepo.LoadSnapshot();
-    arepo.ComputeQuantityBounds();
-    //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
-    const Spectrum s = Spectrum::FromRGB(Config.rgbAbsorb);
-    TransferFunction tf(s);
-    ArepoMesh * arepoMesh = new ArepoMesh(&tf);
-    arepoMesh->ComputeVoronoiEdges();
     
-    std::cout << " loaded snapshot " << std::endl;
-       // Density scale
-    scale_ = json::value<Float>(prop, "scale", 1_f);
 
-    // Bound
 
-    // Maximum density
-    LM_INFO("constructed Volume Arepo");
+    virtual void construct(const Json& prop) override {
 
-}
+        const auto configPath = json::value<std::string>(prop, "configpath");
+        const auto cutoutPath = json::value<std::string>(prop, "cutoutpath");
+        std::cout << "hello Arepo2OpenVDB" << std::endl;
+        ConfigSet Config;
+        Config.ReadFile( configPath );
+        Arepo arepo = Arepo(cutoutPath, Config.paramFilename);
+        int argc = 0;
 
-Bound Volume_Arepo::bound() const  {
+        arepo.Init(&argc,nullptr);
+        arepo.LoadSnapshot();
+        arepo.ComputeQuantityBounds();
+        //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
+        const Spectrum s = Spectrum::FromRGB(Config.rgbAbsorb);
+        TransferFunction tf(s);
+        ArepoMesh * arepoMesh = new ArepoMesh(&tf);
+        arepoMesh->ComputeVoronoiEdges();
+        
+        std::cout << " loaded snapshot " << std::endl;
+        // Density scale
+        scale_ = json::value<Float>(prop, "scale", 1_f);
+
+        // Bound
+
+        // Maximum density
+        LM_INFO("constructed Volume Arepo");
+    }
+
+    virtual Bound bound() const override {
 return bound_;
 }
-
-Float Volume_Arepo::max_scalar()  const {
+    virtual Float max_scalar() const override {
 return max_scalar_;
 }
-
-bool has_scalar()   {
+    virtual bool has_scalar() const override{
 return true;
 }
 
-Float Volume_Arepo::eval_scalar(Vec3 p) const  {
+    virtual Float eval_scalar(Vec3 p) const override {
 //TODO
 return 0.0f;
 }
 
-bool Volume_Arepo::has_color()  const {
+    virtual bool has_color() const override {
 return false;
 }
 
-void Volume_Arepo::march(Ray ray, Float tmin, Float tmax, Float marchStep, const RaymarchFunc& raymarchFunc) const   {
+    virtual void march(Ray ray, Float tmin, Float tmax, Float marchStep, const RaymarchFunc& raymarchFunc) const override {
 
 }
 
-LM_COMP_REG_IMPL(Volume_Arepo, "volume::arepo");
+
+
+
+};
+
+
+LM_COMP_REG_IMPL(Volume_Arepo_Impl, "volume::arepo");
 
 
 //LM_COMP_REG_IMPL(Volume_OpenVDBScalar, "volume::openvdb_scalar");
