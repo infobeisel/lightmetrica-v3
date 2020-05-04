@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.1)
-project (arepolibs)
+project (arepoloader)
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_C_FLAGS -DH5_USE_110_API)
 
@@ -15,8 +15,6 @@ find_package(MPI REQUIRED)
 find_package(HDF5 REQUIRED)
 find_package(GSL REQUIRED)
 find_package(GMP REQUIRED)
-find_package(Python3 REQUIRED)
-#find_package(OpenVDB REQUIRED)
 
 message(STATUS "PNG package was found: '${PNG_INCLUDE_DIRS}','${PNG_LIBRARIES}'")
 message(STATUS "OPENMP package was found:'${OpenMP_CXX_LIBRARIES}'")
@@ -24,32 +22,24 @@ message(STATUS "MPI package was found: '${MPI_CXX_INCLUDE_DIRS}','${MPI_CXX_LIBR
 message(STATUS "HDF5 package was found: '${HDF5_INCLUDE_DIRS}','${HDF5_LIBRARIES}'")
 message(STATUS "GSL package was found: '${GSL_INCLUDE_DIRS}','${GSL_LIBRARIES}'")
 message(STATUS "GMP package was found: '${GMP_INCLUDES}','${GMP_LIBRARIES}'")
-message(STATUS "PYTHON3 package was found: '${Python3_INCLUDE_DIRS}','${Python3_LIBRARIES}'")
-#message(STATUS "OpenVDB package was found: '${OpenVDB_INCLUDE_DIRS}','${OpenVDB_LIBRARIES}'")
-#add_executable(illustrisloader 
-#main.cpp
-#ovdb.cpp
 
-#)
-add_library(arepolibs INTERFACE)
+add_library(arepoloader SHARED  "arepoloader.h" "arepoloader.cpp")
 
-target_include_directories(arepolibs INTERFACE 
+
+target_include_directories(arepoloader PUBLIC 
 "${PNG_INCLUDE_DIRS}"
 "${MPI_CXX_INCLUDE_DIRS}"
 "${HDF5_INCLUDE_DIRS}"
 "${GSL_INCLUDE_DIRS}"
 "${GMP_INCLUDES}"
-"${Python3_INCLUDE_DIRS}"
-#"${OpenVDB_INCLUDE_DIRS}"
-"${PROJECT_SOURCE_DIR}"
-"${PROJECT_SOURCE_DIR}/../../../ArepoVTK/arepo/include/"
-"${PROJECT_SOURCE_DIR}/../../../ArepoVTK/include/"
-
+"/home/beisel/Projects/ArepoVTK/arepo/include/"
+"/home/beisel/Projects/ArepoVTK/include/"
 )
 
-target_link_libraries(arepolibs INTERFACE
-"${PROJECT_SOURCE_DIR}/../../../ArepoVTK/libarepovtk.so"
-"${PROJECT_SOURCE_DIR}/../../../ArepoVTK/arepo/libarepo.so"
+target_link_libraries(arepoloader PUBLIC
+"/home/beisel/Projects/ArepoVTK/libarepovtk.a"
+"/home/beisel/Projects/ArepoVTK/arepo/libarepo.a"
+"${PROJECT_SOURCE_DIR}"
 "${PNG_LIBRARIES}"
 "${OpenMP_CXX_LIBRARIES}"
 "${MPI_CXX_LIBRARIES}"
@@ -58,17 +48,9 @@ target_link_libraries(arepolibs INTERFACE
 "${GMP_LIBRARIES}"
 "${Python3_LIBRARIES}"
 pybind11::module
-#"${OpenVDB_LIBRARIES}"
-
-#OpenVDB::openvdb
-
+liblm
 )
 
-#arepolibs contains all dependencies for arepo 
-#arepoloader is the plugin library
-
-add_library(arepoloader SHARED "arepoloader.h" "arepoloader.cpp"  )
-target_link_libraries(arepoloader PRIVATE liblm arepolibs)
 
 target_compile_definitions(arepoloader PRIVATE -DLM_AREPO_EXPORTS)
 set_target_properties(arepoloader PROPERTIES PREFIX "")
@@ -78,6 +60,7 @@ set_target_properties(arepoloader PROPERTIES
 ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
 
 
 
