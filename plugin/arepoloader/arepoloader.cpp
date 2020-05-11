@@ -524,7 +524,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             arepoMesh->DP[i].y,
             arepoMesh->DP[i].z);//lm::Vec3(arepoMesh->DTC[i].cx,arepoMesh->DTC[i].cy,arepoMesh->DTC[i].cz);
             float curDist = glm::distance(a, p);
-            if ( curDist < foundDist) {
+            if ( curDist < foundDist && i != DPinfinity) {
                 foundDist = curDist;
                 found = arepoMesh->DP[i].index;
             } 
@@ -535,11 +535,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
        
         //LM_INFO(std::to_string(found));
 
-        //LM_INFO("{}", partInd );
-        if(found > -1 && NumGas > 0) {
+      
+        if(found > -1 && NumGas > 0 && found < NumGas) {
             //int index = arepoMesh->getSphPID(found);
-            if(found >= NumGas)
-                found -= NumGas;
+            //if(found >= NumGas)
+             //   found -= NumGas;
             addValsContribution(toVals,found,1.0 );
         }
         //if(found2 > -1)
