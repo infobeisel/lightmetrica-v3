@@ -10,6 +10,8 @@
 #include "arepo.h"
 #include <memory>
 
+#include "lm/stats.h"
+#include "statstags.h"
 
 #include <lm/lm.h>
 #include <lm/core.h>
@@ -37,184 +39,33 @@ namespace ArepoLoaderInternals {
                 vals[i] = 0.0f;
         }
     };
-}
 
-//LM_NAMESPACE_BEGIN(LM_NAMESPACE)
+    class CachedSample {
+        public:
+        long long sampleIndex;
+        int tetraI;
+        int hydroI;
+        int minDistI;
+        glm::tmat4x3<lm::Float> tetraVs;
+        glm::ivec4 tetraInds;
+        std::vector<float> values;
 
-class ArepoMeshImpl final : public lm::Mesh {
-private:
-    point * dps;
-    size_t ndp;
-    tetra * dts;
-    size_t ndt;
+        glm::tmat4x3<lm::Float> tmpPVs; //some point to vertex connections
+        lm::Vec4 tmpDets; //determinants
 
-    std::vector<lm::Mesh::Tri> triangles;
-  
-public:
-    //TODO!
-    //LM_SERIALIZE_IMPL(ar) {
-    //    ar(dps, ndp, dts, ndt);
-   // }
-
-public:
-    virtual void construct(const lm::Json& prop) override {
-
-        
-        //std::uintptr_t ptrToPoints = prop["ps_addr"];
-        //dps = reinterpret_cast<point*>(ptrToPoints);
-        
-        dps = reinterpret_cast<point*> ( prop["ps_addr"].get<uintptr_t>() );
-        ndp = prop["ps_count"];
-        
-        //std::uintptr_t ptrToTetras = prop["ts_addr"];
-        //dts = reinterpret_cast<tetra*>(ptrToPoints);;
-        dts = reinterpret_cast<tetra*> ( prop["ts_addr"].get<uintptr_t>() );
-        ndt = prop["ts_count"];
-
-
-        triangles.reserve(ndt * 4);
-        for(size_t tetrai = 0; tetrai < ndt; tetrai++) {
-
-            //"oriented" tetrahedron points...?
-           // size_t vertexIndex0 = (0 + faceIndex) % 4;
-            //ize_t vertexIndex1 = (1 + faceIndex) % 4;
-           // size_t vertexIndex2 = (2 + faceIndex) % 4;
-           // size_t vertexIndex3 = (2 + faceIndex) % 4;
+        CachedSample() : 
+        sampleIndex(std::numeric_limits<long long>::max()),
+        tetraI(-1),
+        hydroI(-1),
+        minDistI(-1),
+        values(9,0.0f)
+        {
             
-           //auto v3 = lm::Vec3(dps[dts[tetrai].p[2]].x, dps[dts[tetrai].p[2]].y, dps[dts[tetrai].p[2]].z);
-            
-            for(int i = 0; i < 4; i++) {
-                int a = (i + 0) % 4;
-                int b = (i + 1) % 4;
-                int c = (i + 2) % 4;
-               
-                auto v0 = lm::Vec3(dps[dts[tetrai].p[a]].x, dps[dts[tetrai].p[a]].y, dps[dts[tetrai].p[a]].z);
-                auto v1 = lm::Vec3(dps[dts[tetrai].p[b]].x, dps[dts[tetrai].p[b]].y, dps[dts[tetrai].p[b]].z);
-                auto v2 = lm::Vec3(dps[dts[tetrai].p[c]].x, dps[dts[tetrai].p[c]].y, dps[dts[tetrai].p[c]].z);
-                auto triangleNormal = glm::cross (glm::normalize(v1 - v0),glm::normalize(v2 - v0));
-                triangles.push_back({ 
-                    {v0,triangleNormal,lm::Vec2(v0.x)},
-                    {v1,triangleNormal, lm::Vec2(v0.y)},
-                    {v2,triangleNormal, lm::Vec2(v0.z)},
-                });
-            
-            /*LM_INFO("add tetrahedron {} ? {} . triangle {},{},{} with v0x {}" ,std::to_string(tetrai), 
-            std::to_string(dts[tetrai].t[0] == -1),
-            std::to_string(a),std::to_string(b),std::to_string(c),
-            std::to_string(dps[dts[tetrai].p[a]].x) );*/
-            }
         }
 
-        
-        
-    }
+    };
+}
 
-    virtual void foreach_triangle(const ProcessTriangleFunc& process_triangle) const override {
-        /*for(size_t fi = 0; fi < ndt * 4; fi++) {
-            process_triangle(fi, triangle_at(fi));
-        }*/
-        for(int t = 0; t <num_triangles();t++)
-            process_triangle(t,triangles[t]);
-    }
-
-    virtual lm::Mesh::Tri triangle_at(int face) const override {
-        return triangles[face];
-    }
-
-    virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const override {
-
-        auto triangle = triangle_at(face);
-        auto triangleNormal = triangle.p1.n;
-        return {
-            lm::math::mix_barycentric(triangle.p1.p, triangle.p2.p, triangle.p3.p, uv),
-            glm::normalize(lm::math::mix_barycentric(triangle.p1.n, triangle.p2.n, triangle.p3.n, uv)),
-            lm::math::geometry_normal(triangle.p1.p, triangle.p2.p, triangle.p3.p),
-            lm::math::mix_barycentric(triangle.p1.t, triangle.p2.t, triangle.p3.t, uv)
-        };
-    }
-
-    virtual int num_triangles() const override {
-        return ndt * 4;
-    }
-};
-
-LM_COMP_REG_IMPL(ArepoMeshImpl, "mesh::arepo");
-
-
-/*
-class Mesh_Arepo_Impl final : public lm::Mesh {
-    private:
-
-    std::unique_ptr<ArepoMesh>  arepoMesh;
-    std::unique_ptr<Arepo> arepo;
-
-    Spectrum s;
-    TransferFunction tf;
-
-    lm::Component::Ptr<lm::Mesh> mesh;
-
-    public:
-    Mesh_Arepo_Impl() : arepoMesh(nullptr), arepo(nullptr),s(0.0f), tf(s){};
-    virtual void construct(const lm::Json& prop) override {
-
-        const auto configPath = lm::json::value<std::string>(prop, "configpath");
-        auto cutoutPath = lm::json::value<std::string>(prop, "cutoutpath");
-        auto pos = cutoutPath.find(".hdf5");
-        cutoutPath = cutoutPath.substr(0, pos);
-        Config.ReadFile( configPath );
-        arepo = std::make_unique<Arepo>(cutoutPath, Config.paramFilename);
-        int argc = 0;
-        std::string argv0 = "lm?";
-        std::string argv1 = configPath;
-        std::vector<char*> b = {argv0.data(),argv1.data()};
-        char ** arg = &b[0];
-        char *** argv = &arg;
-        arepo->Init(&argc,argv);
-        arepo->LoadSnapshot();
-        arepo->ComputeQuantityBounds();
-        //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
-        s = Spectrum::FromRGB(Config.rgbAbsorb);
-        tf = TransferFunction(s);
-        arepoMesh = std::make_unique<ArepoMesh>(&tf);
-        arepoMesh->ComputeVoronoiEdges();
-        
-        LM_INFO("constructed Volume Arepo");
-         std::cout << " loaded snapshot " << std::endl;
-    
-
-        mesh = lm::comp::create<lm::Mesh>( //lm::load<lm::Mesh>( 
-        "mesh::arepo", make_loc("tetramesh"), {
-            {"ps_addr", reinterpret_cast<uintptr_t> (arepoMesh->DP)},
-            //{"ps_addr", reinterpret_cast<std::uintptr_t>(arepoMesh->DP)},
-            {"ps_count", arepoMesh->Ndp},
-            {"ts_addr", reinterpret_cast<uintptr_t> (arepoMesh->DT)},
-            //{"ts_addr", reinterpret_cast<std::uintptr_t>(arepoMesh->DT)},
-            {"ts_count", arepoMesh->Ndt}
-        });
-
-        
-    }
-
-    virtual void foreach_triangle(const ProcessTriangleFunc& process_triangle) const override {
-        mesh->foreach_triangle(process_triangle);
-    }
-
-    virtual lm::Mesh::Tri triangle_at(int face) const override {
-        return mesh->triangle_at(face);
-    }
-
-    virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const override {
-
-        return mesh->surface_point(face,uv);
-    }
-
-    virtual int num_triangles() const override {
-        return mesh->num_triangles();
-    }
-};
-
-LM_COMP_REG_IMPL(Mesh_Arepo_Impl, "mesh::fromarepo");
-*/
 
 class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
@@ -309,6 +160,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             {"ts_count", arepoMesh->Ndt}
         });
         
+        Volume_Arepo_Impl::cachedSample().sampleIndex = std::numeric_limits<long long>::max();
         
         /*meshAdapter->foreach_triangle([&] (int face, const lm::Mesh::Tri& t) {
             LM_INFO("tri nr {} at {}{}{}",face,t.p1.p[0],t.p1.p[1],t.p1.p[2]);
@@ -398,96 +250,286 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Component::Ptr<lm::Material> dummyMat;
     bool naive;
 
+    static ArepoLoaderInternals::CachedSample & cachedSample() {
+        thread_local ArepoLoaderInternals::CachedSample c;
+        return c;
+    }
+
     double det3x3(lm::Vec3 b,lm::Vec3 c,lm::Vec3 d) const {
         //glm::determinant(lm::Mat3(b0,b1,b2));
         return b[0]*c[1]*d[2] + c[0]*d[1]*b[2] + d[0]*b[1]*c[2] - d[0]*c[1]*b[2] - c[0]*b[1]*d[2] - b[0]*d[1]*c[2];
     }
 
-    bool insideTetra(glm::vec3 v0,glm::vec3 v1,glm::vec3 v2,glm::vec3 v3,glm::vec3 p) const {
-        auto a = v0 - p;
-        auto b = v1 - p;
-        auto c = v2 - p;
-        auto d = v3 - p;
-        auto detA = det3x3(b,c,d);
-        auto detB = det3x3(a,c,d);
-        auto detC = det3x3(a,b,d);
-        auto detD = det3x3(a,b,c);
-        auto ret0 = detA > 0.0 && detB < 0.0 && detC > 0.0 && detD < 0.0;
-        auto ret1 = detA < 0.0 && detB > 0.0 && detC < 0.0 && detD > 0.0;
+    void connectP(glm::tmat4x3<lm::Float> & verts, lm::Vec3 & p, glm::tmat4x3<lm::Float> & pToVerts) const {
+
+        for(int i = 0; i < 4; i++)
+            pToVerts[i] = verts[i] - p;
+    }
+
+    void computeDeterminants(glm::tmat4x3<lm::Float> & pToVerts, lm::Vec4 & results) const {
+        results[0] = det3x3(pToVerts[1],pToVerts[2],pToVerts[3]);
+        results[1] = det3x3(pToVerts[0],pToVerts[2],pToVerts[3]);
+        results[2] = det3x3(pToVerts[0],pToVerts[1],pToVerts[3]);
+        results[3] = det3x3(pToVerts[0],pToVerts[1],pToVerts[2]); 
+    }
+
+    bool inside(lm::Vec4 & determinants) const {
+        auto ret0 = determinants[0] > 0.0 && determinants[1] < 0.0 && determinants[2] > 0.0 && determinants[3] < 0.0;
+        auto ret1 = determinants[0] < 0.0 && determinants[1] > 0.0 && determinants[2] < 0.0 && determinants[3] > 0.0;
         return ret0 || ret1;
+    }
+
+
+    bool insideCachedTetra(lm::Vec3 p) const {
+        auto & c = cachedSample();
+        connectP(c.tetraVs,p,c.tmpPVs);
+        computeDeterminants(c.tmpPVs,c.tmpDets);
+        return inside(c.tmpDets);
+    }
+
+    //assumes the cached sample has been updated,
+    //returns the index to the neighbor tetraeder the queried point is in. returns -1 if it is
+    //outside the current and not in any neighbor tetraeder (then it should be outside the arepoMesh)
+    int checkCachedNeighbors(lm::Vec3 p) const {
+        auto & cached = cachedSample();
+        bool checkLessZero = true;
+        glm::ivec4 indices = {-1,-1,-1,-1};
+        int group0 = 0;
+        int group1 = 3; 
+        for(int i = 0; i < 4; i++) {
+            bool test = checkLessZero ? cached.tmpDets[i] < 0.0 : cached.tmpDets[i] > 0.0;
+            int storeTo;
+            if(test) {
+                storeTo = group0;
+                group0++;
+            } else {
+                storeTo = group1;
+                group1--;
+            }
+            indices[storeTo] = i;
+            checkLessZero = !checkLessZero;//switch test every iteration
+        }
+
+        //indices now contain the  vertex indices (ranging from 0 to 3) of the tetrahedron
+        //it contains two groups, one group where the point lies within, and one group where it lies outside a face
+        //the face of vertex i is defined by the triangle of the tetrahedron that doesnt have the vertex i as a corner (i.e. the opposing triangle of vertex i)
+
+        //now indices are in two groups, one group of insides, one of outsides. which is which is unclear, need to find out manually
+        assert(group0 != 4 && group0 != 0); //this method wouldnt be called if p was inside the original tetra
+
+        auto copyCached = cachedSample(); //save a copy
+        bool foundNeighbor = false;
+        bool foundBoundary = false;
+
+        int checkOppositeTetraOfPoint = -1;
+        if(group0 == 1 || group0 == 3) { 
+            //case 1 or 3 , we have a group with one element only, check this first
+            checkOppositeTetraOfPoint = group0 == 1 ? indices[0] : indices[3];
+            int neighborTetI = arepoMesh->DT[copyCached.tetraI].t[checkOppositeTetraOfPoint];
+            foundBoundary |= neighborTetI < 0; 
+            if(neighborTetI >= 0) { //valid tet
+                foundNeighbor = insideTetra(neighborTetI,p); //writes into cachedSample
+                if(foundNeighbor)
+                    return neighborTetI;
+            }
+            //found: simplest and most efficient case, it is in an opposing tetra
+            //not found: then it is in some other neighbor tetra hovering "over a corner" or "over an edge"
+        }
+
+        if(!foundNeighbor) {
+            std::vector<int> neighbors = {copyCached.tetraI};
+            //first test all opposing faces to the current tetra
+            for(int i = 0; i < 4  && !foundNeighbor; i++) {
+                int ind = indices[i];
+                if(ind == checkOppositeTetraOfPoint)
+                    continue;//already checked this one
+                int neighborTetI = arepoMesh->DT[copyCached.tetraI].t[ind];
+                foundBoundary |= neighborTetI < 0; 
+                if(neighborTetI >= 0)
+                    foundNeighbor = insideTetra(neighborTetI,p);
+
+                if(foundNeighbor)
+                    return neighborTetI;
+
+                neighbors.push_back(neighborTetI);
+            }
+            //still not found, worst case: test neighbors of neighbors
+            if(!foundNeighbor) {
+                auto alreadyContains = [&] (int tet) {
+                    for(auto n : neighbors)
+                        if(n == tet)
+                            return true;
+                    return false;
+                };
+                auto isNeighbor = [&] (int tet, int of_tet) {
+                    int * p1s = arepoMesh->DT[tet].p;
+                    int * p2s = arepoMesh->DT[of_tet].p;
+                    for(int i = 0; i < 4; i++)
+                        for(int j = 0; j < 4; j++)
+                            if(p1s[i] == p2s[j])
+                                return true;
+                    return false;
+                };
+                std::function<void(int,int)> add_neighbors = [&] (int of_tet, int original_tet) -> void {
+                    for(int i = 0; i < 4; i++) {
+                        int tetInd = arepoMesh->DT[of_tet].t[i];
+                        foundBoundary |= tetInd < 0; 
+                        //if the tet is valid, not already added, and a neighbor of our original cached tet
+                        if(tetInd >= 0 && !alreadyContains(tetInd) && isNeighbor(tetInd,original_tet)) {
+                            neighbors.push_back(tetInd);
+                            //also add the neighbors
+                            add_neighbors(tetInd, original_tet);
+                        }
+                    }
+                };
+
+                //add neighbors of neighbors
+                add_neighbors(neighbors[1], copyCached.tetraI);
+                add_neighbors(neighbors[2], copyCached.tetraI);
+                add_neighbors(neighbors[3], copyCached.tetraI);
+                add_neighbors(neighbors[4], copyCached.tetraI);
+
+                //then perform inside tests 
+                //(beginning from 6th element because original and its 4 neighbors were already tested) and cancel when found
+                for(int i = 5; i < neighbors.size(); i++) {
+                    if(insideTetra(neighbors[i],p)) {
+                        return neighbors[i];
+                    }
+                }
+
+            }
+
+        } 
+
+        //still not found !?
+        //then we are outside of the arepo mesh! 
+        assert(foundBoundary);
+        return -1; 
 
     }
 
+    //performs point in tetrahedron test, returns result. 
+    //always stores all relevant test data into thread local cachedS struct
+    bool insideTetra(int tetraIndex, lm::Vec3 p) const {
+        assert(tetraIndex >= 0);
+        glm::tmat4x3<lm::Float> pVs;//point to vertex connections
+        glm::tmat4x3<lm::Float> verts;
+        glm::ivec4 vertInds;
+        lm::Vec4 determinants;
+        
+        for(int i = 0; i < 4; i++) {
+            vertInds[i] = arepoMesh->DT[tetraIndex].p[i];
+            auto av = arepoMesh->DP[vertInds[i]];
+            verts[i] = lm::Vec3(av.x,av.y,av.z);
+            pVs[i] = verts[i] - p;
+        }
+
+        auto & cachedS = Volume_Arepo_Impl::cachedSample();
+        cachedS.tetraI = tetraIndex;
+        cachedS.tetraVs = verts;
+        cachedS.tetraInds = vertInds;
+
+        //skip points 
+        if  (
+        (arepoMesh->DT[tetraIndex].t[0] < 0 || arepoMesh->DT[tetraIndex].p[0] == DPinfinity || arepoMesh->DT[tetraIndex].p[1] == DPinfinity
+        || arepoMesh->DT[tetraIndex].p[2] == DPinfinity || arepoMesh->DT[tetraIndex].p[3] == DPinfinity)
+        || arepoMesh->DT[tetraIndex].t[0] == -1)
+        {
+            //LM_INFO("skip");
+            return false;
+        }
+        
+        connectP(verts,p,pVs);
+        computeDeterminants(pVs,determinants);
+        bool insideTet = inside(determinants);
+        
+        cachedS.tmpPVs = pVs;
+        cachedS.tmpDets = determinants;
+        return insideTet;
+        
+    }
+
+    void evaluateDensityCached( std::vector<float> & toVals) const {
+        auto & cachedS = Volume_Arepo_Impl::cachedSample();
+        auto lengths =  lm::Vec4(
+            glm::length2(cachedS.tmpPVs[0]),
+            glm::length2(cachedS.tmpPVs[1]),
+            glm::length2(cachedS.tmpPVs[2]),
+            glm::length2(cachedS.tmpPVs[3]));
+
+        int minDistIndex = lengths[0] < lengths[1] ? 0 : 1;
+        minDistIndex = lengths[minDistIndex] > lengths[2] ?  2 : minDistIndex;
+        minDistIndex = lengths[minDistIndex] > lengths[3] ?  3 : minDistIndex;
+        int hydroIndex = 0;
+        if(cachedS.minDistI == minDistIndex) {
+            hydroIndex = cachedS.hydroI;   
+            toVals[TF_VAL_DENS] = cachedS.values[TF_VAL_DENS];
+        } else {//need to look up in arepomesh structure
+            hydroIndex = arepoMesh->DP[cachedS.tetraInds[minDistIndex]].index;
+            if(hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
+                for (int i = 0; i < 9; i++)
+                    cachedS.values[i] = 0.0f;
+                addValsContribution(cachedS.values,hydroIndex,1.0);//lengths[minDistIndex] / totalD );
+                toVals[TF_VAL_DENS] = cachedS.values[TF_VAL_DENS];
+            } 
+        }                
+        cachedS.hydroI = hydroIndex;
+        cachedS.minDistI = minDistIndex;
+    }
+
+
     void gatherValsAtPoint(lm::Vec3 p, std::vector<float> & toVals) const {
-       
-        lm::Ray r;
+
+        int h = 0;
+        auto currentSample = lm::stats::get<int,int,long long>(h);
+        
+        auto & cachedS = Volume_Arepo_Impl::cachedSample();
+        if(cachedS.sampleIndex == currentSample) { //is cached
+            if (insideCachedTetra(p)) {
+                evaluateDensityCached(toVals);
+                return; //most efficient case, still in cached tetra
+            }
+            else { //check neighbors
+                int tetraIndex = checkCachedNeighbors(p);
+                bool inside = tetraIndex >= 0;
+                if(inside) { //sample changed to a neighbor
+                    cachedS.sampleIndex = currentSample;
+                    //need to invalidate some information
+                    cachedS.hydroI = -1;
+                    cachedS.minDistI = -1;
+                    //then evaluate
+                    evaluateDensityCached(toVals);
+                    return;
+                } else {// not even in neighbors, "lost" track
+                    cachedS.sampleIndex = std::numeric_limits<long long>::max();
+                }
+            }
+        }
+        //uncached, need to ray intersect with volume
+        lm::Ray r; //TODO to be further developed, with real ray!
         r.o = p;
         r.d = lm::Vec3(1.0f,0.0f,0.0f); //arbitrary
-        
         auto hit = accel->intersect(r,0.0f,std::numeric_limits<float>::max());
         if(hit.has_value()) { //check if inside the tetra of hit triangle
             int tetraIndex = hit.value().face / 4;
-            glm::tmat4x3<lm::Float> pVs;//point to vertex connections
-            glm::tmat4x3<lm::Float> verts;
-            glm::ivec4 vertInds;
-            for(int i = 0; i < 4; i++) {
-                vertInds[i] = arepoMesh->DT[tetraIndex].p[i];
-                auto av = arepoMesh->DP[vertInds[i]];
-                verts[i] = lm::Vec3(av.x,av.y,av.z);
-                pVs[i] = verts[i] - p;
+            bool inside = insideTetra(tetraIndex, p);
+            //can be outside because we have double triangles in mesh, 
+            //having exact same positions but belonging to two opposing tetrahedra,
+            //need to check for both.
+            if(!inside) {
+                tetraIndex = checkCachedNeighbors(p);
+                inside = tetraIndex >= 0;
             }
-            //skip points 
-            if  (
-            (arepoMesh->DT[tetraIndex].t[0] < 0 || arepoMesh->DT[tetraIndex].p[0] == DPinfinity || arepoMesh->DT[tetraIndex].p[1] == DPinfinity
-            || arepoMesh->DT[tetraIndex].p[2] == DPinfinity || arepoMesh->DT[tetraIndex].p[3] == DPinfinity)
-            || arepoMesh->DT[tetraIndex].t[0] == -1)
-            {
-                //LM_INFO("skip");
+           
+            if(inside) { // we found a tetrahedron where we are inside
+                cachedS.sampleIndex = currentSample;
+                //need to invalidate some information
+                cachedS.hydroI = -1;
+                cachedS.minDistI = -1;
+                evaluateDensityCached(toVals);
                 return;
-            }
-
-
-            if (insideTetra( verts[0], verts[1], verts[2], verts[3], p)) {
-                //toVals[TF_VAL_DENS] = 1.0f;
-                //LM_INFO("inside");
-
-                auto lengths =  lm::Vec4(
-                    glm::length(pVs[0]),
-                    glm::length(pVs[1]),
-                    glm::length(pVs[2]),
-                    glm::length(pVs[3]));
-
-                int minDistIndex = lengths[0] < lengths[1] ? 0 : 1;
-                minDistIndex = lengths[minDistIndex] > lengths[2] ?  2 : minDistIndex;
-                minDistIndex = lengths[minDistIndex] > lengths[3] ?  3 : minDistIndex;
-                
-                
-                //auto totalD = lengths.x + lengths.y + lengths.z + lengths.w;
-                //TODO weird check, saw it in arepo vtk project
-                /*float foundDist = std::numeric_limits<float>::max();
-                int found = -1;
-                for(int i = 0; i < 4; i++) {
-                    float curDist = glm::distance(p, verts[i]);
-                    if ( curDist < foundDist) {
-                        foundDist = curDist;
-                        found = arepoMesh->DP[vertInds[i]].index;
-                    } 
-                
-                }
-                if(found > 0 && hydroIndex >= NumGas && NumGas > 0)
-                        hydroIndex -= NumGas;
-                addValsContribution(toVals,hydroIndex,lengths[i] / totalD);
-                */
-                //for(int i = 0; i < 4; i ++) {
-                // skip those with initial points outside the box or connecting to DPinfinity
-                
-
-                int hydroIndex = arepoMesh->DP[vertInds[minDistIndex]].index;
-                
-                if(hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
-                    addValsContribution(toVals,hydroIndex,1.0);//lengths[minDistIndex] / totalD );
-                } 
-                //}
+            } else { //still not inside, then we are outside the whole arepoMesh at the moment, next sample will have to perform ray intersection test again.  
+                cachedS.sampleIndex = std::numeric_limits<long long>::max();
             }
         }
     }
@@ -555,28 +597,3 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
 
 LM_COMP_REG_IMPL(Volume_Arepo_Impl, "volume::arepo");
-
-
-/*
-
-
-class Mesh_Arepo : public OBJLoaderContext {
-public:
-    virtual bool load(
-        const std::string& path,
-        OBJSurfaceGeometry& geo,
-        const ProcessMeshFunc& process_mesh,
-        const ProcessMaterialFunc& process_material) override
-    {
-      
-        return true;
-    }
-};
-
-LM_COMP_REG_IMPL(Mesh_Arepo, "objloader::Mesh_Arepo");
-
-*/
-
-//LM_COMP_REG_IMPL(Volume_OpenVDBScalar, "volume::openvdb_scalar");
-
-//LM_NAMESPACE_END(LM_NAMESPACE)

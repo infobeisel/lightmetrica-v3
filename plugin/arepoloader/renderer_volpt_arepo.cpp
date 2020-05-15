@@ -3,7 +3,6 @@
     Distributed under MIT license. See LICENSE file for details.
 */
 
-#include <pch.h>
 #include <lm/core.h>
 #include <lm/renderer.h>
 #include <lm/scene.h>
@@ -12,6 +11,7 @@
 #include <lm/path.h>
 #include <lm/timer.h>
 #include <lm/stats.h>
+#include "statstags.h"
 #define VOLPT_IMAGE_SAMPLING 0
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
@@ -57,149 +57,7 @@ public:
         #endif
     }
 };
-
-// ------------------------------------------------------------------------------------------------
-
-class Renderer_VolPTNaive final : public Renderer_VolPT_Base {
-public:
-    virtual Json render() const override {
-		scene_->require_renderable();
-
-        film_->clear();
-        const auto size = film_->size();
-        timer::ScopedTimer st;
-        const auto processed = sched_->run([&](long long pixel_index, long long sample_index, int threadid) {
-            LM_KEEP_UNUSED(sample_index);
-
-            // Per-thread random number generator
-            thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
-
-           
-
-            // ------------------------------------------------------------------------------------
-
-            // Sample window
-            Vec4 window(0,0,1,1);
-            #if VOLPT_IMAGE_SAMPLING
-            LM_UNUSED(pixel_index);
-            #else
-            {
-                const int x = int(pixel_index % size.w);
-                const int y = int(pixel_index / size.w);
-                const auto dx = 1_f / size.w;
-                const auto dy = 1_f / size.h;
-                window = { dx * x, dy * y, dx, dy };
-            }
-            #endif
-
-            // ------------------------------------------------------------------------------------
-
-            // Sample initial vertex
-            const auto sE = path::sample_position(rng, scene_, TransDir::EL);
-            const auto sE_comp = path::sample_component(rng, scene_, sE->sp, {});
-            auto sp = sE->sp;
-            int comp = sE_comp.comp;
-            auto throughput = sE->weight * sE_comp.weight;
-
-            // ------------------------------------------------------------------------------------
-
-            // Perform random walk
-            Vec3 wi{};
-            Vec2 raster_pos{};
-            for (int num_verts = 1; num_verts < max_verts_; num_verts++) {
-                // Sample direction
-                const auto s = [&]() -> std::optional<path::DirectionSample> {
-                    if (num_verts == 1) {
-                        const auto [x, y, w, h] = window.data.data;
-                        const auto ud = Vec2(x + w * rng.u(), y + h * rng.u());
-                        return path::sample_direction({ ud, rng.next<Vec2>() }, scene_, sp, wi, comp, TransDir::EL);
-                    }
-                    else {
-                        return path::sample_direction(rng, scene_, sp, wi, comp, TransDir::EL);
-                    }
-                }();
-                if (!s) {
-                    break;
-                }
-
-                // --------------------------------------------------------------------------------
-
-                // Compute and cache raster position
-                if (num_verts == 1) {
-                    raster_pos = *path::raster_position(scene_, s->wo);
-                }
-
-                // --------------------------------------------------------------------------------
-
-                // Sample next scene interaction
-                const auto sd = path::sample_distance(rng, scene_, sp, s->wo);
-                if (!sd) {
-                    break;
-                }
-
-                // --------------------------------------------------------------------------------
-
-                // Update throughput
-                throughput *= s->weight * sd->weight;
-
-                // --------------------------------------------------------------------------------
-
-                // Accumulate contribution from emissive interaction
-                if (scene_->is_light(sd->sp)) {
-                    const auto spL = sd->sp.as_type(SceneInteraction::LightEndpoint);
-                    const auto woL = -s->wo;
-                    const auto Le = path::eval_contrb_direction(scene_, spL, {}, woL, comp, TransDir::LE, true);
-                    const auto C = throughput * Le;
-                    film_->splat(raster_pos, C);
-                }
-
-                // --------------------------------------------------------------------------------
-
-                // Termination on a hit with environment
-                if (sd->sp.geom.infinite) {
-                    break;
-                }
-
-                // Russian roulette
-                if (num_verts > 5) {
-                    const auto q = glm::max(rr_prob_, 1_f - glm::compMax(throughput));
-                    if (rng.u() < q) {
-                        break;
-                    }
-                    throughput /= 1_f - q;
-                }
-
-                // --------------------------------------------------------------------------------
-
-                // Sample component
-                const auto s_comp = path::sample_component(rng, scene_, sd->sp, -s->wo);
-                throughput *= s_comp.weight;
-
-                // --------------------------------------------------------------------------------
-
-                // Update information
-                wi = -s->wo;
-                sp = sd->sp;
-                comp = s_comp.comp;
-            }
-        });
-
-        // Rescale film
-        #if VOLPT_IMAGE_SAMPLING
-        film_->rescale(Float(size.w* size.h) / processed);
-        #else
-        film_->rescale(1_f / processed);
-        #endif
-
-        return { {"processed", processed}, {"elapsed", st.now()} };
-    }
-};
-
-LM_COMP_REG_IMPL(Renderer_VolPTNaive, "renderer::volpt_naive");
-
-// ------------------------------------------------------------------------------------------------
-
-class Renderer_VolPT final : public Renderer_VolPT_Base {
+class Renderer_VolPT_Arepo final : public Renderer_VolPT_Base {
 public:
     virtual Json render() const override {
 		scene_->require_renderable();
@@ -213,7 +71,10 @@ public:
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
             
-            
+             //store the sample id that this thread currently works on 
+            stats::set<int,int,long long>(0,spp_ * pixel_index + sample_index);
+           //LM_INFO("current sample id : {}", std::to_string(stats::get<stats::CurrentSampleId,long long>(0)));
+
             // ------------------------------------------------------------------------------------
 
             // Sample window
@@ -374,6 +235,6 @@ public:
     }
 };
 
-LM_COMP_REG_IMPL(Renderer_VolPT, "renderer::volpt");
+LM_COMP_REG_IMPL(Renderer_VolPT_Arepo, "renderer::volpt_arepo");
 
 LM_NAMESPACE_END(LM_NAMESPACE)

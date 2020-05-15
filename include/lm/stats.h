@@ -4,12 +4,11 @@
 #include <functional>
 #include <memory>
 #include <lm/json.h>
+#include <mutex>
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
-
-LM_NAMESPACE_BEGIN(stats)
-
+namespace stats {
 
 /*!
     \addtogroup stats
@@ -117,6 +116,41 @@ namespace internals {
                 data = std::unordered_map<Key,Value>();
                 keyQueue = std::vector<Key>();
                 valueQueue = std::vector<Value>();
+            }
+
+    };
+
+    template <typename Tag, typename Value>
+    /*!
+    \brief internal statistics implementation,(one static and one thread_local) singleton, to access a std::unordered_map
+    */
+    class SlotStats {
+        private:
+            SlotStats() {}
+            SlotStats(bool registerJsonGather) {
+                JSONGatherer::instance().registerToJsonF( [&](lm::Json & j) {
+                    SlotStats<Tag,Value>::accessMainInstance([&] (internals::SlotStats<Tag,Value> & mainInstance) {
+                        j = mainInstance.data;
+                    });
+                });
+            }
+            ~SlotStats() {}
+            
+        public:
+            std::vector<Value> data;
+            static void accessMainInstance(std::function<void(SlotStats<Tag,Value>&)> accessor) {
+                static std::mutex access;
+                access.lock();
+                static SlotStats<Tag,Value> s(true);
+                accessor(s);
+                access.unlock();
+            } 
+            static SlotStats<Tag,Value> & threadInstance() {
+                thread_local  SlotStats<Tag,Value> s;
+                return s;
+            }
+            void shrinkClear() {
+                data = std::vector<Value>();
             }
 
     };
@@ -278,6 +312,7 @@ LM_PUBLIC_API void update(Key key, std::function<void(Value &)> updater) {
 
 
 
+
 template <typename Tag, typename Key, typename Value>
 /*!
     \brief receives a thread local statistics data point, given key
@@ -368,8 +403,48 @@ LM_PUBLIC_API void flushQueue( std::function<void(Key & k, Value & v)> processor
 }
 
 
+
+template <typename Tag, typename Value>
+/*!
+    \brief sets a thread local statistics data point, overwrites previous value with the same index
+*/
+LM_PUBLIC_API void set( size_t index, Value val) {
+    if(internals::SlotStats<Tag,Value>::threadInstance().data.size() < index + 1)
+        internals::SlotStats<Tag,Value>::threadInstance().data.resize(index + 1);
+    internals::SlotStats<Tag,Value>::threadInstance().data[index] = val;
+}
+ 
+template <typename Tag, typename Value>
+/*!
+    \brief receives a thread local statistics data point, given index
+*/
+LM_PUBLIC_API Value get( size_t index) {
+    if(internals::SlotStats<Tag,Value>::threadInstance().data.size() < index + 1)
+        internals::SlotStats<Tag,Value>::threadInstance().data.resize(index + 1);
+    return internals::SlotStats<Tag,Value>::threadInstance().data[index];
+}
+
+template <typename Tag, typename Value>
+/*!
+    \brief receives a reference to a thread local statistics data point , given index
+*/
+LM_PUBLIC_API Value & getRef(size_t index) {
+    if(internals::SlotStats<Tag,Value>::threadInstance().data.size() < index + 1)
+        internals::SlotStats<Tag,Value>::threadInstance().data.resize(index + 1);
+    return internals::SlotStats<Tag,Value>::threadInstance().data[index];
+}
+
+
+template <typename Tag, typename Value>
+/*!
+    \brief preallocates space for given entrycount, thread local
+*/
+LM_PUBLIC_API void reserve(size_t entryCount) {
+    internals::SlotStats<Tag, Value>::threadInstance().data.resize(entryCount);
+}
+
 /*!
     @}
 */
-LM_NAMESPACE_END(stats)
+}
 LM_NAMESPACE_END(LM_NAMESPACE)
