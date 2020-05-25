@@ -9,6 +9,8 @@
 #include <lm/phase.h>
 #include <lm/volume.h>
 
+#include "arepoloader.h"
+
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 /*
@@ -35,7 +37,7 @@ public:
 
 public:
     virtual void construct(const Json& prop) override {
-        volume_density_ = json::comp_ref<Volume>(prop, "volume_density");
+        volume_density_ = json::comp_ref<Volume_Arepo>(prop, "volume_density");
         volme_albedo_ = json::comp_ref<Volume>(prop, "volume_albedo");
         phase_ = json::comp_ref<Phase>(prop, "phase");
     }
@@ -46,35 +48,22 @@ public:
             // No intersection with the volume, use surface interaction
             return {};
         }
-        
+
+        //TODO use arepo->SAMPLE DISTANCVE 
+
         // Sample distance by delta tracking
         Float t = tmin;
         const auto inv_max_density = 1_f / volume_density_->max_scalar();
-        while (true) {
-            // Sample a distance from the 'homogenized' volume
-            t -= glm::log(1_f-rng.u()) * inv_max_density;
-            if (t >= tmax) {
-                // Hit with boundary, use surface interaction
-                return {};
-            }
 
-            // Density at the sampled point
-            const auto p = ray.o + ray.d*t;
-            const auto density = volume_density_->eval_scalar(p);
-
-            // Determine scattering collision or null collision
-            // Continue tracking if null collusion is seleced
-            if (density * inv_max_density > rng.u()) {
-                // Scattering collision
-                const auto albedo = volme_albedo_->eval_color(p);
-                return DistanceSample{
-                    ray.o + ray.d*t,
-                    albedo,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
-                                // = 1/\mu_t(t) * \mu_s(t) = albedo(t)
-                    true
-                };
-            }
-        }
+        if (density * inv_max_density > rng.u()) {
+        // Scattering collision
+        const auto albedo = volme_albedo_->eval_color(p);
+        return DistanceSample{
+            ray.o + ray.d*t,
+            albedo,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
+                        // = 1/\mu_t(t) * \mu_s(t) = albedo(t)
+            true
+        };
 
         LM_UNREACHABLE_RETURN();
     }

@@ -40,6 +40,7 @@ namespace ArepoLoaderInternals {
         }
     };
 
+
     class CachedSample {
         public:
         long long sampleIndex;
@@ -53,12 +54,23 @@ namespace ArepoLoaderInternals {
         glm::tmat4x3<lm::Float> tmpPVs; //some point to vertex connections
         lm::Vec4 tmpDets; //determinants
 
+        //T^-1, a barycentric coordinates matrix
+        lm::Mat3 baryInvT;
+        std::vector<std::vector<float>> cornerVals;
+
+        lm::Vec3 sampleDir;
+        lm::Vec4 dirDets;
+
+        lm::Hit lastHit;
+
+
         CachedSample() : 
         sampleIndex(std::numeric_limits<long long>::max()),
         tetraI(-1),
         hydroI(-1),
         minDistI(-1),
-        values(9,0.0f)
+        values(9,0.0f),
+        cornerVals(4,{0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f})
         {
             
         }
@@ -196,9 +208,111 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     virtual lm::Float max_scalar() const override {
         return arepo->valBounds[TF_VAL_DENS*3 + 1];
     }
-    virtual bool has_scalar() const override{
+    virtual bool has_scalar() const override {
         return true;
     }
+
+    virtual lm::Float sample_distance(lm::Ray ray, Float xi) const override {
+        auto & cached = cachedSample();
+        //not inside, there has been performed an up to date ray intersection to the volume bound and we can use it
+        if(! findAndCacheTetra(ray.o,ray.d)) 
+            return lastHit.t;
+        //otherwise the last Hit information is outdated, we are in a tetrahedron and 
+        //have to find the free path
+        cached.sampleDir = ray.d;
+        //find out in which of the the 4 sub tetras (spanned by ray.o and the current tetrahedron )
+        //the ray direction lies, determine vertex indices that represent the triangle the ray dir looks at
+        //choose tetra vertex 3 as "roof" R, test certain determinants (dir,X,R),
+        // where negative means dir is "right of", positive "left of" axis XR
+        glm::ivec3 indices; 
+
+        cached.dirDets[0] = det3x3(ray.d,cached.tmpPVs[1],cached.tmpPVs[3]);
+        bool left_B_D = cached.dirDets[0] > 0.0;
+        indices.x = left_B_D ? 0 : 2; //A or C is guaranteed first vertex of final triangle
+
+        cached.dirDets[1] = det3x3(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[3]);
+        bool left_AorC_D = cached.dirDets[1] > 0.0;
+        indices.y = left_B_D   ? 
+        (!left_AorC_D ? 1 : 2) : //B or the opposing of last eval is guaranteed second vert of tri
+        ( left_AorC_D ? 1 : 0);
+
+
+        cached.dirDets[2] = det3x3(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[indices.y]);
+        //left of horizontal x to y ?
+        bool left_horizontal = cached.dirDets[2] > 0.0;
+        //the top or the bottom?
+        indices.z = 
+        left_B_D ? 
+            (!left_AorC_D ?
+                (left_horizontal ? 3 : 2) : 
+                (left_horizontal ? 1 : 3)
+            ) :
+            (left_AorC_D ?
+                (left_horizontal ? 0 : 3) :
+                (left_horizontal ? 3 : 1)
+            )
+        ;
+            
+        //indices now contains 3 indices into tetra vertices forming the triangle the ray dir is looking at.
+        //can compute point on triangle (intersection) using some determinants (->barycentric coordinates)
+        //main determinant
+        auto mainD = left_B_D ? 
+            (!left_AorC_D ?
+                (left_horizontal ? cached.tmpDets[2] : cached.tmpDets[3]) : //ABD or ABC
+                (left_horizontal ? cached.tmpDets[3] : cached.tmpDets[1]) //ABC or ACD
+            ) :
+            (left_AorC_D ?
+                (left_horizontal ? cached.tmpDets[3] : cached.tmpDets[0]) : //ABC or BCD
+                (left_horizontal ? cached.tmpDets[1] : cached.tmpDets[3]) //ACD or ABC
+            )
+        ;
+        
+        //construct determinants : ray direction (assume it is normalized) and PVs
+        auto bary0 = std::abs( det3x3(cached.tmpPVs[indices[1]],cached.tmpPVs[indices[2]], ray.d) / mainD);
+        auto bary1 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[2]], ray.d) / mainD);
+        auto bary2 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[1]], ray.d) / mainD);
+        auto baryOrigin = 1_f - bary0 - bary1 - bary2;
+        
+        auto t = 1_f / (bary0 + bary1 + bary2); 
+        //so this is the t the ray dir can be multiplied to, without leaving the tetra
+        //ray.o + ray.d * t is intersection point.
+        
+        //now sample the distance, using the inverse cdf method.
+        //our cdf is e to the power of the integral over the weighted sum of density values of the tetra vertices
+        //the weights are the tetrahedral barycentric coordinates
+        //so we have to extract the cdf and then invert it. the resulting inverse function can be cached partly 
+        //as long we stay in the same tetrahedron!
+        //e^tau(t) , tau is integral_0_t( sum_0_3( bary_i(s) * density_i ) ) ds
+        //and t moves along ray ray(t) = o + d * t
+        //bary_i(s) is the barycentric coordinate of point p on ray at s:
+        //and according to wikipedia (doublecheck!) 
+        // Tinv * (o-r4) + Tinv * d * t
+        // with Tinv being a special matrix which we cache and r4 being the 4th tetra point
+        // a order 2 polynomial, set a = Tinv * d * 0.5  and b = Tinv * (o - r4), c= 0
+        //then the inverse is x = sqrt(b^2/4a^2 + y/a) - b/a
+        // for y put in -ln(rnd) with rnd being sample value
+        //if x exceeds distance within tetra (see further up), we need to continue with neighbor tetra. 
+        auto lambda012_a = cached.baryInvT * ray.d * 0.5;
+        auto lambda012_b = cached.baryInvT * (ray.o - cached.tetraVerts[3]);
+        auto densities = lm::Vec4(
+            cached.cornerVals[0][TF_VAL_DENS],
+            cached.cornerVals[1][TF_VAL_DENS],
+            cached.cornerVals[2][TF_VAL_DENS],
+            cached.cornerVals[3][TF_VAL_DENS]);
+        Float b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z),densities);
+        Float a = glm::dot( lm::Vec4(lambda012_a, 1.0 - lambda012_a.x - lambda012_a.y - lambda012_a.z), densities);
+
+        Float freeT = glm::sqrt(b*b/4.0/a/a + glm::log(1_f-xi) /a) - b/a;
+        
+        if(freeT > t) { 
+            lm::Ray next = {ray.o + ray.d * (t + std::numeric_limits<Float>::epsilon()), ray.d};
+            return t + sample_distance(next, xi - t);
+        }
+        return freeT;
+
+        
+    }
+
 
     virtual lm::Float eval_scalar(lm::Vec3 p) const override {
         
@@ -259,7 +373,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //glm::determinant(lm::Mat3(b0,b1,b2));
         return b[0]*c[1]*d[2] + c[0]*d[1]*b[2] + d[0]*b[1]*c[2] - d[0]*c[1]*b[2] - c[0]*b[1]*d[2] - b[0]*d[1]*c[2];
     }
-
+    
     void connectP(glm::tmat4x3<lm::Float> & verts, lm::Vec3 & p, glm::tmat4x3<lm::Float> & pToVerts) const {
 
         for(int i = 0; i < 4; i++)
@@ -314,7 +428,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //it contains two groups, one group where the point lies within, and one group where it lies outside a face
         //the face of vertex i is defined by the triangle of the tetrahedron that doesnt have the vertex i as a corner (i.e. the opposing triangle of vertex i)
 
-        //now indices are in two groups, one group of insides, one of outsides. which is which is unclear, need to find out manually
+        //so,  indices are in two groups, one group of insides, one of outsides. which is which is unclear, need to find out manually
         assert(group0 != 4 && group0 != 0); //this method wouldnt be called if p was inside the original tetra
 
         auto copyCached = cachedSample(); //save a copy
@@ -445,6 +559,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         cachedS.tmpPVs = pVs;
         cachedS.tmpDets = determinants;
+       
         return insideTet;
         
     }
@@ -470,24 +585,38 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 for (int i = 0; i < 9; i++)
                     cachedS.values[i] = 0.0f;
                 addValsContribution(cachedS.values,hydroIndex,1.0);//lengths[minDistIndex] / totalD );
-                toVals[TF_VAL_DENS] = cachedS.values[TF_VAL_DENS];
+                toVals[TF_VAL_DENS] = glm::max(0.0f,glm::min(1.0f,cachedS.values[TF_VAL_DENS]));
             } 
         }                
         cachedS.hydroI = hydroIndex;
         cachedS.minDistI = minDistIndex;
     }
 
+    void cacheCornerValues() const {
 
-    void gatherValsAtPoint(lm::Vec3 p, std::vector<float> & toVals) const {
+        auto & cachedS = Volume_Arepo_Impl::cachedSample();
+        for(int i = 0; i < 4; i++) {
+            hydroIndex = arepoMesh->DP[cachedS.tetraInds[i]].index;
+            for (int j = 0; j < 9; j++) {
+                cachedS.cornerVals[i][j] = 0.0f;
+            }
+            if (hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
+                addValsContribution(cachedS.cornerVals[i],hydroIndex,1.0);//lengths[minDistIndex] / totalD );
+            }
+        }
+         
+    }
 
+
+    bool findAndCacheTetra(lm::Vec3 p, lm::Vec3 dir = lm::Vec3(1.0f,0.0f,0.0f)) const {
         int h = 0;
         auto currentSample = lm::stats::get<int,int,long long>(h);
         
         auto & cachedS = Volume_Arepo_Impl::cachedSample();
         if(cachedS.sampleIndex == currentSample) { //is cached
             if (insideCachedTetra(p)) {
-                evaluateDensityCached(toVals);
-                return; //most efficient case, still in cached tetra
+                //evaluateDensityCached(toVals);
+                return true; //most efficient case, still in cached tetra
             }
             else { //check neighbors
                 int tetraIndex = checkCachedNeighbors(p);
@@ -498,8 +627,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     cachedS.hydroI = -1;
                     cachedS.minDistI = -1;
                     //then evaluate
-                    evaluateDensityCached(toVals);
-                    return;
+                    //evaluateDensityCached(toVals);
+                    return true;
                 } else {// not even in neighbors, "lost" track
                     cachedS.sampleIndex = std::numeric_limits<long long>::max();
                 }
@@ -508,7 +637,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //uncached, need to ray intersect with volume
         lm::Ray r; //TODO to be further developed, with real ray!
         r.o = p;
-        r.d = lm::Vec3(1.0f,0.0f,0.0f); //arbitrary
+        r.d = dir;
         auto hit = accel->intersect(r,0.0f,std::numeric_limits<float>::max());
         if(hit.has_value()) { //check if inside the tetra of hit triangle
             int tetraIndex = hit.value().face / 4;
@@ -526,12 +655,56 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 //need to invalidate some information
                 cachedS.hydroI = -1;
                 cachedS.minDistI = -1;
-                evaluateDensityCached(toVals);
-                return;
+                //need to calculate a barycentric coordinates matrix 
+                auto m0 = lm::Vec3(
+                        cachedS.tetraVs[0].x - cachedS.tetraVs[4].x,
+                        cachedS.tetraVs[0].y - cachedS.tetraVs[4].y,
+                        cachedS.tetraVs[0].z - cachedS.tetraVs[4].z);
+                auto m1 = lm::Vec3(
+                        cachedS.tetraVs[1].x - cachedS.tetraVs[4].x,
+                        cachedS.tetraVs[1].y - cachedS.tetraVs[4].y,
+                        cachedS.tetraVs[1].z - cachedS.tetraVs[4].z);
+                auto m2 = lm::Vec3(
+                        cachedS.tetraVs[2].x - cachedS.tetraVs[4].x,
+                        cachedS.tetraVs[2].y - cachedS.tetraVs[4].y,
+                        cachedS.tetraVs[2].z - cachedS.tetraVs[4].z);
+
+                float A =   m1[1] * m2[2] - m2[1] * m1[2]; 
+                float B = - m0[1] * m2[2] + m2[1] * m0[2]; 
+                float C =   m0[1] * m1[2] - m1[1] * m0[2]; 
+
+                float D = - m1[0] * m2[2] + m2[0] * m1[2]; 
+                float E =   m0[0] * m2[2] - m2[0] * m0[2]; 
+                float F = - m0[0] * m1[2] + m1[0] * m0[2]; 
+                
+                float G =   m1[0] * m2[1] - m2[0] * m1[1]; 
+                float H = - m0[0] * m2[1] + m2[0] * m0[1]; 
+                float I =   m0[0] * m1[1] - m1[0] * m0[1];
+
+                float a = m0[0];
+                float b = m1[0];
+                float b = m2[0];
+
+                //calculate the inverse matrix that delivers the barycoordinates (from wikipedia)
+                cachedS.baryInvT = 
+                lm::Mat3(lm::Vec3(A,B,C),lm::Vec3(D,E,F),lm::Vec3(G,H,I))
+                / (a * A + b * B + c * C);
+
+                //also store density at corners
+                cacheCornerValues();
+                
+                //evaluateDensityCached(toVals);
+                return true;
             } else { //still not inside, then we are outside the whole arepoMesh at the moment, next sample will have to perform ray intersection test again.  
                 cachedS.sampleIndex = std::numeric_limits<long long>::max();
             }
         }
+        return false;
+    }
+
+    void gatherValsAtPoint(lm::Vec3 p, std::vector<float> & toVals) const {
+        if(findAndCacheTetra(p))
+            evaluateDensityCached(toVals);
     }
 
     void gatherValsAtPointNaive(lm::Vec3 p, std::vector<float> & toVals) const {
