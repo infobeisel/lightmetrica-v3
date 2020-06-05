@@ -26,7 +26,7 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 */
 class Medium_Het_Arepo final : public Medium {
 private:
-    const Volume* volume_density_;  // Density volume. density := \mu_t = \mu_a + \mu_s
+    const Volume_Arepo* volume_density_;  // Density volume. density := \mu_t = \mu_a + \mu_s
     const Volume* volme_albedo_;	// Albedo volume. albedo := \mu_s / \mu_t
     const Phase* phase_;            // Underlying phase function.
 
@@ -48,18 +48,25 @@ public:
             // No intersection with the volume, use surface interaction
             return {};
         }
+        //LM_INFO("sample distance from {} to {} ---------------------------------------", tmin, tmax);
 
-        //TODO use arepo->SAMPLE DISTANCVE 
+        ray.o = ray.o + ray.d * tmin;
+        //const auto inv_max_density = 1_f / volume_density_->max_scalar();
 
-        // Sample distance by delta tracking
-        Float t = tmin;
-        const auto inv_max_density = 1_f / volume_density_->max_scalar();
+        Float t = tmin + volume_density_->sample_distance(ray, rng.u());
+        //LM_INFO("result {} ----------------------------------------------", t);
+        
+        if(t >= tmax) {
+            // Hit with boundary, use surface interaction
+            return {};
+        }
 
-        if (density * inv_max_density > rng.u()) {
-        // Scattering collision
+        t = glm::min(t, tmax);
+
+        auto p = ray.o + ray.d*t;
         const auto albedo = volme_albedo_->eval_color(p);
         return DistanceSample{
-            ray.o + ray.d*t,
+            p,
             albedo,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
                         // = 1/\mu_t(t) * \mu_s(t) = albedo(t)
             true
@@ -74,7 +81,16 @@ public:
             // No intersection with the volume, no attenuation
             return Vec3(1_f);
         }
+        //LM_INFO("eval transmittance from {} to {} ---------------------------------------", tmin, tmax);
 
+        auto ret = volume_density_->eval_transmittance(ray, tmin, tmax);
+
+
+        //LM_INFO("result {} ----------------------------------------------", ret);
+
+        return Vec3(ret);
+
+/*
         // Perform ratio tracking [Novak et al. 2014]
         Float Tr = 1_f;
         Float t = tmin;
@@ -89,7 +105,7 @@ public:
             Tr *= 1_f - density * inv_max_density;
         }
 
-        return Vec3(Tr);
+        return Vec3(Tr);*/
     }
 
     virtual bool is_emitter() const override {

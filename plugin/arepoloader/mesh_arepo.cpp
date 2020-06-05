@@ -15,12 +15,11 @@
 
 class ArepoMeshImpl final : public lm::Mesh {
 private:
-    point * dps;
-    size_t ndp;
-    tetra * dts;
-    size_t ndt;
+    
+    ArepoMesh * am;
 
     std::vector<lm::Mesh::Tri> triangles;
+    std::vector<std::pair<int,int>> triangleIndexToTetraIndex;
   
 public:
     //TODO!
@@ -34,17 +33,23 @@ public:
         
         //std::uintptr_t ptrToPoints = prop["ps_addr"];
         //dps = reinterpret_cast<point*>(ptrToPoints);
+
+        am = reinterpret_cast<ArepoMesh*> ( prop["arepoMesh_addr"].get<uintptr_t>() );
         
-        dps = reinterpret_cast<point*> ( prop["ps_addr"].get<uintptr_t>() );
-        ndp = prop["ps_count"];
+        auto dps = am->DP;
+        auto ndp = am->Ndp;
         
         //std::uintptr_t ptrToTetras = prop["ts_addr"];
         //dts = reinterpret_cast<tetra*>(ptrToPoints);;
-        dts = reinterpret_cast<tetra*> ( prop["ts_addr"].get<uintptr_t>() );
-        ndt = prop["ts_count"];
+        auto dts = am->DT;
+        auto ndt = am->Ndt;
+
+        
+
 
 
         triangles.reserve(ndt * 4);
+        triangleIndexToTetraIndex.reserve(ndt * 4);
         for(size_t tetrai = 0; tetrai < ndt; tetrai++) {
 
             //"oriented" tetrahedron points...?
@@ -54,26 +59,37 @@ public:
            // size_t vertexIndex3 = (2 + faceIndex) % 4;
             
            //auto v3 = lm::Vec3(dps[dts[tetrai].p[2]].x, dps[dts[tetrai].p[2]].y, dps[dts[tetrai].p[2]].z);
-            
-            for(int i = 0; i < 4; i++) {
-                int a = (i + 0) % 4;
-                int b = (i + 1) % 4;
-                int c = (i + 2) % 4;
-               
-                auto v0 = lm::Vec3(dps[dts[tetrai].p[a]].x, dps[dts[tetrai].p[a]].y, dps[dts[tetrai].p[a]].z);
-                auto v1 = lm::Vec3(dps[dts[tetrai].p[b]].x, dps[dts[tetrai].p[b]].y, dps[dts[tetrai].p[b]].z);
-                auto v2 = lm::Vec3(dps[dts[tetrai].p[c]].x, dps[dts[tetrai].p[c]].y, dps[dts[tetrai].p[c]].z);
-                auto triangleNormal = glm::cross (glm::normalize(v1 - v0),glm::normalize(v2 - v0));
-                triangles.push_back({ 
-                    {v0,triangleNormal,lm::Vec2(v0.x)},
-                    {v1,triangleNormal, lm::Vec2(v0.y)},
-                    {v2,triangleNormal, lm::Vec2(v0.z)},
-                });
-            
-            /*LM_INFO("add tetrahedron {} ? {} . triangle {},{},{} with v0x {}" ,std::to_string(tetrai), 
-            std::to_string(dts[tetrai].t[0] == -1),
-            std::to_string(a),std::to_string(b),std::to_string(c),
-            std::to_string(dps[dts[tetrai].p[a]].x) );*/
+            if(dts[tetrai].t[0] > 0.0) {
+                for(int i = 0; i < 4; i++) {
+                    int opposingPoint = (i - 1) % 4;
+                    int a = (i + 0) % 4;
+                    int b = (i + 1) % 4;
+                    int c = (i + 2) % 4;
+                
+                    auto v0 = lm::Vec3(dps[dts[tetrai].p[a]].x, dps[dts[tetrai].p[a]].y, dps[dts[tetrai].p[a]].z);
+                    auto v1 = lm::Vec3(dps[dts[tetrai].p[b]].x, dps[dts[tetrai].p[b]].y, dps[dts[tetrai].p[b]].z);
+                    auto v2 = lm::Vec3(dps[dts[tetrai].p[c]].x, dps[dts[tetrai].p[c]].y, dps[dts[tetrai].p[c]].z);
+                    auto triangleNormal = glm::cross (glm::normalize(v1 - v0),glm::normalize(v2 - v0));
+                    triangles.push_back({ 
+                        {v0,triangleNormal,lm::Vec2(v0.x)},
+                        {v1,triangleNormal, lm::Vec2(v0.y)},
+                        {v2,triangleNormal, lm::Vec2(v0.z)},
+                    });
+                    triangleIndexToTetraIndex.push_back(std::make_pair(tetrai, dts[tetrai].t[opposingPoint]));
+
+                
+                /*LM_INFO("add tetrahedron {} ? {} . triangle {},{},{} with v0x {}" ,std::to_string(tetrai), 
+                std::to_string(dts[tetrai].t[0] == -1),
+                std::to_string(a),std::to_string(b),std::to_string(c),
+                std::to_string(dps[dts[tetrai].p[a]].x) );*/
+                }
+            } else { // the tetra got deleted during the simulation but we have to keep the triangle count consistent, so that later face id lookups for the densities will be correct 
+                for(int i = 0; i < 4; i++) {triangles.push_back({ 
+                        {lm::Vec3(0),lm::Vec3(0),lm::Vec3(-1)},
+                        {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
+                        {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
+                    });
+                }
             }
         }
 
@@ -93,6 +109,10 @@ public:
         return triangles[face];
     }
 
+    std::pair<int,int> adjacentTetras(int face) const {
+        triangleIndexToTetraIndex[face];
+    }
+
     virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const override {
 
         auto triangle = triangle_at(face);
@@ -106,7 +126,7 @@ public:
     }
 
     virtual int num_triangles() const override {
-        return ndt * 4;
+        return am->Ndt * 4;
     }
 };
 

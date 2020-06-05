@@ -12,6 +12,7 @@
 #include <lm/timer.h>
 #include <lm/stats.h>
 #include "statstags.h"
+#include "arepoloader.h"
 #define VOLPT_IMAGE_SAMPLING 0
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
@@ -62,6 +63,14 @@ public:
     virtual Json render() const override {
 		scene_->require_renderable();
 
+        stats::clearGlobal<lm::stats::SampleIdCacheHits,int,long long>( );
+        stats::clearGlobal<lm::stats::SampleIdCacheMisses,int,long long>( );
+        stats::clearGlobal<lm::stats::UsedCachedTetra,int,long long>( );
+        stats::clearGlobal<lm::stats::UsedNeighborTetra,int,long long>( );
+        stats::clearGlobal<lm::stats::ResampleAccel,int,long long>( );
+        stats::clearGlobal<lm::stats::TotalTetraTests,int,long long>( );
+
+
         film_->clear();
         const auto size = film_->size();
         timer::ScopedTimer st;
@@ -72,7 +81,7 @@ public:
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
             
              //store the sample id that this thread currently works on 
-            stats::set<int,int,long long>(0,spp_ * pixel_index + sample_index);
+            stats::set<stats::CachedSampleId,int,long long>(0,spp_ * pixel_index + sample_index);
            //LM_INFO("current sample id : {}", std::to_string(stats::get<stats::CurrentSampleId,long long>(0)));
 
             // ------------------------------------------------------------------------------------
@@ -222,7 +231,47 @@ public:
                 sp = sd->sp;
                 comp = s_comp.comp;
             }
-        });
+        },  
+        [&](auto pxlindx,auto smplindx,auto threadid) {
+            stats::clear<lm::stats::SampleIdCacheHits,int,long long>( );
+            stats::clear<lm::stats::SampleIdCacheMisses,int,long long>( );
+            stats::clear<lm::stats::UsedCachedTetra,int,long long>( );
+            stats::clear<lm::stats::UsedNeighborTetra,int,long long>( );
+            stats::clear<lm::stats::ResampleAccel,int,long long>( );
+            stats::clear<lm::stats::TotalTetraTests,int,long long>( );
+
+        } , 
+        [&](auto pxlindx,auto smplindx,auto threadid) {
+            stats::mergeToGlobal<lm::stats::SampleIdCacheHits,int,long long>( 
+                [](long long & v0,long long & v1 ) { return v0 + v1;} );
+            stats::mergeToGlobal<lm::stats::SampleIdCacheMisses,int,long long>( 
+                [](long long & v0,long long & v1 ) { return v0 + v1;} );
+            stats::mergeToGlobal<lm::stats::UsedCachedTetra,int,long long>( 
+                [](long long & v0,long long & v1 ) { return v0 + v1;} );
+            stats::mergeToGlobal<lm::stats::UsedNeighborTetra,int,long long>( 
+                [](long long & v0,long long & v1 ) { return v0 + v1;} );
+            stats::mergeToGlobal<lm::stats::ResampleAccel,int,long long>( 
+                [](long long & v0,long long & v1 ) { return v0 + v1;} );
+            stats::mergeToGlobal<lm::stats::TotalTetraTests,int,long long>( 
+                [](long long & v0,long long & v1 ) { return v0 + v1;} );
+
+        }
+        );
+
+        auto smplhits = stats::getGlobal<lm::stats::SampleIdCacheHits,int,long long>(0 );
+        auto smplmisses = stats::getGlobal<lm::stats::SampleIdCacheMisses,int,long long>(0 );
+        auto tetrahits =  stats::getGlobal<lm::stats::UsedCachedTetra,int,long long>( 0);
+        auto tetraneighborhits = stats::getGlobal<lm::stats::UsedNeighborTetra,int,long long>(0 );
+        auto accelsmpls = stats::getGlobal<lm::stats::ResampleAccel,int,long long>( 0);
+        auto totaltetratests = stats::getGlobal<lm::stats::TotalTetraTests,int,long long>(0 );
+
+        LM_INFO("sample hit/misses: {}, tetra hit rate {}, tetra neighbor hit rate {}, accel smpls {} . total tetra probes {}", 
+         (double)smplhits/(double)smplmisses,
+         (double)tetrahits/(double)totaltetratests,
+         (double)tetraneighborhits/(double)totaltetratests,
+         (double)accelsmpls/(double)totaltetratests,
+         totaltetratests
+         );
 
         // Rescale film
         #if VOLPT_IMAGE_SAMPLING
