@@ -59,7 +59,29 @@ public:
            // size_t vertexIndex3 = (2 + faceIndex) % 4;
             
            //auto v3 = lm::Vec3(dps[dts[tetrai].p[2]].x, dps[dts[tetrai].p[2]].y, dps[dts[tetrai].p[2]].z);
-            if(dts[tetrai].t[0] > 0.0) {
+
+           //none of them has density?
+            /*for(int i  = 0; i < 4; i++) {
+
+            }
+            int hydroIndex = arepoMeshRef->DP[cachedS.tetraInds[i]].index;
+            if (hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
+*/
+            if  (
+            (am->DT[tetrai].t[0] < 0 || am->DT[tetrai].p[0] == DPinfinity || am->DT[tetrai].p[1] == DPinfinity
+            || am->DT[tetrai].p[2] == DPinfinity || am->DT[tetrai].p[3] == DPinfinity)
+            || am->DT[tetrai].t[0] == -1)
+            {
+                // the tetra got deleted during the simulation but we have to keep the triangle count consistent, so that later face id lookups for the densities will be correct 
+                for(int i = 0; i < 4; i++) {triangles.push_back({ 
+                        {lm::Vec3(0),lm::Vec3(0),lm::Vec3(-1)},
+                        {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
+                        {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
+                    });
+                }
+            } else {
+
+            //if(dts[tetrai].t[0] > 0.0) {
                 for(int i = 0; i < 4; i++) {
                     int opposingPoint = (i - 1) % 4;
                     int a = (i + 0) % 4;
@@ -83,14 +105,7 @@ public:
                 std::to_string(a),std::to_string(b),std::to_string(c),
                 std::to_string(dps[dts[tetrai].p[a]].x) );*/
                 }
-            } else { // the tetra got deleted during the simulation but we have to keep the triangle count consistent, so that later face id lookups for the densities will be correct 
-                for(int i = 0; i < 4; i++) {triangles.push_back({ 
-                        {lm::Vec3(0),lm::Vec3(0),lm::Vec3(-1)},
-                        {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
-                        {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
-                    });
-                }
-            }
+            } 
         }
 
         

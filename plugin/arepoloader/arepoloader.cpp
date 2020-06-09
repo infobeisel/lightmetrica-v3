@@ -61,12 +61,15 @@ namespace ArepoLoaderInternals {
         lm::Mat3 baryInvT;
         std::vector<std::vector<float>> cornerVals;
 
-        std::vector<int> neighbors;
+        std::vector<tetra> neighbors;
+        std::vector<int> neighborInds;
 
         lm::Vec4 dirDets;
 
         int looksAtTriId;//the tetrahedron's triangle index (0-3) the current sample ray looks at.
         lm::Accel::Hit lastHit;
+
+        lm::Float max_scalar_;
 
 
         CachedSample() : 
@@ -77,7 +80,8 @@ namespace ArepoLoaderInternals {
         values(9,0.0f),
         cornerVals(4,{0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f}),
         looksAtTriId(0),
-        neighbors(20,0)
+        neighbors(100,tetra()),
+        neighborInds(100,0)
 
         {
             
@@ -132,13 +136,21 @@ namespace ArepoLoaderInternals {
 
     }
 
-    lm::Float sampleCachedCDF_toTransmittance(lm::Ray ray, lm::Float t, CachedSample const & cached) {
+    lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
         lm::Float a,b;
         sampleCachedCDFCoefficients(ray, a, b, cached);
-        return glm::exp(- ( t * b + a * t * t));
+        return ( b * (toT-fromT) + a * (toT * toT - fromT * fromT) );
     }
 
-    lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float xi, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached) {
+    lm::Float sampleTransmittance(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
+        lm::Float a,b;
+        sampleCachedCDFCoefficients(ray, a, b, cached);
+        return glm::exp(- ( b * (toT-fromT) + a * (toT * toT - fromT * fromT) ));
+    }
+
+
+
+    lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float xi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached) {
         //now sample the distance, using the inverse cdf method.
         //our cdf is e to the power of the integral over the weighted sum of density values of the tetra vertices
         //the weights are the tetrahedral barycentric coordinates
@@ -154,24 +166,29 @@ namespace ArepoLoaderInternals {
         //then the inverse is x = sqrt(b^2/4a^2 + y/a) - b/a
         // for y put in -ln(rnd) with rnd being sample value
         //if x exceeds distance within tetra (see further up), we need to continue with neighbor tetra. 
+        
         lm::Float a,b;
         sampleCachedCDFCoefficients(ray, a, b, cached);
-        auto maxdens = 1.0;/* glm::max(
+        auto maxd = glm::max(
             cached.cornerVals[0][TF_VAL_DENS] ,glm::max(
             cached.cornerVals[1][TF_VAL_DENS] ,glm::max(
             cached.cornerVals[2][TF_VAL_DENS] ,
             cached.cornerVals[3][TF_VAL_DENS] )));
-        a /= maxdens;
-        b /= maxdens; //so the following is numerically more stable hopefully?
-        */
-        lm::Float freeT = glm::sqrt(
-            ((b*b)/(4.0*a*a)) + (-glm::log(xi) / (maxdens * a)) ) - b/a;
-        freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
-        //for evaluating transmittance, limit free path to tmax
-        auto t = glm::min(freeT, tmax);
-        out_cdf = t * b * maxdens + a  * t * t * maxdens;
+        auto invmaxd = 1.0 / maxd;
+        //a *= invmaxd;
+        //b *= invmaxd; //so the following is numerically more stable hopefully?
+
+        //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
+        auto y = -glm::log(xi) + a * tmin*tmin + b * tmin - out_cdf;
         
-        return freeT;
+        lm::Float freeT = glm::sqrt(
+            ((b*b)/(4.0*a*a)) + ( y / (a )) ) - b/(2.0*a);
+        freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
+        //for evaluating tau, limit free path to tmax
+        auto t = glm::min(freeT + tmin, tmax) ;
+        out_cdf += (t - tmin) * b  + a  * (t * t - tmin * tmin) ; //cdf within tmin and  min of (t , tmax) 
+        
+        return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
     }
 
     lm::Float intersectCachedTetra(lm::Ray ray, CachedSample & cached)  {
@@ -256,17 +273,34 @@ namespace ArepoLoaderInternals {
     }
 
 
+    //copied from ArepoVTK
+    // get primary hydro IND - handle local ghosts
+    int getCorrectedHydroInd(int dpInd)
+    {
+        int SphP_ID = -1;
+  
+        if (dpInd >= 0 && dpInd < NumGas)
+            SphP_ID = dpInd;
+        else if (dpInd >= NumGas)
+            SphP_ID = dpInd - NumGas;
+        
+        //if (SphP_ID < 0)
+        //    terminate("1135");
+            
+        return SphP_ID;
+    }
+
+
     //performs point in tetrahedron test, returns result. 
     //stores all relevant test data into cachedS if p is in the tetra
-    bool insideTetra(int tetraIndex, lm::Vec3 p, CachedSample & cachedS)  {
-        assert(tetraIndex >= 0);
+    bool insideTetra(int tetraIndex, tetra tetra, lm::Vec3 p, CachedSample & cachedS)  {
         glm::tmat4x3<lm::Float> pVs;//point to vertex connections
         glm::tmat4x3<lm::Float> verts;
         glm::ivec4 vertInds;
         lm::Vec4 determinants;
         
         for(int i = 0; i < 4; i++) {
-            vertInds[i] = arepoMeshRef->DT[tetraIndex].p[i];
+            vertInds[i] = tetra.p[i];
             auto av = arepoMeshRef->DP[vertInds[i]];
             verts[i] = lm::Vec3(av.x,av.y,av.z);
             pVs[i] = verts[i] - p;
@@ -275,9 +309,9 @@ namespace ArepoLoaderInternals {
         
         //skip points 
         if  (
-        (arepoMeshRef->DT[tetraIndex].t[0] < 0 || arepoMeshRef->DT[tetraIndex].p[0] == DPinfinity || arepoMeshRef->DT[tetraIndex].p[1] == DPinfinity
-        || arepoMeshRef->DT[tetraIndex].p[2] == DPinfinity || arepoMeshRef->DT[tetraIndex].p[3] == DPinfinity)
-        || arepoMeshRef->DT[tetraIndex].t[0] == -1)
+        (tetra.t[0] < 0 ||tetra.p[0] == DPinfinity || tetra.p[1] == DPinfinity
+        || tetra.p[2] == DPinfinity || tetra.p[3] == DPinfinity)
+        || tetra.t[0] == -1)
         {
             //LM_INFO("skip");
             return false;
@@ -300,17 +334,24 @@ namespace ArepoLoaderInternals {
         
     }
 
+    //overload
+    bool insideTetra(int tetra, lm::Vec3 p, CachedSample & cachedS)  {
+        insideTetra(tetra, arepoMeshRef->DT[tetra], p, cachedS);
+    }
+
     void updateCachedNeighbors(CachedSample & cached) {
         auto ofTetra = cached.tetraI;
         bool foundNeighbor = false;
         bool foundBoundary = false;
         //double check if in original tetra
-        std::vector<int> & neighbors = cached.neighbors; 
+        auto & neighbors = cached.neighbors; 
+        auto & neighborInds = cached.neighborInds; 
         neighbors.clear();
+        neighborInds.clear();
         
 
         auto alreadyContains = [&] (int tet) {
-            for(auto n : neighbors)
+            for(auto n : neighborInds)
                 if(n == tet)
                     return true;
             return false;
@@ -324,14 +365,28 @@ namespace ArepoLoaderInternals {
                         return true;
             return false;
         };
+
+        auto isNeighbor2 = [&] (int tet, int of_tet) {
+            bool foundN2 = isNeighbor(tet, of_tet);
+            for(int i = 0;i < 4; i++) {
+                int firstNeighbor = arepoMeshRef->DT[tet].t[i];
+                if(firstNeighbor >= 0)
+                    foundN2 |= isNeighbor(firstNeighbor,tet);
+            }
+            return foundN2;
+            
+        };
+
         std::function<void(int,int)> addNeighbors = [&] (int of_tet, int original_tet) -> void {
-            int n0 = arepoMeshRef->DT[of_tet].t[0];
+            auto tetStrct = arepoMeshRef->DT[of_tet]; 
+            int n0 = tetStrct.t[0];
             foundBoundary |= n0 < 0; 
             if(n0 >= 0) {
-                neighbors.push_back(of_tet);
+                neighbors.push_back(tetStrct);
+                neighborInds.push_back(of_tet);
 
                 for(int i = 0;i < 4; i++) {
-                    int tetInd = arepoMeshRef->DT[of_tet].t[i];
+                    int tetInd = tetStrct.t[i];
                     if(tetInd >= 0 && !alreadyContains(tetInd) && isNeighbor(tetInd,original_tet)) {
                         //also add the neighbors
                         addNeighbors(tetInd, original_tet);
@@ -339,7 +394,9 @@ namespace ArepoLoaderInternals {
                 }
             }
         };
-        auto mostprobable = arepoMeshRef->DT[ofTetra].t[(cached.looksAtTriId - 1) % 3];
+        auto mostprobable = arepoMeshRef->DT[ofTetra].t[(cached.looksAtTriId - 1) % 4];
+        //neighbors.push_back(mostprobable);
+        //neighborInds.push_back(mostprobable.t[(cached.looksAtTriId - 1) % 3]);
         if(mostprobable >= 0)
             addNeighbors(mostprobable,ofTetra);
         else
@@ -355,15 +412,12 @@ namespace ArepoLoaderInternals {
         bool foundNeighbor = false;
         bool foundBoundary = false;
         //double check if in original tetra
-        std::vector<int> & neighbors = cached.neighbors;     
+        auto & neighbors = cached.neighbors;     
 
-        for(auto i : neighbors) {
-            foundBoundary |= i < 0; 
-            if(i >= 0) {
-                foundNeighbor = insideTetra(i,p, cached);
-                if(foundNeighbor)
-                    return i;
-            } 
+        for(int i = 0; i < neighbors.size(); i ++) {
+            foundNeighbor = insideTetra(cached.neighborInds[i], neighbors[i],p, cached);
+            if(foundNeighbor)
+                return cached.neighborInds[i];
         }
 
 
@@ -377,34 +431,31 @@ namespace ArepoLoaderInternals {
 
     void updateCachedBaryInvT(CachedSample & cachedS)  {
          //need to calculate a barycentric coordinates matrix 
-        lm::Float a11 = cachedS.tetraVs[0].x - cachedS.tetraVs[3].x;
-        lm::Float a21 = cachedS.tetraVs[0].y - cachedS.tetraVs[3].y;
-        lm::Float a31 = cachedS.tetraVs[0].z - cachedS.tetraVs[3].z;
+        lm::Float a = cachedS.tetraVs[0].x - cachedS.tetraVs[3].x;
+        lm::Float d = cachedS.tetraVs[0].y - cachedS.tetraVs[3].y;
+        lm::Float g = cachedS.tetraVs[0].z - cachedS.tetraVs[3].z;
 
-        lm::Float a12 = cachedS.tetraVs[1].x - cachedS.tetraVs[3].x;
-        lm::Float a22 = cachedS.tetraVs[1].y - cachedS.tetraVs[3].y;
-        lm::Float a32 = cachedS.tetraVs[1].z - cachedS.tetraVs[3].z;
+        lm::Float b = cachedS.tetraVs[1].x - cachedS.tetraVs[3].x;
+        lm::Float e = cachedS.tetraVs[1].y - cachedS.tetraVs[3].y;
+        lm::Float h = cachedS.tetraVs[1].z - cachedS.tetraVs[3].z;
         
-        lm::Float a13 = cachedS.tetraVs[2].x - cachedS.tetraVs[3].x;
-        lm::Float a23 = cachedS.tetraVs[2].y - cachedS.tetraVs[3].y;
-        lm::Float a33 = cachedS.tetraVs[2].z - cachedS.tetraVs[3].z;
+        lm::Float c = cachedS.tetraVs[2].x - cachedS.tetraVs[3].x;
+        lm::Float f = cachedS.tetraVs[2].y - cachedS.tetraVs[3].y;
+        lm::Float i = cachedS.tetraVs[2].z - cachedS.tetraVs[3].z;
+        //https://en.wikipedia.org/wiki/Invertible_matrix#Inversion_of_3_%C3%97_3_matrices
+
+        lm::Float A =   e * i - f * h; 
+        lm::Float B =   -(d * i - f * g);
+        lm::Float C =   d * h - e * g;//m0[1] * m1[2] - m1[1] * m0[2]; 
+
+        lm::Float D =   -(b * i - c * h); //- m1[0] * m2[2] + m2[0] * m1[2]; 
+        lm::Float E =   a * i - c * g;//m0[0] * m2[2] - m2[0] * m0[2]; 
+        lm::Float F =   -(a * h - b * g);//- m0[0] * m1[2] + m1[0] * m0[2]; 
         
+        lm::Float G =   b * f - c * e;//m1[0] * m2[1] - m2[0] * m1[1]; 
+        lm::Float H =   -(a * f - c * d); //- m0[0] * m2[1] + m2[0] * m0[1]; 
+        lm::Float I =   a * e - b * d;//m0[0] * m1[1] - m1[0] * m0[1];
 
-        lm::Float A =   a22 * a33 - a23 * a32; 
-        lm::Float B =   a23 * a31 - a21 * a33;
-        lm::Float C =   a21 * a32 - a22 * a31;//m0[1] * m1[2] - m1[1] * m0[2]; 
-
-        lm::Float D =   a13 * a32 - a12 * a33; //- m1[0] * m2[2] + m2[0] * m1[2]; 
-        lm::Float E =   a11 * a33 - a13 * a31;//m0[0] * m2[2] - m2[0] * m0[2]; 
-        lm::Float F =   a12 * a31 - a11 * a32;//- m0[0] * m1[2] + m1[0] * m0[2]; 
-        
-        lm::Float G =   a12 * a23 - a13 * a22;//m1[0] * m2[1] - m2[0] * m1[1]; 
-        lm::Float H =   a13 * a21 - a11 * a23; //- m0[0] * m2[1] + m2[0] * m0[1]; 
-        lm::Float I =   a11 * a22 - a12 * a21;//m0[0] * m1[1] - m1[0] * m0[1];
-
-        lm::Float a = a11;
-        lm::Float b = a12;
-        lm::Float c = a13;
 
         //calculate the inverse matrix that delivers the barycoordinates (from wikipedia)
         cachedS.baryInvT = 
@@ -430,7 +481,7 @@ namespace ArepoLoaderInternals {
             hydroIndex = cachedS.hydroI;   
             toVals[TF_VAL_DENS] = cachedS.values[TF_VAL_DENS];
         } else {//need to look up in arepomesh structure
-            hydroIndex = arepoMeshRef->DP[cachedS.tetraInds[minDistIndex]].index;
+            int hydroIndex = getCorrectedHydroInd(arepoMeshRef->DP[cachedS.tetraInds[minDistIndex]].index);
             if(hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
                 for (int i = 0; i < 9; i++)
                     cachedS.values[i] = 0.0f;
@@ -445,14 +496,16 @@ namespace ArepoLoaderInternals {
     void cacheCornerValues(CachedSample & cachedS)  {
 
         for(int i = 0; i < 4; i++) {
-            int hydroIndex = arepoMeshRef->DP[cachedS.tetraInds[i]].index;
+            int hydroIndex = getCorrectedHydroInd( arepoMeshRef->DP[cachedS.tetraInds[i]].index);
             for (int j = 0; j < 9; j++) {
                 cachedS.cornerVals[i][j] = 0.0f;
             }
-            if (hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
+            if(hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
                 addValsContribution(cachedS.cornerVals[i],hydroIndex,1.0);//lengths[minDistIndex] / totalD );
+
             }
         }
+        
          
     }
 
@@ -462,6 +515,8 @@ namespace ArepoLoaderInternals {
         int h = 0;
         auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
         lm::stats::add<lm::stats::TotalTetraTests,int,long long>(h,1);
+
+        bool returnValue = false;
 
         if(cachedS.sampleIndex == currentSample) { //is cached
             lm::stats::add<lm::stats::SampleIdCacheHits,int,long long>(h,1);
@@ -478,6 +533,7 @@ namespace ArepoLoaderInternals {
                     lm::stats::add<lm::stats::UsedNeighborTetra,int,long long>(h,1);
                     //need to invalidate some information
                     cachedS.hydroI = -1;
+                    cachedS.tetraI = tetraIndex;
                     cachedS.minDistI = -1;
                     updateCachedBaryInvT(cachedS);
                     //also store density at corners
@@ -497,38 +553,37 @@ namespace ArepoLoaderInternals {
         auto hit = accelRef->intersect(r,0.0f,std::numeric_limits<float>::max());
 
         if(hit.has_value()) { //check if inside the tetra of hit triangle
-            cachedS.lastHit = hit.value();
+            cachedS.lastHit = hit.value(); //save hit value
             int tetraIndex = hit.value().face / 4;
             bool inside = insideTetra(tetraIndex, p, cachedS);
             //can be outside because we have double triangles in mesh, 
             //having exact same positions but belonging to two opposing tetrahedra,
             //need to check for both.
-            cachedS.tetraI = tetraIndex;
-            updateCachedNeighbors(cachedS);
             if(!inside) {
-                tetraIndex = checkCachedNeighbors(p, cachedS);
-                inside = tetraIndex >= 0;
-            }
-            
+                //check neighbors
+                for(int i = 0; i < 4; i++) {
+                    auto ni = arepoMeshRef->DT[tetraIndex].t[i];
+                    if(ni >= 0) {
+                        inside |= insideTetra(ni, p, cachedS);
+                    }
+                }
+            } //still not inside, it is outside the mesh.
             if(inside) { // we found a tetrahedron where we are inside
+                updateCachedNeighbors(cachedS);
                 //LM_INFO("found tetra inside");
                 cachedS.sampleIndex = currentSample;
                 //need to invalidate some information
                 cachedS.hydroI = -1;
                 cachedS.minDistI = -1;
-               
+               //LM_ERROR("this doesnt happend unfortunately?!");
                 updateCachedBaryInvT(cachedS);
-
-                //also store density at corners
                 cacheCornerValues(cachedS);
-
-                //evaluateDensityCached(toVals);
                 return true;
-            } else { //still not inside, then we are outside the whole arepoMesh at the moment, next sample will have to perform ray intersection test again.  
-                
-            }
-        } 
-        cachedS.lastHit.t = std::numeric_limits<lm::Float>::infinity(); 
+            } 
+        } else {
+            cachedS.lastHit.t = std::numeric_limits<lm::Float>::infinity(); 
+        }
+        
         return false;
     }
 
@@ -614,8 +669,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             bound_.min = glm::min(bound_.min,currentP);
         }
         LM_INFO("spatial bounds {},{},{} ; {},{},{}",bound_.min.x,bound_.min.y,bound_.min.z, bound_.max.x, bound_.max.y, bound_.max.z);
-        
-        LM_INFO("max scalar  {}",max_scalar());
+        max_scalar_ = max_scalar();
+        cachedSample().max_scalar_ = max_scalar_;
+        LM_INFO("max scalar  {}",max_scalar_);
         LM_INFO("mean scalar  {}",arepo->valBounds[TF_VAL_DENS*3 + 2]);
         LM_INFO("num gas  {}",NumGas);
             LM_INFO("test delaunay mesh");
@@ -754,37 +810,51 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return true;
     }
 
-    virtual lm::Float sample_distance(lm::Ray ray, lm::Float xi) const override {
-        lm::Float x = xi;
-        lm::Float freeT = 0.0;
-        CachedSample updatedSample;
+    virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Float xi) const override {
+        //return 1000.0;
         bool sampleWasUpdated = false;
-        auto & cached = cachedSample();
-        while(x > 0.0) {
-            //not inside, there has been performed an up to date ray intersection to the volume bound and we can use it
-            if(! findAndCacheTetra(cached,ray.o,ray.d)) {
+        auto & cached = cachedSample(); //work directly on cached, as the next request will start from this request's result
+        auto t1 = tmin;
+        auto freeT = tmin;
 
-                freeT = cached.lastHit.t + 0.0001; //wtf just add sth to land in tetra
-                break;
-            } else {
-                
-                //otherwise the last Hit information is outdated, we are in a tetrahedron and 
-                //have to find the free path
-                auto t = intersectCachedTetra(ray,cached);
-                lm::Float out_cdfValue = 0.0;
-                //returns unlimited free path, but accumulates transmittance only for inside the tetrahedron
-                auto freeTCandidate = sampleCachedICDF_andCDF(ray, x, t, out_cdfValue, cached);
-                if(freeTCandidate > t) { 
-                    ray.o = ray.o + ray.d * (t+ 0.0001); // wtf step
-                    ray.d = ray.d;
-                    freeT += t;
-                } else {
-                    freeT += freeTCandidate;
+        auto probeRay = originalRay;
+        auto probeT = t1;
+        probeRay.o = originalRay.o + probeRay.d * probeT; 
+        bool found = false;
+        lm::Float out_cdfValue = 0.0;
+
+        while(!found && freeT < tmax) {
+            if(! findAndCacheTetra(cached,probeRay.o,probeRay.d)) {
+                //not inside, there has been performed an up to date ray intersection to the volume bound and we can use it
+                if(std::isinf(cached.lastHit.t)) { // we wont hit any tetra again
+                    //do nothing, return because the sample managed to travel through everything without scattering
+                    return tmax;//cached.lastHit.t;
+                    
+                } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
+                    //x (our cdf value) stays the same, move probe until the next tetra
+                    probeRay.o = probeRay.o + probeRay.d * (cached.lastHit.t + 0.01);
+                    t1 += cached.lastHit.t;
+                    freeT += cached.lastHit.t;
                 }
-                x = x - out_cdfValue;
+            } else {
+                //otherwise the last Hit information is outdated, we are in a tetrahedron and 
+                //have to accumulate the free path for this tetrahedron
+                auto t2_fromt1 = intersectCachedTetra(probeRay,cached) + 0.0; // because we are already inside the tetra by 0.01
+                //returns unlimited free path, but accumulates transmittance only for inside the tetrahedron
+                auto freeTCandidate = sampleCachedICDF_andCDF(probeRay, xi, 0.0, t2_fromt1 , out_cdfValue, cached);
+                if(freeTCandidate > t2_fromt1) {  //we have to continue with the next tetra
+                    probeRay.o = probeRay.o + probeRay.d * (t2_fromt1 + 0.01); //be sure to land in next tetra
+                    freeT += t2_fromt1;
+                } else {
+                    freeT += freeTCandidate; //we stop inside 
+                    found = true;
 
-                
+                }
+               //todo this is wrong think of something different, to sample the icdf with the one same xi
+                //x =  x - out_cdfValue; //TODO not yet sure if this is correct
+                t1 += t2_fromt1;
             }
+            
          //   updatedSample = cached;
         }
         //cheat:
@@ -795,32 +865,45 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return freeT;
    }
 
-    virtual lm::Float eval_transmittance(lm::Ray ray, lm::Float tmin, lm::Float tmax) const override {
-        return 0.0000000001;
-        /*ray.o = ray.o + ray.d * tmin;
-        tmax = tmax - tmin;
-        auto cached = cachedSample(); //make copy, dont store anything
-        lm::Float transmittance = 1.0;
-
-        while (tmax > 0.0) {
-            auto t = 0.0;
-            if(! findAndCacheTetra(cached,ray.o,ray.d)) {
-                if(std::isinf(cached.lastHit.t))
-                    return 1.0;
-                t = glm::min(tmax, cached.lastHit.t                 + 0.0001) ;//wtf step too big 
-                //transmittance is not touched because it is empty space
+    virtual lm::Float eval_transmittance(lm::Ray originalRay, lm::Float tmin, lm::Float tmax) const override {
+        //find the starting tetra if existent
+        auto & cached = cachedSample();
+        findAndCacheTetra(cached,originalRay.o + originalRay.d * tmin,originalRay.d);
+        //from there on for traversing the tetra, work on a copy and throw it away in the end
+        auto & cacheCopy = cached;
+        auto t1 = tmin;
+        auto t = tmin;
+        auto probeRay = originalRay;
+        auto probeT = t1;
+        probeRay.o = originalRay.o + probeRay.d * probeT; 
+        auto transmittance = 1.0;
+        lm::Float negligibleTransmittance = +0.0;
+        while(t <= tmax && transmittance >= negligibleTransmittance) {
+            if(! findAndCacheTetra(cacheCopy,probeRay.o,probeRay.d)) {
+                //not inside, there has been performed an up to date ray intersection to the volume bound and we can use it
+                if(std::isinf(cacheCopy.lastHit.t)) { // we wont hit any tetra again
+                    //do nothing, return because the sample managed to travel through everything without scattering
+                    return transmittance;//cacheCopy.lastHit.t;
+                    
+                } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
+                    //transmittance stays the same, move probe until the next tetra
+                    probeRay.o = probeRay.o + probeRay.d * (cacheCopy.lastHit.t + 0.01);
+                    t1 += cacheCopy.lastHit.t;
+                    t += cacheCopy.lastHit.t;
+                }
             } else {
-                t = glm::min(tmax, intersectCachedTetra(ray,cached) + 0.0001) ;//wtf step too big 
-                transmittance *= sampleCachedCDF_toTransmittance(ray, t,cached);
+                //otherwise the last Hit information is outdated, we are in a tetrahedron and 
+                //have to accumulate the transmittance
+                auto t2_fromt1 = intersectCachedTetra(probeRay,cacheCopy); 
+                auto transmittanceT = glm::min(tmax - t1, t2_fromt1);
+                transmittance *= sampleTransmittance(probeRay, 0.0,transmittanceT  , cacheCopy);
+
+                t1 += t2_fromt1;
+                t += t2_fromt1;
+                probeRay.o = probeRay.o + probeRay.d * (t2_fromt1 + 0.01); //be sure to land in next tetra
             }
-
-            ray.o = ray.o + ray.d * t; 
-            tmax -= t;
         }
-
-        return transmittance;*/
-        
-
+        return transmittance;
     }
     
 
