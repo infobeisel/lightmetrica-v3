@@ -16,6 +16,23 @@ namespace stats {
 
 }
 
+
+class ArepoLMMesh : public Mesh {
+
+public:
+    virtual void foreach_triangle(const ProcessTriangleFunc& process_triangle) const = 0;
+
+    virtual lm::Mesh::Tri triangle_at(int face) const = 0;
+
+    virtual int correspondingTetra(int face) const = 0;
+
+    virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const = 0;
+
+    virtual int num_triangles() const = 0;
+};
+
+
+
 class Volume_Arepo : public Volume {
 public:
     virtual Bound bound() const = 0;

@@ -13,13 +13,13 @@
 #include <lm/jsontype.h>
 #include <lm/mesh.h>
 
-class ArepoMeshImpl final : public lm::Mesh {
+class ArepoMeshImpl final : public lm::ArepoLMMesh {
 private:
     
     ArepoMesh * am;
 
     std::vector<lm::Mesh::Tri> triangles;
-    std::vector<std::pair<int,int>> triangleIndexToTetraIndex;
+    std::vector<int> triangleIndexToTetraIndex;
   
 public:
     //TODO!
@@ -67,27 +67,23 @@ public:
             int hydroIndex = arepoMeshRef->DP[cachedS.tetraInds[i]].index;
             if (hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
 */
-            if  (
-            (am->DT[tetrai].t[0] < 0 || am->DT[tetrai].p[0] == DPinfinity || am->DT[tetrai].p[1] == DPinfinity
-            || am->DT[tetrai].p[2] == DPinfinity || am->DT[tetrai].p[3] == DPinfinity)
-            || am->DT[tetrai].t[0] == -1)
+            //skip outside box
+            if (am->DT[tetrai].t[0] < 0 || am->DT[tetrai].p[0] == DPinfinity || am->DT[tetrai].p[1] == DPinfinity
+                    || am->DT[tetrai].p[2] == DPinfinity || am->DT[tetrai].p[3] == DPinfinity
+                    )
             {
                 // the tetra got deleted during the simulation but we have to keep the triangle count consistent, so that later face id lookups for the densities will be correct 
-                for(int i = 0; i < 4; i++) {triangles.push_back({ 
+                /*for(int i = 0; i < 4; i++) {
+                    triangles.push_back({ 
                         {lm::Vec3(0),lm::Vec3(0),lm::Vec3(-1)},
                         {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
                         {lm::Vec3(0),lm::Vec3(0), lm::Vec3(-1)},
                     });
-                }
+                    
+                }*/
             } else {
 
-            //if(dts[tetrai].t[0] > 0.0) {
-                for(int i = 0; i < 4; i++) {
-                    int opposingPoint = (i - 1) % 4;
-                    int a = (i + 0) % 4;
-                    int b = (i + 1) % 4;
-                    int c = (i + 2) % 4;
-                
+                auto addTriangl = [&] (int tetrai, int a, int b, int c ) {
                     auto v0 = lm::Vec3(dps[dts[tetrai].p[a]].x, dps[dts[tetrai].p[a]].y, dps[dts[tetrai].p[a]].z);
                     auto v1 = lm::Vec3(dps[dts[tetrai].p[b]].x, dps[dts[tetrai].p[b]].y, dps[dts[tetrai].p[b]].z);
                     auto v2 = lm::Vec3(dps[dts[tetrai].p[c]].x, dps[dts[tetrai].p[c]].y, dps[dts[tetrai].p[c]].z);
@@ -97,14 +93,54 @@ public:
                         {v1,triangleNormal, lm::Vec2(v0.y)},
                         {v2,triangleNormal, lm::Vec2(v0.z)},
                     });
-                    triangleIndexToTetraIndex.push_back(std::make_pair(tetrai, dts[tetrai].t[opposingPoint]));
+                };
+
+            //if(dts[tetrai].t[0] > 0.0) {
+                //assume the following tetra:
+                //         2-.
+                //        / \ `3
+                //       /   \ /
+                //      0-----1
+                //add the triangles in a ccw way, with normal showing inside ?(TODO)
+
+                //MY point inside tetra works IFF triangles have the following vertex order: 
+                //012, 123, 230, 301,
+                //which means, they are alternating ccw and cw O.o
+
+                //addTriangl(tetrai, 0,2,1);
+                //addTriangl(tetrai, 0,1,2);
+                addTriangl(tetrai, 0,1,2);
+                triangleIndexToTetraIndex.push_back(tetrai);
+                //addTriangl(tetrai, 1,2,3);
+                //addTriangl(tetrai, 3,2,1);
+                addTriangl(tetrai, 1,2,3);
+                triangleIndexToTetraIndex.push_back(tetrai);
+                //addTriangl(tetrai, 2,0,3);
+                //addTriangl(tetrai, 3,0,2);
+                addTriangl(tetrai, 2,3,0);
+                triangleIndexToTetraIndex.push_back(tetrai);
+                //addTriangl(tetrai, 3,0,1);
+                //addTriangl(tetrai, 1,0,3);
+                addTriangl(tetrai, 3,0,1);
+                triangleIndexToTetraIndex.push_back(tetrai);
+
+               /*for(int i = 0; i < 4; i++) {
+                    int opposingPoint = (i - 1) % 4;
+                    int a = (i + 0) % 4;
+                    int b = (i + 1) % 4;
+                    int c = (i + 2) % 4;
+                
+                    
+
+                    
+
 
                 
-                /*LM_INFO("add tetrahedron {} ? {} . triangle {},{},{} with v0x {}" ,std::to_string(tetrai), 
+                LM_INFO("add tetrahedron {} ? {} . triangle {},{},{} with v0x {}" ,std::to_string(tetrai), 
                 std::to_string(dts[tetrai].t[0] == -1),
                 std::to_string(a),std::to_string(b),std::to_string(c),
-                std::to_string(dps[dts[tetrai].p[a]].x) );*/
-                }
+                std::to_string(dps[dts[tetrai].p[a]].x) );
+                }*/
             } 
         }
 
@@ -124,8 +160,8 @@ public:
         return triangles[face];
     }
 
-    std::pair<int,int> adjacentTetras(int face) const {
-        triangleIndexToTetraIndex[face];
+    int correspondingTetra(int face) const {
+        return triangleIndexToTetraIndex[face];
     }
 
     virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const override {
@@ -141,7 +177,7 @@ public:
     }
 
     virtual int num_triangles() const override {
-        return am->Ndt * 4;
+        return triangles.size();
     }
 };
 
