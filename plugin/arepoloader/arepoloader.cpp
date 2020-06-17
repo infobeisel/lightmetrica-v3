@@ -572,7 +572,7 @@ namespace ArepoLoaderInternals {
 
         if(cachedS.sampleIndex == currentSample) { //is cached
             lm::stats::add<lm::stats::SampleIdCacheHits,int,long long>(h,1);
-            /*if (insideCachedTetra(p,cachedS)) {
+            if (insideCachedTetra(p,cachedS)) {
                 //evaluateDensityCached(toVals);
                 lm::stats::add<lm::stats::UsedCachedTetra,int,long long>(h,1);
                 return true; //most efficient case, still in cached tetra
@@ -593,7 +593,7 @@ namespace ArepoLoaderInternals {
                 } else {
                     //we totally lost the tetrahedron, need to make request to acceleration structure
                 }
-            }*/
+            }
         } else {
             lm::stats::add<lm::stats::SampleIdCacheMisses,int,long long>(h,1);
             cachedS.sampleIndex = std::numeric_limits<long long>::max();
@@ -954,8 +954,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 //have to accumulate the transmittance
 
             //TODO switch back!
-              // auto t2_fromt = intersectCachedTetra(probeRay,cached); 
-            auto t2_fromt = cached.lastHit.t; 
+               auto t2_fromt = intersectCachedTetra(probeRay,cached); 
+            //auto t2_fromt = cached.lastHit.t; 
 
                 auto transmittanceT = glm::min(tmax - t, t2_fromt);
                 transmittance *= sampleTransmittance(probeRay, 0.0,transmittanceT  , cached);
