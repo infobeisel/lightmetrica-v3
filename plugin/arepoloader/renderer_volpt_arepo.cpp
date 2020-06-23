@@ -265,8 +265,9 @@ public:
         auto accelsmpls = stats::getGlobal<lm::stats::ResampleAccel,int,long long>( 0);
         auto totaltetratests = stats::getGlobal<lm::stats::TotalTetraTests,int,long long>(0 );
 
-        LM_INFO("sample hits: {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
+        LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,
+         smplmisses,
          tetrahits,
          tetraneighborhits,
          accelsmpls,
