@@ -77,7 +77,7 @@ namespace ArepoLoaderInternals {
             point p;
             p.x = -1;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.01);
+            densities.push_back(0.1);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
             densities.push_back(0.01);
@@ -232,7 +232,7 @@ namespace ArepoLoaderInternals {
     inline lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
         lm::Float a,b, invNorm;
         sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
-        return ( b * (toT-fromT) / invNorm + 0.5 * a * (toT * toT - fromT * fromT) / invNorm );
+        return ( b * (toT-fromT) / invNorm +  a * 0.5 *(toT * toT - fromT * fromT) / invNorm );
     }
 
     inline lm::Float sampleTransmittance(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
@@ -262,17 +262,17 @@ namespace ArepoLoaderInternals {
         sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
         
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
-        auto y = logxi + 0.5 * a * tmin*tmin  / invNorm + b * tmin / invNorm - out_cdf;
+        auto y = logxi + a *  0.5 * tmin*tmin  / invNorm + b * tmin / invNorm - out_cdf;
         
         //lm::Float freeT = glm::sqrt(
         //    ((b*b)/(4.0*a*a)) + ( y / (a / invNorm )) ) - b/(2.0*a);
         lm::Float freeT = glm::sqrt(
               ((b*b)/(a*a)) + (2.0 * y / (a / invNorm )) ) - b/a;
-        
+            
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
         //for evaluating tau, limit free path to tmax
         auto t = glm::min(freeT + tmin, tmax) ;
-        out_cdf += (t - tmin) * b / invNorm + 0.5 * a  * (t * t - tmin * tmin) / invNorm; //cdf within tmin and  min of (t , tmax) 
+        out_cdf += (t - tmin) * b / invNorm +  a  * 0.5 * (t * t - tmin * tmin) / invNorm; //cdf within tmin and  min of (t , tmax) 
         
         return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
     }
