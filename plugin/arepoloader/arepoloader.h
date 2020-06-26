@@ -33,6 +33,20 @@ public:
 
 
 
+class Volume_Arepo_Mockup : public Volume {
+public:
+    virtual Bound bound() const = 0;
+    virtual bool has_scalar() const = 0;
+    virtual Float max_scalar() const = 0;
+    virtual Float eval_scalar(Vec3 p) const = 0;
+    virtual bool has_color() const = 0;
+    virtual Vec3 eval_color(Vec3 p) const = 0;
+    virtual Float sample_distance(Ray ray,lm::Float tmin, lm::Float tmax, lm::Float xi) const = 0;
+    virtual Float eval_transmittance(lm::Ray ray, Float tmin, Float tmax) const = 0;
+
+};
+
+
 class Volume_Arepo : public Volume {
 public:
     virtual Bound bound() const = 0;

@@ -182,3 +182,96 @@ public:
 };
 
 LM_COMP_REG_IMPL(ArepoMeshImpl, "mesh::arepo");
+
+
+
+class ArepoMeshImplMockup final : public lm::ArepoLMMesh {
+private:
+    
+    std::vector<lm::Mesh::Tri> triangles;
+    std::vector<int> triangleIndexToTetraIndex;
+  
+public:
+    //TODO!
+    //LM_SERIALIZE_IMPL(ar) {
+    //    ar(dps, ndp, dts, ndt);
+   // }
+
+public:
+    virtual void construct(const lm::Json& prop) override {
+
+        
+        
+        triangles.reserve(1 * 4);
+        triangleIndexToTetraIndex.reserve(1 * 4);
+        auto v0 = lm::Vec3(-1,0,-2);
+        auto v1 = lm::Vec3(0,0,0);
+        auto v2 = lm::Vec3(1,0,-2);
+        auto v3 = lm::Vec3(0,2,-1);
+        auto triangleNormal = glm::cross(glm::normalize(v1-v0),glm::normalize(v2-v0)); 
+        triangles.push_back({ 
+            {v0,triangleNormal,lm::Vec2(v0.x)},
+            {v1,triangleNormal, lm::Vec2(v0.y)},
+            {v2,triangleNormal, lm::Vec2(v0.z)},
+        });
+        triangleNormal = glm::cross(glm::normalize(v2-v1),glm::normalize(v3-v1)); 
+        triangles.push_back({ 
+            {v1,triangleNormal,lm::Vec2(v0.x)},
+            {v2,triangleNormal, lm::Vec2(v0.y)},
+            {v3,triangleNormal, lm::Vec2(v0.z)},
+        });
+        triangleNormal = glm::cross(glm::normalize(v2-v0),glm::normalize(v3-v0)); 
+        triangles.push_back({ 
+            {v2,triangleNormal,lm::Vec2(v0.x)},
+            {v3,triangleNormal, lm::Vec2(v0.y)},
+            {v0,triangleNormal, lm::Vec2(v0.z)},
+        });
+        triangleNormal = glm::cross(glm::normalize(v3-v0),glm::normalize(v1-v0)); 
+        triangles.push_back({ 
+            {v3,triangleNormal,lm::Vec2(v0.x)},
+            {v0,triangleNormal, lm::Vec2(v0.y)},
+            {v1,triangleNormal, lm::Vec2(v0.z)},
+        });
+        triangleIndexToTetraIndex.push_back(0);
+        triangleIndexToTetraIndex.push_back(0);
+        triangleIndexToTetraIndex.push_back(0);
+        triangleIndexToTetraIndex.push_back(0);
+
+       
+        
+    }
+
+    virtual void foreach_triangle(const ProcessTriangleFunc& process_triangle) const override {
+        /*for(size_t fi = 0; fi < ndt * 4; fi++) {
+            process_triangle(fi, triangle_at(fi));
+        }*/
+        for(int t = 0; t <num_triangles();t++)
+            process_triangle(t,triangles[t]);
+    }
+
+    virtual lm::Mesh::Tri triangle_at(int face) const override {
+        return triangles[face];
+    }
+
+    int correspondingTetra(int face) const {
+        return triangleIndexToTetraIndex[face];
+    }
+
+    virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const override {
+
+        auto triangle = triangle_at(face);
+        auto triangleNormal = triangle.p1.n;
+        return {
+            lm::math::mix_barycentric(triangle.p1.p, triangle.p2.p, triangle.p3.p, uv),
+            glm::normalize(lm::math::mix_barycentric(triangle.p1.n, triangle.p2.n, triangle.p3.n, uv)),
+            lm::math::geometry_normal(triangle.p1.p, triangle.p2.p, triangle.p3.p),
+            lm::math::mix_barycentric(triangle.p1.t, triangle.p2.t, triangle.p3.t, uv)
+        };
+    }
+
+    virtual int num_triangles() const override {
+        return 4;
+    }
+};
+
+LM_COMP_REG_IMPL(ArepoMeshImplMockup, "mesh::arepo_mock");

@@ -23,7 +23,14 @@ message(STATUS "HDF5 package was found: '${HDF5_INCLUDE_DIRS}','${HDF5_LIBRARIES
 message(STATUS "GSL package was found: '${GSL_INCLUDE_DIRS}','${GSL_LIBRARIES}'")
 message(STATUS "GMP package was found: '${GMP_INCLUDES}','${GMP_LIBRARIES}'")
 
+
 add_library(arepoloader SHARED "statstags.h" "arepoloader.h" "arepoloader.cpp" "mesh_arepo.cpp" "medium_het_arepo.cpp" "renderer_volpt_arepo.cpp" )
+
+option(MOCK_AREPO "Mock Arepo Data" OFF)
+if(MOCK_AREPO)
+    message("use arepo data mockup (only one tetrahedron)")
+    target_compile_definitions(arepoloader PUBLIC MOCK_AREPO)
+endif()
 
 
 target_include_directories(arepoloader PUBLIC 

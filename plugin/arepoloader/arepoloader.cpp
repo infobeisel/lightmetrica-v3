@@ -42,7 +42,85 @@ namespace ArepoLoaderInternals {
         }
     };
 
+    struct ArepoMeshMock {
+        std::vector<tetra> DT;
+        std::vector<point> DP;
+        std::vector<lm::Float> densities;
+        int Ndt;
+        int Ndp;
+
+        BBox WorldBound() {
+            BBox b;
+            b.pMin.x = -1;b.pMin.y = 0;b.pMin.z = -2;
+            b.pMax.x = 1;b.pMax.y = 2;b.pMax.z = 0;
+            return b;
+        }
+
+        ArepoMeshMock() {
+            tetra t;
+            t.t[0] = 1;
+            t.t[1] = 1;
+            t.t[2] = 1;
+            t.t[3] = 1;
+
+            t.p[0] = 0;
+            t.p[1] = 1;
+            t.p[2] = 2;
+            t.p[3] = 3;
+            t.s[0] = 1;
+            t.s[1] = 1;
+            t.s[2] = 1;
+            t.s[3] = 1;
+
+            DT.push_back(t);
+
+            point p;
+            p.x = -1;p.y = 0;p.z = -2;p.index = 0;
+            DP.push_back(p);
+            densities.push_back(0.01);
+            p.x = 0;p.y = 0;p.z = 0;p.index=1;
+            DP.push_back(p);
+            densities.push_back(0.01);
+            p.x = 1;p.y = 0;p.z = -2;p.index=2;
+            DP.push_back(p);
+            densities.push_back(0.01);
+            p.x = 0;p.y = 2;p.z = -1;p.index=3;
+            DP.push_back(p);
+            densities.push_back(0.01);
+
+            tetra tDel;
+            tDel.t[0] = -1;
+            tDel.t[1] = -1;
+            tDel.t[2] = -1;
+            tDel.t[3] = -1;
+            tDel.p[0] = 0;
+            tDel.p[1] = 0;
+            tDel.p[2] = 0;
+            tDel.p[3] = 0;
+            tDel.s[0] = 0;
+            tDel.s[1] = 0;
+            tDel.s[2] = 0;
+            tDel.s[3] = 0;
+            DT.push_back(tDel);
+
+            Ndt = 2;
+            Ndp = 4;
+
+
+        }
+
+        lm::Float getDensity(int index) {
+            return densities[index];
+        }
+        
+    };
+
+#ifdef MOCK_AREPO
+    static ArepoMeshMock * arepoMeshRef = nullptr;
+#else
     static ArepoMesh * arepoMeshRef = nullptr;
+#endif
+
     static lm::Accel *  accelRef = nullptr;
 
 
@@ -132,7 +210,7 @@ namespace ArepoLoaderInternals {
     }
 
     inline void sampleCachedCDFCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, lm::Float & out_invNorm) {
-        auto lambda012_a = cached.baryInvT * ray.d * 0.5;
+        auto lambda012_a = cached.baryInvT * ray.d;
         auto lambda012_b = cached.baryInvT * (ray.o - cached.tetraVs[3]);
         auto maxd = glm::max(
             cached.cornerVals[0][TF_VAL_DENS] ,glm::max(
@@ -154,7 +232,7 @@ namespace ArepoLoaderInternals {
     inline lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
         lm::Float a,b, invNorm;
         sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
-        return ( b * (toT-fromT) / invNorm + a * (toT * toT - fromT * fromT) / invNorm );
+        return ( b * (toT-fromT) / invNorm + 0.5 * a * (toT * toT - fromT * fromT) / invNorm );
     }
 
     inline lm::Float sampleTransmittance(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
@@ -184,14 +262,17 @@ namespace ArepoLoaderInternals {
         sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
         
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
-        auto y = logxi + a * tmin*tmin  / invNorm + b * tmin / invNorm - out_cdf;
+        auto y = logxi + 0.5 * a * tmin*tmin  / invNorm + b * tmin / invNorm - out_cdf;
         
+        //lm::Float freeT = glm::sqrt(
+        //    ((b*b)/(4.0*a*a)) + ( y / (a / invNorm )) ) - b/(2.0*a);
         lm::Float freeT = glm::sqrt(
-            ((b*b)/(4.0*a*a)) + ( y / (a / invNorm )) ) - b/(2.0*a);
+              ((b*b)/(a*a)) + (2.0 * y / (a / invNorm )) ) - b/a;
+        
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
         //for evaluating tau, limit free path to tmax
         auto t = glm::min(freeT + tmin, tmax) ;
-        out_cdf += (t - tmin) * b / invNorm + a  * (t * t - tmin * tmin) / invNorm; //cdf within tmin and  min of (t , tmax) 
+        out_cdf += (t - tmin) * b / invNorm + 0.5 * a  * (t * t - tmin * tmin) / invNorm; //cdf within tmin and  min of (t , tmax) 
         
         return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
     }
@@ -366,6 +447,9 @@ namespace ArepoLoaderInternals {
             for (int j = 0; j < 9; j++)
                 cachedS.cornerVals[i][j] = 0.0f;
             int num = arepoMeshRef->DP[cachedS.tetraInds[i]].index;
+#ifdef MOCK_AREPO
+            cachedS.cornerVals[i][TF_VAL_DENS] = arepoMeshRef->getDensity(num);
+#else
             if(num >= 0) {
                 int hydroIndex = getCorrectedHydroInd(num);
                 
@@ -373,6 +457,7 @@ namespace ArepoLoaderInternals {
                     addValsContribution(cachedS.cornerVals[i],hydroIndex,100.0);//lengths[minDistIndex] / totalD );
                 }  
             }
+#endif
         }
         
          
@@ -401,6 +486,8 @@ namespace ArepoLoaderInternals {
         
         
         //skip points 
+        //wtf see arepo vtk
+        DPinfinity = -5;
         if  (
         (tetra.t[0] < 0 ||tetra.p[0] == DPinfinity || tetra.p[1] == DPinfinity
         || tetra.p[2] == DPinfinity || tetra.p[3] == DPinfinity)
@@ -494,7 +581,7 @@ namespace ArepoLoaderInternals {
         auto mostprobable = arepoMeshRef->DT[ofTetra].t[(cached.looksAtTriId - 1) % 4];
         //neighbors.push_back(mostprobable);
         //neighborInds.push_back(mostprobable.t[(cached.looksAtTriId - 1) % 3]);
-        if(mostprobable >= 0) {
+        if(mostprobable >= 0 && mostprobable < arepoMeshRef->Ndt && arepoMeshRef->DT[mostprobable].t[0] >= 0) {
             neighbors.push_back(arepoMeshRef->DT[mostprobable]);
             neighborInds.push_back(mostprobable);
             //addNeighbors(mostprobable,ofTetra);
@@ -531,37 +618,7 @@ namespace ArepoLoaderInternals {
 
     }
 
-
-    inline void evaluateDensityCached( std::vector<float> & toVals, CachedSample & cachedS)  {
-        auto lengths =  lm::Vec4(
-            glm::length2(cachedS.tmpPVs[0]),
-            glm::length2(cachedS.tmpPVs[1]),
-            glm::length2(cachedS.tmpPVs[2]),
-            glm::length2(cachedS.tmpPVs[3]));
-
-        int minDistIndex = lengths[0] < lengths[1] ? 0 : 1;
-        minDistIndex = lengths[minDistIndex] > lengths[2] ?  2 : minDistIndex;
-        minDistIndex = lengths[minDistIndex] > lengths[3] ?  3 : minDistIndex;
-        int hydroIndex = 0;
-        if(cachedS.minDistI == minDistIndex) {
-            hydroIndex = cachedS.hydroI;   
-            toVals[TF_VAL_DENS] = cachedS.values[TF_VAL_DENS];
-        } else {//need to look up in arepomesh structure
-            int num = arepoMeshRef->DP[cachedS.tetraInds[minDistIndex]].index;
-            int hydroIndex = getCorrectedHydroInd(num);
-            for (int i = 0; i < 9; i++)
-                    cachedS.values[i] = 0.0f;
-            if (hydroIndex > -1 && num  < NumGas ) {
-                addValsContribution(cachedS.values,hydroIndex,1.0);//lengths[minDistIndex] / totalD );
-                toVals[TF_VAL_DENS] = glm::max(0.0f,glm::min(1.0f,cachedS.values[TF_VAL_DENS]));
-            } 
-        }                
-        cachedS.hydroI = hydroIndex;
-        cachedS.minDistI = minDistIndex;
-    }
-
-
-    
+   
 
     inline bool findAndCacheTetra( CachedSample & cachedS, lm::Vec3 p, lm::Vec3 dir, lm::ArepoLMMesh * toQueryTetraId)  {
         int h = 0;
@@ -606,11 +663,13 @@ namespace ArepoLoaderInternals {
         auto hit = accelRef->intersect(r,0.0,std::numeric_limits<lm::Float>::max());
 
         if (hit != std::nullopt && hit.value().face >= 0 && hit.value().face < toQueryTetraId->num_triangles()) { //check if inside the tetra of hit triangle
+            //LM_INFO("hit sth");
             cachedS.lastHit = hit.value(); //save hit value
             int localFaceIndex = (hit.value().face - 1) % 4;
             int tetraIndex =  toQueryTetraId->correspondingTetra(hit.value().face);
             //auto ni = arepoMeshRef->DT[tetraIndex].t[localFaceIndex];
             bool inside = insideTetra(tetraIndex, p, cachedS) ;//|| insideTetra(ni, p, cachedS);
+            //LM_INFO("inside {} : {}", tetraIndex, inside);
             //can be outside because we have double triangles in mesh, 
             //having exact same positions but belonging to two opposing tetrahedra,
             //need to check for both.
@@ -622,6 +681,7 @@ namespace ArepoLoaderInternals {
                 auto ni = arepoMeshRef->DT[tetraIndex].t[i];
                 if(ni >= 0) {
                     inside = inside ||  insideTetra(ni, p, cachedS);
+                   // LM_INFO("inside {} : {}", tetraIndex, inside);
                 }
             }
             //if(!inside) {
@@ -704,6 +764,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         auto cutoutPath = lm::json::value<std::string>(prop, "cutoutpath");
         auto pos = cutoutPath.find(".hdf5");
         cutoutPath = cutoutPath.substr(0, pos);
+        
+        //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
+#ifdef MOCK_AREPO
+        arepoMesh = std::make_unique<ArepoMeshMock>();
+        arepoMeshRef = arepoMesh.get();
+
+#else 
         Config.ReadFile( configPath );
         arepo = std::make_unique<Arepo>(cutoutPath, Config.paramFilename);
         int argc = 0;
@@ -715,18 +782,26 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         arepo->Init(&argc,argv);
         arepo->LoadSnapshot();
         arepo->ComputeQuantityBounds();
-        //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
-        s = Spectrum::FromRGB(Config.rgbAbsorb);
-        tf = TransferFunction(s);
+
         arepoMesh = std::make_unique<ArepoMesh>(&tf);
         arepoMesh->ComputeVoronoiEdges();
         arepoMeshRef = arepoMesh.get();
-        LM_INFO("constructed Volume Arepo");
+        s = Spectrum::FromRGB(Config.rgbAbsorb);
+        tf = TransferFunction(s);
+
+         LM_INFO("constructed Volume Arepo");
          std::cout << " loaded snapshot " << std::endl;
         // Density scale
         scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
         
         LM_INFO("constructed Volume Arepo");
+        
+        max_scalar_ = max_scalar();
+        LM_INFO("max scalar  {}",max_scalar_);
+        LM_INFO("mean scalar  {}",arepo->valBounds[TF_VAL_DENS*3 + 2]);
+        LM_INFO("num gas  {}",NumGas);
+        LM_INFO("test delaunay mesh");
+#endif
         auto arepoBound = arepoMesh->WorldBound();
         bound_.max = lm::Vec3(arepoBound.pMin.x,arepoBound.pMin.y,arepoBound.pMin.z);
         bound_.min = lm::Vec3(arepoBound.pMax.x,arepoBound.pMax.y,arepoBound.pMax.z);
@@ -737,11 +812,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             bound_.min = glm::min(bound_.min,currentP);
         }
         LM_INFO("spatial bounds {},{},{} ; {},{},{}",bound_.min.x,bound_.min.y,bound_.min.z, bound_.max.x, bound_.max.y, bound_.max.z);
-        max_scalar_ = max_scalar();
-        LM_INFO("max scalar  {}",max_scalar_);
-        LM_INFO("mean scalar  {}",arepo->valBounds[TF_VAL_DENS*3 + 2]);
-        LM_INFO("num gas  {}",NumGas);
-            LM_INFO("test delaunay mesh");
+
+       
 
         //test if it is a delaunay mesh, i.e. there are no other points within a tetrahedron
    /*     for(size_t tetrai = 0; tetrai < arepoMesh->Ndt; tetrai++) {
@@ -824,6 +896,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             
         }*/
         
+#ifdef MOCK_AREPO
+        LM_INFO("instantiate arepo mock mesh");
+        meshAdapter = lm::comp::create<lm::ArepoLMMesh>( //lm::load<lm::Mesh>( 
+        "mesh::arepo_mock", make_loc("tetramesh"), {
+        });
+    
+#else
 
         meshAdapter = lm::comp::create<lm::ArepoLMMesh>( //lm::load<lm::Mesh>( 
         "mesh::arepo", make_loc("tetramesh"), {
@@ -835,13 +914,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             {"arepoMesh_addr", reinterpret_cast<uintptr_t>(arepoMesh.get())},
             //{"ts_count", arepoMesh->Ndt}
         });
-
+#endif
         
-        Volume_Arepo_Impl::cachedDistanceSample().sampleIndex = std::numeric_limits<long long>::max();
-        
-        /*meshAdapter->foreach_triangle([&] (int face, const lm::Mesh::Tri& t) {
-            LM_INFO("tri nr {} at {}{}{}",face,t.p1.p[0],t.p1.p[1],t.p1.p[2]);
-        });*/
+        auto & cached = Volume_Arepo_Impl::cachedDistanceSample();
+        cached.sampleIndex = std::numeric_limits<long long>::max();
+        cached.hydroI = 0;
+        cached.looksAtTriId = -1;
+        cached.tetraI = 0;
         
         dummyMat = lm::comp::create<lm::Material>(
         "material::diffuse", make_loc("dummymat"), {
@@ -865,6 +944,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         scene->build();
         //accel->build(*scene.get());
+
+
         
     }
 
@@ -872,39 +953,50 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return bound_;        
     }
     virtual lm::Float max_scalar() const override {
+#ifdef MOCK_AREPO
+        return 0.1;
+#else
         return arepo->valBounds[TF_VAL_DENS*3 + 1];
+#endif
     }
     virtual bool has_scalar() const override {
         return true;
     }
 
-    void travel(lm::Ray ray, std::function<bool(bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info)> processor) const {
+
+
+    void travel(lm::Ray ray,  CachedSample & useCache, std::function<bool(bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info)> processor) const {
         bool inside = false;
         lm::Float t = 0.0;
-        auto & info = cachedDistanceSample(); 
+        auto & info = useCache; 
         do {
             //step
             ray.o += ray.d * t;
-            if(inside) { //last iteration we were inside, can test neighbors
+            /*if(inside) { //last iteration we were inside, can test neighbors
                 auto ni = arepoMeshRef->DT[info.tetraI].t[(info.looksAtTriId - 1) % 4]; //next tetrahedron with common face
-                auto oppositeNPoint = arepoMeshRef->DT[info.tetraI].s[(info.looksAtTriId - 1) % 4]; //next tetrahedron's opposite point (not part of the common face)
-                inside = insideTetra(ni, arepoMeshRef->DT[ni],ray.o,info);
-                if(!inside) { //not the "simple" case where the ray resides in the next tetra... what to do?
-                    //check next after next? 
-                    for(int i = 1; i < 4 && ! inside; i++) {
-                        auto altI = (oppositeNPoint + i) % 4;
-                        auto nni = arepoMeshRef->DT[ni].t[altI];
-                        inside = insideTetra(nni,ray.o,info);
-                        //TODO maybe make intersection tests with deleted tetras!?
+                if(ni >= 0 && ni < arepoMeshRef->Ndt) {
+                    auto oppositeNPoint = arepoMeshRef->DT[info.tetraI].s[(info.looksAtTriId - 1) % 4]; //next tetrahedron's opposite point (not part of the common face)
+                    auto tet = arepoMeshRef->DT[ni];
+                    inside = insideTetra(ni, tet,ray.o,info);
+                
+                    if(!inside && tet.t[0] >= 0) { //not the "simple" case where the ray resides in the next tetra... what to do?
+                        //check next after next? 
+                        for(int i = 1; i < 4 && ! inside; i++) {
+                            auto altI = (oppositeNPoint + i) % 4;
+                            auto nni = tet.t[altI];
+                            inside = insideTetra(nni,ray.o,info);
+                            //TODO maybe make intersection tests with deleted tetras!?
+                        }
                     }
                 }
 
-            } 
-            if(!inside) {
+            } */
+            //if(!inside) {
                 inside = findAndCacheTetra(info,ray.o,ray.d,meshAdapter.get());
-            }
-            t = 0.001 + !inside ? info.lastHit.t : 
-                intersectCachedTetra(ray,info);
+            //}
+            t = 0.001 + (!inside ? info.lastHit.t : 
+                intersectCachedTetra(ray,info));
+            //LM_INFO("inside: {}, t: {}",inside,t);
         } while(processor(inside,ray,t,info));
 
     }
@@ -918,8 +1010,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         lm::Float inoutcdfValue = 0.0;
         auto logxi = -glm::log(1.0-xi);
 
-        travel(originalRay, 
-        [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) {
+        travel(originalRay, cached,
+        [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
             bool ret = false;
             if(!inside) {
                 if(std::isinf(t)) { // we wont hit any tetra again
@@ -941,6 +1033,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             }
             return ret;
         });
+        //LM_INFO("return freeT {}", freeT);
 
         return freeT;
 
@@ -952,9 +1045,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         originalRay.o = originalRay.o + originalRay.d * tmin; 
         auto transmittance = 1.0;
         lm::Float negligibleTransmittance = +0.0;
+        auto cached = cachedTransmittanceSample(); //work directly on cached, as the next request will start from this request's result
 
-        travel(originalRay, 
-        [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) {
+        travel(originalRay, cached,
+        [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) -> bool {
             bool ret = false;
             if(!inside) {
                 if(std::isinf(nextT)) { // we wont hit any tetra again
@@ -1033,8 +1127,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Bound bound_;
     lm::Float max_scalar_;
 
-
+#ifdef MOCK_AREPO
+    std::unique_ptr<ArepoMeshMock>  arepoMesh;
+#else
     std::unique_ptr<ArepoMesh>  arepoMesh;
+#endif
     std::unique_ptr<Arepo> arepo;
 
     Spectrum s;
@@ -1069,12 +1166,16 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         r.o = p;
         r.d = glm::normalize(lm::Vec3(1));
         auto & cached = cachedDistanceSample();
-        if (! findAndCacheTetra(cached,r.o,r.d, meshAdapter.get())) 
+        if (! findAndCacheTetra(cached,r.o,r.d, meshAdapter.get())) {
+           // LM_INFO("return nothing");
             toVals[TF_VAL_DENS] = 0.0; 
+
+        }
         else {
             lm::Float a,b,invNorm;
             sampleCachedCDFCoefficients(r,a,b,cached,invNorm);
             //only need b
+           // LM_INFO("return {}", b/invNorm);
             toVals[TF_VAL_DENS] = b/invNorm;
         }
 
@@ -1085,3 +1186,5 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
 
 LM_COMP_REG_IMPL(Volume_Arepo_Impl, "volume::arepo");
+
+
