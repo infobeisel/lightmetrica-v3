@@ -16,8 +16,6 @@
 class ArepoMeshImpl final : public lm::ArepoLMMesh {
 private:
     
-    ArepoMesh * am;
-
     std::vector<lm::Mesh::Tri> triangles;
     std::vector<int> triangleIndexToTetraIndex;
   
@@ -33,9 +31,17 @@ public:
         
         //std::uintptr_t ptrToPoints = prop["ps_addr"];
         //dps = reinterpret_cast<point*>(ptrToPoints);
-
-        am = reinterpret_cast<ArepoMesh*> ( prop["arepoMesh_addr"].get<uintptr_t>() );
+#ifdef MOCK_AREPO
+        ArepoLoaderInternals::IArepoMeshMock * am = reinterpret_cast<ArepoLoaderInternals::IArepoMeshMock*> ( prop["arepoMesh_addr"].get<uintptr_t>() );
+        auto dps = am->getDP();
+        auto ndp = am->getNdp();
         
+        //std::uintptr_t ptrToTetras = prop["ts_addr"];
+        //dts = reinterpret_cast<tetra*>(ptrToPoints);;
+        auto dts = am->getDT();
+        auto ndt = am->getNdt();
+#else 
+        ArepoMesh * am = reinterpret_cast<ArepoMesh*> ( prop["arepoMesh_addr"].get<uintptr_t>() );
         auto dps = am->DP;
         auto ndp = am->Ndp;
         
@@ -43,6 +49,11 @@ public:
         //dts = reinterpret_cast<tetra*>(ptrToPoints);;
         auto dts = am->DT;
         auto ndt = am->Ndt;
+#endif
+        
+        LM_INFO("num tets and points {} {}",ndt,ndp);
+    
+        
 
         
 
@@ -67,11 +78,16 @@ public:
             int hydroIndex = arepoMeshRef->DP[cachedS.tetraInds[i]].index;
             if (hydroIndex > -1 && hydroIndex  < NumGas &&  NumGas > 0) {
 */
+            //skip points 
+            //wtf see arepo vtk
+            DPinfinity = -5;
             //skip outside box
-            if (am->DT[tetrai].t[0] < 0 || am->DT[tetrai].p[0] == DPinfinity || am->DT[tetrai].p[1] == DPinfinity
-                    || am->DT[tetrai].p[2] == DPinfinity || am->DT[tetrai].p[3] == DPinfinity
+            if (dts[tetrai].t[0] < 0 || dts[tetrai].p[0] == DPinfinity || dts[tetrai].p[1] == DPinfinity
+                    || dts[tetrai].p[2] == DPinfinity || dts[tetrai].p[3] == DPinfinity
                     )
             {
+                LM_INFO("deleted because {} or {} {} {} {} is {}",dts[tetrai].t[0]
+                , dts[tetrai].p[0], dts[tetrai].p[1], dts[tetrai].p[2], dts[tetrai].p[3],DPinfinity);
                 // the tetra got deleted during the simulation but we have to keep the triangle count consistent, so that later face id lookups for the densities will be correct 
                 /*for(int i = 0; i < 4; i++) {
                     triangles.push_back({ 
@@ -144,7 +160,8 @@ public:
             } 
         }
 
-        
+        LM_INFO(" created {} triangles ",num_triangles());
+    
         
     }
 
@@ -184,7 +201,7 @@ public:
 LM_COMP_REG_IMPL(ArepoMeshImpl, "mesh::arepo");
 
 
-
+/*
 class ArepoMeshImplMockup final : public lm::ArepoLMMesh {
 private:
     
@@ -242,9 +259,7 @@ public:
     }
 
     virtual void foreach_triangle(const ProcessTriangleFunc& process_triangle) const override {
-        /*for(size_t fi = 0; fi < ndt * 4; fi++) {
-            process_triangle(fi, triangle_at(fi));
-        }*/
+       
         for(int t = 0; t <num_triangles();t++)
             process_triangle(t,triangles[t]);
     }
@@ -274,4 +289,4 @@ public:
     }
 };
 
-LM_COMP_REG_IMPL(ArepoMeshImplMockup, "mesh::arepo_mock");
+LM_COMP_REG_IMPL(ArepoMeshImplMockup, "mesh::arepo_mock");*/

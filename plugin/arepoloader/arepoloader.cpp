@@ -20,6 +20,8 @@
 #include <lm/jsontype.h>
 #include <lm/mesh.h>
 #include <lm/accel.h>
+
+#include <algorithm>
 //extern ConfigSet Config;
 //extern char ParameterFile[MAXLEN_PATH];
 ConfigSet Config;
@@ -29,6 +31,7 @@ ConfigSet Config;
 namespace ArepoLoaderInternals {
 
     #define INSIDE_TOLERANCE 2.0 * std::numeric_limits<lm::Float>::epsilon()
+    #define TRAVEL_BIAS 0.001
     #define DENSITY_CRANKUP 100.0
 
     class  ArepoTempQuantities {
@@ -43,21 +46,110 @@ namespace ArepoLoaderInternals {
         }
     };
 
-    struct ArepoMeshMock {
+    struct ArepoMeshMock : public IArepoMeshMock {
         std::vector<tetra> DT;
         std::vector<point> DP;
         std::vector<lm::Float> densities;
         int Ndt;
         int Ndp;
 
-        BBox WorldBound() {
+        virtual std::vector<tetra> & getDT() override {return DT;}
+        virtual std::vector<point> & getDP() override {return DP;}
+        virtual std::vector<lm::Float> & getdensities() override {return densities;}
+        virtual int getNdt() override {return Ndt;}
+        virtual int getNdp() override {return Ndp;}
+
+        virtual BBox WorldBound() override  {
             BBox b;
-            b.pMin.x = -1;b.pMin.y = 0;b.pMin.z = -2;
-            b.pMax.x = 1;b.pMax.y = 2;b.pMax.z = 0;
+            b.pMin.x = b.pMin.y = b.pMin.z = std::numeric_limits<lm::Float>::max();
+            b.pMax.x = b.pMax.y = b.pMax.z = - std::numeric_limits<lm::Float>::max();
+            
+            for (auto p : DP) {
+                b.pMin.x = std::min(b.pMin.x, p.x);b.pMin.y = std::min(b.pMin.y, p.y);b.pMin.z = std::min(b.pMin.z, p.z);
+                b.pMax.x = std::max(b.pMax.x, p.x);b.pMax.y = std::max(b.pMax.y, p.y);b.pMax.z = std::max(b.pMax.z, p.z);
+            }
             return b;
         }
 
-        ArepoMeshMock() {
+        ArepoMeshMock()  {
+            
+            point A;A.x=-1;A.y=1;A.z=1;A.index=0;
+            point B;B.x=-1;B.y=-1;B.z=1;B.index=1;
+            point C;C.x=1;C.y=-1;C.z=1;C.index=2;
+            point D;D.x=1;D.y=1;D.z=1;D.index=3;
+            point E;E.x=-1;E.y=1;E.z=-1;E.index=4;
+            point F;F.x=-1;F.y=-1;F.z=-1;F.index=5;
+            point G;G.x=1;G.y=-1;G.z=-1;G.index=6;
+            point H;H.x=1;H.y=1;H.z=-1;H.index=7;
+
+            DP.resize(0);
+            DP.reserve(8);
+            DP.push_back(A);
+            DP.push_back(B);
+            DP.push_back(C);
+            DP.push_back(D);
+            DP.push_back(E);
+            DP.push_back(F);
+            DP.push_back(G);
+            DP.push_back(H);
+            
+            densities.resize(0);
+            densities.reserve(8);
+            densities.push_back(0.1);
+            densities.push_back(0.1);
+            densities.push_back(0.1);
+            densities.push_back(0.1);
+            densities.push_back(0.1);
+            densities.push_back(0.1);
+            densities.push_back(0.1);
+            densities.push_back(0.1);
+
+            
+             
+            tetra ABCF;
+            ABCF.p[0] = 0;ABCF.p[1] = 1;ABCF.p[2] = 2;ABCF.p[3] = 5;
+            ABCF.t[0] = 5;ABCF.t[1] = 4;ABCF.t[2] = 5;ABCF.t[3] = 5;//5 leads to the deleted tetra->no neighbor
+
+            tetra AEHF;
+            AEHF.p[0] = 0;AEHF.p[1] = 4;AEHF.p[2] = 7;AEHF.p[3] = 5;
+            AEHF.t[0] = 5;AEHF.t[1] = 4;AEHF.t[2] = 5;AEHF.t[3] = 5;
+
+            tetra ACDH;
+            ACDH.p[0] = 0;ACDH.p[1] = 2;ACDH.p[2] = 3;ACDH.p[3] = 7;
+            ACDH.t[0] = 5;ACDH.t[1] = 5;ACDH.t[2] = 4;ACDH.t[3] = 5;
+
+            tetra FCGH;
+            FCGH.p[0] = 5;FCGH.p[1] = 2;FCGH.p[2] = 6;FCGH.p[3] = 7;
+            FCGH.t[0] = 5;FCGH.t[1] = 5;FCGH.t[2] = 4;FCGH.t[3] = 5;
+            
+            tetra ACFH;
+            ACFH.p[0] = 0;ACFH.p[1] = 2;ACFH.p[2] = 5;ACFH.p[3] = 7;
+            ACFH.t[0] = 3;ACFH.t[1] = 1;ACFH.t[2] = 2;ACFH.t[3] = 0; //has a neighbor in every direction
+
+            tetra tDel;
+            tDel.t[0] = -1;
+            tDel.t[1] = -1;
+            tDel.t[2] = -1;
+            tDel.t[3] = -1;
+            tDel.p[0] = 0;
+            tDel.p[1] = 0;
+            tDel.p[2] = 0;
+            tDel.p[3] = 0;
+          
+            DT.resize(0);
+            DT.reserve(6);
+            DT.push_back(ABCF);
+            DT.push_back(AEHF);
+            DT.push_back(ACDH);
+            DT.push_back(FCGH);
+            DT.push_back(ACFH);
+            DT.push_back(tDel);
+
+            Ndt = 6;
+            Ndp = 8;
+
+
+            /*
             tetra t;
             t.t[0] = 1;
             t.t[1] = 1;
@@ -105,19 +197,22 @@ namespace ArepoLoaderInternals {
             DT.push_back(tDel);
 
             Ndt = 2;
-            Ndp = 4;
+            Ndp = 4;*/
 
 
         }
 
-        lm::Float getDensity(int index) {
+        virtual lm::Float getDensity(int index) override  {
             return densities[index];
         }
-        
+
+        virtual lm::Float max_density() override  {
+            return *std::max_element(densities.begin(), densities.end());
+        }
     };
 
 #ifdef MOCK_AREPO
-    static ArepoMeshMock * arepoMeshRef = nullptr;
+    static IArepoMeshMock * arepoMeshRef = nullptr;
 #else
     static ArepoMesh * arepoMeshRef = nullptr;
 #endif
@@ -431,7 +526,7 @@ namespace ArepoLoaderInternals {
         for(int i = 0; i < 4; i++) {
             for (int j = 0; j < 9; j++)
                 cachedS.cornerVals[i][j] = 0.0f;
-            int num = arepoMeshRef->DP[cachedS.tetraInds[i]].index;
+            int num = arepoMeshRef->getDP()[cachedS.tetraInds[i]].index;
 #ifdef MOCK_AREPO
             cachedS.cornerVals[i][TF_VAL_DENS] = arepoMeshRef->getDensity(num);
 #else
@@ -459,15 +554,15 @@ namespace ArepoLoaderInternals {
         
         for(int i = 0; i < 4; i++) {
             vertInds[i] = tetra.p[i];
-            auto av = arepoMeshRef->DP[vertInds[i]];
+            auto av = arepoMeshRef->getDP()[vertInds[i]];
             verts[i] = lm::Vec3(av.x,av.y,av.z);
             pVs[i] = verts[i] - p;
         }
 
         //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
         lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
-        if(mainDeterminant > 0.0)
-            LM_INFO( "cw");
+        //if(mainDeterminant > 0.0)
+         //   LM_INFO( "cw");
         
         
         //skip points 
@@ -506,7 +601,7 @@ namespace ArepoLoaderInternals {
 
     //overload
     inline bool insideTetra(int tetra, lm::Vec3 p, CachedSample & cachedS)  {
-        return insideTetra(tetra, arepoMeshRef->DT[tetra], p, cachedS);
+        return insideTetra(tetra, arepoMeshRef->getDT()[tetra], p, cachedS);
     }
 
     inline void updateCachedNeighbors(CachedSample & cached) {
@@ -526,8 +621,8 @@ namespace ArepoLoaderInternals {
             return false;
         };
         auto isNeighbor = [&] (int tet, int of_tet) {
-            int * p1s = arepoMeshRef->DT[tet].p;
-            int * p2s = arepoMeshRef->DT[of_tet].p;
+            int * p1s = arepoMeshRef->getDT()[tet].p;
+            int * p2s = arepoMeshRef->getDT()[of_tet].p;
             for(int i = 0; i < 4; i++)
                 for(int j = 0; j < 4; j++)
                     if(p1s[i] == p2s[j])
@@ -538,7 +633,7 @@ namespace ArepoLoaderInternals {
         auto isNeighbor2 = [&] (int tet, int of_tet) {
             bool foundN2 = isNeighbor(tet, of_tet);
             for(int i = 0;i < 4; i++) {
-                int firstNeighbor = arepoMeshRef->DT[tet].t[i];
+                int firstNeighbor = arepoMeshRef->getDT()[tet].t[i];
                 if(firstNeighbor >= 0)
                     foundN2 = foundN2 || isNeighbor(firstNeighbor,tet);
             }
@@ -547,7 +642,7 @@ namespace ArepoLoaderInternals {
         };
 
         std::function<void(int,int)> addNeighbors = [&] (int of_tet, int original_tet) -> void {
-            auto tetStrct = arepoMeshRef->DT[of_tet]; 
+            auto tetStrct = arepoMeshRef->getDT()[of_tet]; 
             int n0 = tetStrct.t[0];
             foundBoundary = foundBoundary || n0 < 0; 
             if(n0 >= 0) {
@@ -563,11 +658,11 @@ namespace ArepoLoaderInternals {
                 }
             }
         };
-        auto mostprobable = arepoMeshRef->DT[ofTetra].t[(cached.looksAtTriId - 1) % 4];
+        auto mostprobable = arepoMeshRef->getDT()[ofTetra].t[(cached.looksAtTriId - 1) % 4];
         //neighbors.push_back(mostprobable);
         //neighborInds.push_back(mostprobable.t[(cached.looksAtTriId - 1) % 3]);
-        if(mostprobable >= 0 && mostprobable < arepoMeshRef->Ndt && arepoMeshRef->DT[mostprobable].t[0] >= 0) {
-            neighbors.push_back(arepoMeshRef->DT[mostprobable]);
+        if(mostprobable >= 0 && mostprobable < arepoMeshRef->getNdt() && arepoMeshRef->getDT()[mostprobable].t[0] >= 0) {
+            neighbors.push_back(arepoMeshRef->getDT()[mostprobable]);
             neighborInds.push_back(mostprobable);
             //addNeighbors(mostprobable,ofTetra);
         }
@@ -663,7 +758,7 @@ namespace ArepoLoaderInternals {
             //    LM_INFO("test shit?");
             //}
            for(int i = 0; i < 4; i++) {
-                auto ni = arepoMeshRef->DT[tetraIndex].t[i];
+                auto ni = arepoMeshRef->getDT()[tetraIndex].t[i];
                 if(ni >= 0) {
                     inside = inside ||  insideTetra(ni, p, cachedS);
                    // LM_INFO("inside {} : {}", tetraIndex, inside);
@@ -791,8 +886,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         bound_.max = lm::Vec3(arepoBound.pMin.x,arepoBound.pMin.y,arepoBound.pMin.z);
         bound_.min = lm::Vec3(arepoBound.pMax.x,arepoBound.pMax.y,arepoBound.pMax.z);
         //bound
-        for (int i = 0; i < arepoMesh->Ndp; i++) {
-            auto currentP = lm::Vec3(arepoMesh->DP[i].x,arepoMesh->DP[i].y,arepoMesh->DP[i].z);
+        for (int i = 0; i < arepoMesh->getNdp(); i++) {
+            auto currentP = lm::Vec3(arepoMesh->getDP()[i].x,arepoMesh->getDP()[i].y,arepoMesh->getDP()[i].z);
             bound_.max = glm::max(bound_.max,currentP);
             bound_.min = glm::min(bound_.min,currentP);
         }
@@ -881,13 +976,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             
         }*/
         
-#ifdef MOCK_AREPO
-        LM_INFO("instantiate arepo mock mesh");
-        meshAdapter = lm::comp::create<lm::ArepoLMMesh>( //lm::load<lm::Mesh>( 
-        "mesh::arepo_mock", make_loc("tetramesh"), {
-        });
-    
-#else
+
 
         meshAdapter = lm::comp::create<lm::ArepoLMMesh>( //lm::load<lm::Mesh>( 
         "mesh::arepo", make_loc("tetramesh"), {
@@ -899,7 +988,6 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             {"arepoMesh_addr", reinterpret_cast<uintptr_t>(arepoMesh.get())},
             //{"ts_count", arepoMesh->Ndt}
         });
-#endif
         
         auto & cached = Volume_Arepo_Impl::cachedDistanceSample();
         cached.sampleIndex = std::numeric_limits<long long>::max();
@@ -939,7 +1027,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     }
     virtual lm::Float max_scalar() const override {
 #ifdef MOCK_AREPO
-        return 1.0;
+        return arepoMesh->max_density();
 #else
         return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1];
 #endif
@@ -979,7 +1067,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //if(!inside) {
                 inside = findAndCacheTetra(info,ray.o,ray.d,meshAdapter.get());
             //}
-            t = 0.001 + (!inside ? info.lastHit.t : 
+            t = TRAVEL_BIAS +  (!inside ? info.lastHit.t : 
                 intersectCachedTetra(ray,info));
             //LM_INFO("inside: {}, t: {}",inside,t);
         } while(processor(inside,ray,t,info));
@@ -1011,7 +1099,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 auto freeTCandidate = sampleCachedICDF_andCDF(currentRay, logxi, 0.0, t , inoutcdfValue, info);
                 if(freeTCandidate > t) {  //we have to continue with the next tetra
                     ret = true;
-                    freeT += t;
+                    freeT += t ;
                 } else {
                     freeT += freeTCandidate; //we stop inside 
                 }
@@ -1038,15 +1126,15 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             if(!inside) {
                 if(std::isinf(nextT)) { // we wont hit any tetra again
                 } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
-                    accT += nextT;
+                    accT += nextT ;
                     ret = true;
                 }
             } else {
                 auto transmittanceT = glm::max(0.0, glm::min(tmax - accT,  nextT));
                 transmittance *= sampleTransmittance(currentRay, 0.0,transmittanceT  , info);
-                if(nextT < tmax - accT && transmittance >= negligibleTransmittance)
+                if(nextT  < tmax - accT && transmittance >= negligibleTransmittance)
                     ret = true;
-                accT += nextT;
+                accT += nextT ;
             }
             return ret;
         });
@@ -1113,7 +1201,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Float max_scalar_;
 
 #ifdef MOCK_AREPO
-    std::unique_ptr<ArepoMeshMock>  arepoMesh;
+    std::unique_ptr<IArepoMeshMock>  arepoMesh;
 #else
     std::unique_ptr<ArepoMesh>  arepoMesh;
 #endif
