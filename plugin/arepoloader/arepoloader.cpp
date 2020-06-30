@@ -29,6 +29,7 @@ ConfigSet Config;
 namespace ArepoLoaderInternals {
 
     #define INSIDE_TOLERANCE 2.0 * std::numeric_limits<lm::Float>::epsilon()
+    #define DENSITY_CRANKUP 100.0
 
     class  ArepoTempQuantities {
     public:
@@ -77,7 +78,7 @@ namespace ArepoLoaderInternals {
             point p;
             p.x = -1;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.1);
+            densities.push_back(1.0);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
             densities.push_back(0.01);
@@ -242,22 +243,6 @@ namespace ArepoLoaderInternals {
 
 
     inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached) {
-        //now sample the distance, using the inverse cdf method.
-        //our cdf is e to the power of the integral over the weighted sum of density values of the tetra vertices
-        //the weights are the tetrahedral barycentric coordinates
-        //so we have to extract the cdf and then invert it. the resulting inverse function can be cached partly 
-        //as long we stay in the same tetrahedron!
-        //e^tau(t) , tau is integral_0_t( sum_0_3( bary_i(s) * density_i ) ) ds
-        //and t moves along ray ray(t) = o + d * t
-        //bary_i(s) is the barycentric coordinate of point p on ray at s:
-        //and according to wikipedia (doublecheck!) 
-        // Tinv * (o-r4) + Tinv * d * t
-        // with Tinv being a special matrix which we cache and r4 being the 4th tetra point
-        // a order 2 polynomial, set a = Tinv * d * 0.5  and b = Tinv * (o - r4), c= 0
-        //then the inverse is x = sqrt(b^2/4a^2 + y/a) - b/a
-        // for y put in -ln(rnd) with rnd being sample value
-        //if x exceeds distance within tetra (see further up), we need to continue with neighbor tetra. 
-        
         lm::Float a,b,invNorm;
         sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
         
@@ -454,7 +439,7 @@ namespace ArepoLoaderInternals {
                 int hydroIndex = getCorrectedHydroInd(num);
                 
                 if(hydroIndex > -1 && num  < NumGas) {
-                    addValsContribution(cachedS.cornerVals[i],hydroIndex,100.0);//lengths[minDistIndex] / totalD );
+                    addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP);//lengths[minDistIndex] / totalD );
                 }  
             }
 #endif
@@ -954,9 +939,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     }
     virtual lm::Float max_scalar() const override {
 #ifdef MOCK_AREPO
-        return 0.1;
+        return 1.0;
 #else
-        return arepo->valBounds[TF_VAL_DENS*3 + 1];
+        return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1];
 #endif
     }
     virtual bool has_scalar() const override {
@@ -1057,7 +1042,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     ret = true;
                 }
             } else {
-                auto transmittanceT = glm::min(tmax - accT, nextT);
+                auto transmittanceT = glm::max(0.0, glm::min(tmax - accT,  nextT));
                 transmittance *= sampleTransmittance(currentRay, 0.0,transmittanceT  , info);
                 if(nextT < tmax - accT && transmittance >= negligibleTransmittance)
                     ret = true;
