@@ -30,8 +30,8 @@ ConfigSet Config;
 
 namespace ArepoLoaderInternals {
 
-    #define INSIDE_TOLERANCE 2.0 * std::numeric_limits<lm::Float>::epsilon()
-    #define TRAVEL_BIAS 0.001
+    #define INSIDE_TOLERANCE 100.0 * std::numeric_limits<lm::Float>::epsilon()
+    #define TRAVEL_BIAS 0.01
     #define DENSITY_CRANKUP 100.0
 
     class  ArepoTempQuantities {
@@ -104,28 +104,28 @@ namespace ArepoLoaderInternals {
             densities.push_back(0.1);
             densities.push_back(0.1);
 
-            
+            tetra ACFH;
+            ACFH.p[0] = 0;ACFH.p[1] = 2;ACFH.p[2] = 5;ACFH.p[3] = 7;
+            //ACFH.t[0] = 4;ACFH.t[1] = 2;ACFH.t[2] = 3;ACFH.t[3] = 1; //has a neighbor in every direction
+            ACFH.t[0] = 5;ACFH.t[1] = 5;ACFH.t[2] = 5;ACFH.t[3] = 1; //has a neighbor in every direction
              
             tetra ABCF;
             ABCF.p[0] = 0;ABCF.p[1] = 1;ABCF.p[2] = 2;ABCF.p[3] = 5;
-            ABCF.t[0] = 5;ABCF.t[1] = 4;ABCF.t[2] = 5;ABCF.t[3] = 5;//5 leads to the deleted tetra->no neighbor
+            ABCF.t[0] = 5;ABCF.t[1] = 0;ABCF.t[2] = 5;ABCF.t[3] = 5;//5 leads to the deleted tetra->no neighbor
 
             tetra AEHF;
             AEHF.p[0] = 0;AEHF.p[1] = 4;AEHF.p[2] = 7;AEHF.p[3] = 5;
-            AEHF.t[0] = 5;AEHF.t[1] = 4;AEHF.t[2] = 5;AEHF.t[3] = 5;
+            AEHF.t[0] = 5;AEHF.t[1] = 0;AEHF.t[2] = 5;AEHF.t[3] = 5;
 
             tetra ACDH;
             ACDH.p[0] = 0;ACDH.p[1] = 2;ACDH.p[2] = 3;ACDH.p[3] = 7;
-            ACDH.t[0] = 5;ACDH.t[1] = 5;ACDH.t[2] = 4;ACDH.t[3] = 5;
+            ACDH.t[0] = 5;ACDH.t[1] = 5;ACDH.t[2] = 0;ACDH.t[3] = 5;
 
             tetra FCGH;
             FCGH.p[0] = 5;FCGH.p[1] = 2;FCGH.p[2] = 6;FCGH.p[3] = 7;
-            FCGH.t[0] = 5;FCGH.t[1] = 5;FCGH.t[2] = 4;FCGH.t[3] = 5;
+            FCGH.t[0] = 5;FCGH.t[1] = 5;FCGH.t[2] = 0;FCGH.t[3] = 5;
             
-            tetra ACFH;
-            ACFH.p[0] = 0;ACFH.p[1] = 2;ACFH.p[2] = 5;ACFH.p[3] = 7;
-            ACFH.t[0] = 3;ACFH.t[1] = 1;ACFH.t[2] = 2;ACFH.t[3] = 0; //has a neighbor in every direction
-
+            
             tetra tDel;
             tDel.t[0] = -1;
             tDel.t[1] = -1;
@@ -138,14 +138,15 @@ namespace ArepoLoaderInternals {
           
             DT.resize(0);
             DT.reserve(6);
+            DT.push_back(ACFH);
             DT.push_back(ABCF);
             DT.push_back(AEHF);
             DT.push_back(ACDH);
             DT.push_back(FCGH);
-            DT.push_back(ACFH);
             DT.push_back(tDel);
 
-            Ndt = 6;
+            //Ndt = 6;
+            Ndt = 2;
             Ndp = 8;
 
 
@@ -306,8 +307,16 @@ namespace ArepoLoaderInternals {
     }
 
     inline void sampleCachedCDFCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, lm::Float & out_invNorm) {
-        auto lambda012_a = cached.baryInvT * ray.d;
-        auto lambda012_b = cached.baryInvT * (ray.o - cached.tetraVs[3]);
+        //this method assumes that the ray resides inside the current tetrahedron
+        //therefore it clamps the barycentric coordinates in the b term to 1
+        
+        auto lambda012_a = glm::min(lm::Vec3(1.0),
+                           glm::max( lm::Vec3(0.0), 
+                           cached.baryInvT * ray.d));
+        auto lambda012_b = glm::min(lm::Vec3(1.0),
+                           glm::max( lm::Vec3(0.0), 
+        cached.baryInvT * (ray.o - cached.tetraVs[3])));
+
         auto maxd = glm::max(
             cached.cornerVals[0][TF_VAL_DENS] ,glm::max(
             cached.cornerVals[1][TF_VAL_DENS] ,glm::max(
@@ -320,9 +329,9 @@ namespace ArepoLoaderInternals {
             cached.cornerVals[2][TF_VAL_DENS] ,
             cached.cornerVals[3][TF_VAL_DENS] );
         //densities *= scale_;
-        b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z),densities);
-        a = glm::dot( lm::Vec4(lambda012_a, 1.0 - lambda012_a.x - lambda012_a.y - lambda012_a.z), densities);
-
+        b = glm::dot( lm::Vec4(lambda012_b, glm::min(1.0, glm::max(0.0,1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z))),densities);
+        a = glm::dot( lm::Vec4(lambda012_a, glm::min(1.0, glm::max(0.0,1.0 - lambda012_a.x - lambda012_a.y - lambda012_a.z))), densities);
+        
     }
 
     inline lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
@@ -338,6 +347,7 @@ namespace ArepoLoaderInternals {
 
 
     inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached) {
+        
         lm::Float a,b,invNorm;
         sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
         
@@ -351,7 +361,7 @@ namespace ArepoLoaderInternals {
             
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
         //for evaluating tau, limit free path to tmax
-        auto t = glm::min(freeT + tmin, tmax) ;
+        auto t = glm::min(freeT + tmin, tmax);
         out_cdf += (t - tmin) * b / invNorm +  a  * 0.5 * (t * t - tmin * tmin) / invNorm; //cdf within tmin and  min of (t , tmax) 
         
         return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
@@ -1042,9 +1052,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         bool inside = false;
         lm::Float t = 0.0;
         auto & info = useCache; 
+        auto correctedRay = ray;
         do {
             //step
-            ray.o += ray.d * t;
+            ray.o += ray.d * (t + TRAVEL_BIAS);
             /*if(inside) { //last iteration we were inside, can test neighbors
                 auto ni = arepoMeshRef->DT[info.tetraI].t[(info.looksAtTriId - 1) % 4]; //next tetrahedron with common face
                 if(ni >= 0 && ni < arepoMeshRef->Ndt) {
@@ -1065,12 +1076,14 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
             } */
             //if(!inside) {
-                inside = findAndCacheTetra(info,ray.o,ray.d,meshAdapter.get());
+                inside = findAndCacheTetra(info,ray.o, ray.d, meshAdapter.get());
             //}
-            t = TRAVEL_BIAS +  (!inside ? info.lastHit.t : 
-                intersectCachedTetra(ray,info));
+            //t = (!inside ? info.lastHit.t : 
+            //    intersectCachedTetra(ray,info));
+            t = info.lastHit.t;
+            correctedRay.o = ray.o - ray.d * TRAVEL_BIAS;
             //LM_INFO("inside: {}, t: {}",inside,t);
-        } while(processor(inside,ray,t,info));
+        } while(processor(inside,correctedRay,t + TRAVEL_BIAS,info));
 
     }
 
@@ -1100,8 +1113,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 if(freeTCandidate > t) {  //we have to continue with the next tetra
                     ret = true;
                     freeT += t ;
+                    
                 } else {
                     freeT += freeTCandidate; //we stop inside 
+                    //freeT += t; //we stop inside 
                 }
             }
             return ret;
@@ -1134,7 +1149,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 transmittance *= sampleTransmittance(currentRay, 0.0,transmittanceT  , info);
                 if(nextT  < tmax - accT && transmittance >= negligibleTransmittance)
                     ret = true;
-                accT += nextT ;
+                accT += nextT;
             }
             return ret;
         });
