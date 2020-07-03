@@ -46,6 +46,23 @@ namespace ArepoLoaderInternals {
         }
     };
 
+    struct ArepoMeshWrapper : public IArepoMeshMock {
+        ArepoMesh * ref;
+        std::vector<lm::Float> emptyDensities;
+        ArepoMeshWrapper(ArepoMesh*m) : ref(m) {}
+
+        virtual tetra *  getDT() override {return ref->DT;}
+        virtual point * getDP() override {return ref->DP;}
+        virtual std::vector<lm::Float> & getdensities() {LM_ERROR("getdensities: not implemented");return emptyDensities;}
+        virtual int getNdt() {return ref->Ndt;}
+        virtual int getNdp() {return ref->Ndp;}
+
+        virtual BBox WorldBound() override {return ref->WorldBound();}
+        virtual lm::Float getDensity(int index) {LM_ERROR("getDensity: not implemented");return -1;}
+        virtual lm::Float max_density() {LM_ERROR("max_density: not implemented");return -1;}
+
+    
+    };
     struct ArepoMeshMock : public IArepoMeshMock {
         std::vector<tetra> DT;
         std::vector<point> DP;
@@ -53,8 +70,8 @@ namespace ArepoLoaderInternals {
         int Ndt;
         int Ndp;
 
-        virtual std::vector<tetra> & getDT() override {return DT;}
-        virtual std::vector<point> & getDP() override {return DP;}
+        virtual tetra * getDT() override {return &DT[0];}
+        virtual point * getDP() override {return &DP[0];}
         virtual std::vector<lm::Float> & getdensities() override {return densities;}
         virtual int getNdt() override {return Ndt;}
         virtual int getNdp() override {return Ndp;}
@@ -242,7 +259,7 @@ namespace ArepoLoaderInternals {
 #ifdef MOCK_AREPO
     static IArepoMeshMock * arepoMeshRef = nullptr;
 #else
-    static ArepoMesh * arepoMeshRef = nullptr;
+    static IArepoMeshMock * arepoMeshRef = nullptr;
 #endif
 
     static lm::Accel *  accelRef = nullptr;
@@ -797,7 +814,7 @@ namespace ArepoLoaderInternals {
             //}
            for(int i = 0; i < 4; i++) {
                 auto ni = arepoMeshRef->getDT()[tetraIndex].t[i];
-                if(ni >= 0) {
+                if(ni >= 0 && arepoMeshRef->getDT()[ni].t[0] >= 0 ) { //only check if the neighbor was not deleted
                     inside = inside ||  insideTetra(ni, p, cachedS);
                    // LM_INFO("inside {} : {}", tetraIndex, inside);
                 }
@@ -903,7 +920,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
         arepoMesh = std::make_unique<ArepoMesh>(&tf);
         arepoMesh->ComputeVoronoiEdges();
-        arepoMeshRef = arepoMesh.get();
+        arepoMeshWrapper = std::make_unique<ArepoMeshWrapper>(arepoMesh.get());
+        arepoMeshRef = arepoMeshWrapper.get();
         s = Spectrum::FromRGB(Config.rgbAbsorb);
         tf = TransferFunction(s);
 
@@ -920,12 +938,12 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         LM_INFO("num gas  {}",NumGas);
         LM_INFO("test delaunay mesh");
 #endif
-        auto arepoBound = arepoMesh->WorldBound();
+        auto arepoBound = arepoMeshWrapper->WorldBound();
         bound_.max = lm::Vec3(arepoBound.pMin.x,arepoBound.pMin.y,arepoBound.pMin.z);
         bound_.min = lm::Vec3(arepoBound.pMax.x,arepoBound.pMax.y,arepoBound.pMax.z);
         //bound
-        for (int i = 0; i < arepoMesh->getNdp(); i++) {
-            auto currentP = lm::Vec3(arepoMesh->getDP()[i].x,arepoMesh->getDP()[i].y,arepoMesh->getDP()[i].z);
+        for (int i = 0; i < arepoMeshWrapper->getNdp(); i++) {
+            auto currentP = lm::Vec3(arepoMeshWrapper->getDP()[i].x,arepoMeshWrapper->getDP()[i].y,arepoMeshWrapper->getDP()[i].z);
             bound_.max = glm::max(bound_.max,currentP);
             bound_.min = glm::min(bound_.min,currentP);
         }
@@ -1247,6 +1265,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     std::unique_ptr<IArepoMeshMock>  arepoMesh;
 #else
     std::unique_ptr<ArepoMesh>  arepoMesh;
+    std::unique_ptr<IArepoMeshMock>  arepoMeshWrapper;
+    
 #endif
     std::unique_ptr<Arepo> arepo;
 

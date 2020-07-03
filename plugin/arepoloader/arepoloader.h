@@ -10,8 +10,8 @@
 
 namespace ArepoLoaderInternals {
     struct IArepoMeshMock {
-        virtual std::vector<tetra> & getDT() = 0;
-        virtual std::vector<point> & getDP() = 0;
+        virtual tetra * getDT() = 0;
+        virtual point * getDP() = 0;
         virtual std::vector<lm::Float> & getdensities() = 0;
         virtual int getNdt() = 0;
         virtual int getNdp() = 0;
