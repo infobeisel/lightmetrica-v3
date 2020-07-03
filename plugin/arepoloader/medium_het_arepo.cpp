@@ -53,7 +53,7 @@ public:
         //ray.o = ray.o + ray.d * tmin;
         //const auto inv_max_density = 1_f / volume_density_->max_scalar();
 
-        Float t = volume_density_->sample_distance(ray,tmin,tmax, rng.u());
+        Float t = volume_density_->sample_distance(ray,tmin,tmax, rng);
         //LM_INFO("result {} ----------------------------------------------", t);
         
         if(t >= tmax) {
