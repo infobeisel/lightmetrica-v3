@@ -171,9 +171,9 @@ namespace ArepoLoaderInternals {
             {
                 tetra t;
                 t.t[0] = 2;
-                t.t[1] = 2;
+                t.t[1] = 3;
                 t.t[2] = 1;
-                t.t[3] = 2;
+                t.t[3] = 3;
 
                 t.p[0] = 0;
                 t.p[1] = 1;
@@ -187,16 +187,18 @@ namespace ArepoLoaderInternals {
                 DT.push_back(t);
             }
 
+            
+
             point p;
             p.x = -1;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.2);
+            densities.push_back(0.5);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
             densities.push_back(0.000000);
             p.x = 1;p.y = 0;p.z = -2;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.000000);
+            densities.push_back(0.5);
             p.x = 0;p.y = 2;p.z = -1;p.index=3;
             DP.push_back(p);
             densities.push_back(0.000000);
@@ -205,18 +207,41 @@ namespace ArepoLoaderInternals {
             DP.push_back(p);
             densities.push_back(0.000000);
 
+            p.x = 1;p.y = 2;p.z = 0;p.index=5;
+            DP.push_back(p);
+            densities.push_back(0.0);
+
 
             {
                 tetra t;
-                t.t[0] = 2;
-                t.t[1] = 2;
-                t.t[2] = 2;
+                t.t[0] = 3;
+                t.t[1] = 3;
+                t.t[2] = 3;
                 t.t[3] = 0;
 
                 t.p[0] = 0;
                 t.p[1] = 1;
                 t.p[2] = 3;
                 t.p[3] = 4;
+                t.s[0] = 1;
+                t.s[1] = 1;
+                t.s[2] = 1;
+                t.s[3] = 1;
+
+                DT.push_back(t);
+            }
+
+            {
+                tetra t;
+                t.t[0] = 3;
+                t.t[1] = 3;
+                t.t[2] = 3;
+                t.t[3] = 0;
+
+                t.p[0] = 1;
+                t.p[1] = 2;
+                t.p[2] = 3;
+                t.p[3] = 5;
                 t.s[0] = 1;
                 t.s[1] = 1;
                 t.s[2] = 1;
@@ -241,8 +266,8 @@ namespace ArepoLoaderInternals {
             tDel.s[3] = 0;
             DT.push_back(tDel);
 
-            Ndt = 3;
-            Ndp = 5;
+            Ndt = 4;
+            Ndp = 6;
 
 
         }
@@ -904,7 +929,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 #ifdef MOCK_AREPO
         arepoMesh = std::make_unique<ArepoMeshMock>();
         arepoMeshRef = arepoMesh.get();
+        auto arepoBound = arepoMesh->WorldBound();
 
+        auto Ndp = arepoMesh->getNdp();
+        auto DP = arepoMesh->getDP();
 #else 
         Config.ReadFile( configPath );
         arepo = std::make_unique<Arepo>(cutoutPath, Config.paramFilename);
@@ -937,13 +965,15 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         LM_INFO("mean scalar  {}",arepo->valBounds[TF_VAL_DENS*3 + 2]);
         LM_INFO("num gas  {}",NumGas);
         LM_INFO("test delaunay mesh");
-#endif
         auto arepoBound = arepoMeshWrapper->WorldBound();
+        int Ndp = arepoMeshWrapper->getNdp();
+        point * DP = arepoMeshWrapper->getDP();
+#endif
         bound_.max = lm::Vec3(arepoBound.pMin.x,arepoBound.pMin.y,arepoBound.pMin.z);
         bound_.min = lm::Vec3(arepoBound.pMax.x,arepoBound.pMax.y,arepoBound.pMax.z);
         //bound
-        for (int i = 0; i < arepoMeshWrapper->getNdp(); i++) {
-            auto currentP = lm::Vec3(arepoMeshWrapper->getDP()[i].x,arepoMeshWrapper->getDP()[i].y,arepoMeshWrapper->getDP()[i].z);
+        for (int i = 0; i < Ndp; i++) {
+            auto currentP = lm::Vec3(DP[i].x,DP[i].y,DP[i].z);
             bound_.max = glm::max(bound_.max,currentP);
             bound_.min = glm::min(bound_.min,currentP);
         }
