@@ -87,8 +87,16 @@ namespace ArepoLoaderInternals {
             }
             return b;
         }
+        //ArepoMeshMock(const lm::Json& prop)  {
 
+        //    density_ = json::value<Float>(prop, "density");
+        //    albedo_ = json::value<Vec3>(prop, "albedo");
+        
+        //}
         ArepoMeshMock()  {
+
+             
+
             /*
             point A;A.x=-1;A.y=1;A.z=1;A.index=0;
             point B;B.x=-1;B.y=-1;B.z=1;B.index=1;
@@ -170,10 +178,10 @@ namespace ArepoLoaderInternals {
 
             {
                 tetra t;
-                t.t[0] = 2;
-                t.t[1] = 3;
+                t.t[0] = 1;
+                t.t[1] = 1;
                 t.t[2] = 1;
-                t.t[3] = 3;
+                t.t[3] = 1;
 
                 t.p[0] = 0;
                 t.p[1] = 1;
@@ -192,31 +200,31 @@ namespace ArepoLoaderInternals {
             point p;
             p.x = -1;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.5);
+            densities.push_back(0.0);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.000000);
+            densities.push_back(0.1);
             p.x = 1;p.y = 0;p.z = -2;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.5);
+            densities.push_back(0.0);
             p.x = 0;p.y = 2;p.z = -1;p.index=3;
-            DP.push_back(p);
-            densities.push_back(0.000000);
-
-            p.x = -1;p.y = 2;p.z = 0;p.index=4;
-            DP.push_back(p);
-            densities.push_back(0.000000);
-
-            p.x = 1;p.y = 2;p.z = 0;p.index=5;
             DP.push_back(p);
             densities.push_back(0.0);
 
+            //p.x = -1;p.y = 2;p.z = 0;p.index=4;
+            //DP.push_back(p);
+            //densities.push_back(0.1);
 
-            {
+            //p.x = 1;p.y = 2;p.z = 0;p.index=5;
+            //DP.push_back(p);
+            //densities.push_back(0.0);
+
+
+            /*{
                 tetra t;
-                t.t[0] = 3;
-                t.t[1] = 3;
-                t.t[2] = 3;
+                t.t[0] = 2;
+                t.t[1] = 2;
+                t.t[2] = 2;
                 t.t[3] = 0;
 
                 t.p[0] = 0;
@@ -248,7 +256,7 @@ namespace ArepoLoaderInternals {
                 t.s[3] = 1;
 
                 DT.push_back(t);
-            }
+            }*/
 
 
             tetra tDel;
@@ -266,8 +274,8 @@ namespace ArepoLoaderInternals {
             tDel.s[3] = 0;
             DT.push_back(tDel);
 
-            Ndt = 4;
-            Ndp = 6;
+            Ndt = 2;
+            Ndp = 4;
 
 
         }
@@ -375,7 +383,7 @@ namespace ArepoLoaderInternals {
         return inside(c.tmpDets, c.mainDeterminant);
     }
 
-    inline void sampleCachedCDFCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, lm::Float & out_invNorm) {
+    inline void sampleCachedScalarCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, lm::Float & out_invNorm) {
         //this method assumes that the ray resides inside the current tetrahedron
         //therefore it clamps the barycentric coordinates in the b term to 1
         
@@ -401,7 +409,8 @@ namespace ArepoLoaderInternals {
 
     inline lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
         lm::Float a,b, invNorm;
-        sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
+        //TODO, does this also have to be normnalized
+        sampleCachedScalarCoefficients(ray, a, b, cached,invNorm);
         return ( b * (toT-fromT) / invNorm +  a * 0.5 *(toT * toT - fromT * fromT) / invNorm );
     }
 
@@ -413,12 +422,21 @@ namespace ArepoLoaderInternals {
 
     inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached) {
         
-        lm::Float a,b,invNorm;
-        sampleCachedCDFCoefficients(ray, a, b, cached,invNorm);
-        
+        lm::Float a,b,invNorm; //invnorm is only for numeric stability
+        sampleCachedScalarCoefficients(ray, a, b, cached,invNorm);
+
+        //normalization constant, to make a pdf out of the scalar interpolation
+        //float tmintomax = tmax - tmin;
+        //auto norm_const =   0.5 * tmintomax*tmintomax  / invNorm + tmintomax / invNorm;
+        //auto norm_const = invNorm;
+
+        //make pdf noramlized:
+        //a = a * norm_const;
+        //b = b * norm_const;
+
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
         auto y = logxi + a *  0.5 * tmin*tmin  / invNorm + b * tmin / invNorm - out_cdf;
-        
+
         //lm::Float freeT = glm::sqrt(
         //    ((b*b)/(4.0*a*a)) + ( y / (a / invNorm )) ) - b/(2.0*a);
         lm::Float freeT;
@@ -427,13 +445,16 @@ namespace ArepoLoaderInternals {
 
         freeT = glm::sqrt(
                 ((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )) ) - b/a;
+        LM_INFO("determinant  {}, a and b {} {}, y {}, freeT {}",
+        ((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )),a/invNorm, b/invNorm, y, freeT);
         
+
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
         //for evaluating tau, limit free path to tmax
         lm::Float t = glm::min(freeT + tmin, tmax);
         
-            out_cdf += 
-            ((t - tmin) * b / invNorm +  a  * 0.5 * (t * t - tmin * tmin) / invNorm) ; //cdf within tmin and  min of (t , tmax) 
+            out_cdf += glm::max(0.0,
+            ((t - tmin) * b / invNorm +  a  * 0.5 * (t * t - tmin * tmin) / invNorm)) ; //cdf within tmin and  min of (t , tmax) 
         return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
     }
 
@@ -919,7 +940,6 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
 
     virtual void construct(const lm::Json& prop) override {
-        naive = lm::json::value<int>(prop,"naive",0) == 1 ? true : false;
         const auto configPath = lm::json::value<std::string>(prop, "configpath");
         auto cutoutPath = lm::json::value<std::string>(prop, "cutoutpath");
         auto pos = cutoutPath.find(".hdf5");
@@ -1118,6 +1138,19 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1];
 #endif
     }
+    virtual lm::Float max_scalar(lm::Ray ray) const override {
+
+        auto & info = cachedDistanceSample();
+        bool inside = findAndCacheTetra(info, ray.o, ray.d, meshAdapter.get()); 
+        lm::Float maxScalarInCurrentTetra = inside ? glm::max(info.cornerVals[0][TF_VAL_DENS],
+        glm::max(info.cornerVals[1][TF_VAL_DENS],
+        glm::max(info.cornerVals[2][TF_VAL_DENS],
+                    info.cornerVals[3][TF_VAL_DENS]))) : 0.0;
+        auto nextBound = inside ? intersectCachedTetra(ray,info) : info.lastHit.t;
+        return glm::max(maxScalarInCurrentTetra , 1.0 / nextBound);
+    }
+
+
     virtual bool has_scalar() const override {
         return true;
     }
@@ -1190,8 +1223,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 if(freeTCandidate > t) {  //we have to continue with the next tetra
                     ret = true;
                     freeT += t;
-                    
+
+
                 } else {
+                    LM_INFO("stop inside this tetra: {}", freeT);
                     freeT += freeTCandidate; //we stop inside 
                     //freeT += t; //we stop inside 
                 }
@@ -1223,7 +1258,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             } else { 
                 auto transmittanceT = glm::min(tmax - accT,  nextT);
                 transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  , info);
-                if(nextT  < tmax - accT && transmittance >= negligibleTransmittance)
+                if( nextT + accT < tmax && transmittance >= negligibleTransmittance)
                     ret = true;
                 accT += nextT;//TODO ist das richtig?! wird hier nicht zu wenig addiert, wenns in nächster iteration auf jeden fall vom boundary weitergeht?
             }
@@ -1242,12 +1277,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals1;
         tmpVals1.clear();
-        if(naive)
-            gatherValsAtPointNaive(p, tmpVals1.vals);
-        else
-            LM_ERROR("not naive but used eval_scalar method");
-        //if(tmpVals1.vals[TF_VAL_DENS] > 0.0f)
-        //   LM_INFO("{}", tmpVals1.vals[TF_VAL_DENS]);
+        gatherValsAtPoint(p, tmpVals1.vals);
         return  tmpVals1.vals[TF_VAL_DENS];
     }
 
@@ -1309,7 +1339,6 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Component::Ptr<lm::Accel> accel;
     lm::Component::Ptr<lm::Scene> scene;
     lm::Component::Ptr<lm::Material> dummyMat;
-    bool naive;
 
 
 
@@ -1326,7 +1355,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     
 
-    void gatherValsAtPointNaive(lm::Vec3 p, std::vector<float> & toVals) const {
+    void gatherValsAtPoint(lm::Vec3 p, std::vector<float> & toVals) const {
         
         lm::Ray r;
         r.o = p;
@@ -1339,7 +1368,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         }
         else {
             lm::Float a,b,invNorm;
-            sampleCachedCDFCoefficients(r,a,b,cached,invNorm);
+            sampleCachedScalarCoefficients(r,a,b,cached,invNorm);
             //only need b
            // LM_INFO("return {}", b/invNorm);
             toVals[TF_VAL_DENS] = b/invNorm;
