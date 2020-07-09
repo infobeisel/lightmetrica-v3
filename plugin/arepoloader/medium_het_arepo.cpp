@@ -53,15 +53,18 @@ public:
         }
         
         //if(deltatracking) {
-          
+            Float validMaxT = -1.0;
+
             // Sample distance by delta tracking
             Float t = tmin;
-            //const auto inv_max_density = 1_f / volume_density_->max_scalar();
+            Float inv_max_density;
             while (true) {
-                const auto inv_max_density = 1_f / volume_density_->max_scalar({ray.o + ray.d * t,ray.d});
-                //const auto inv_max_density = 1_f / volume_density_->max_scalar(ray);
+                if(validMaxT < 0.0) { // update max scalar
+                    inv_max_density = 1_f / volume_density_->max_scalar({ray.o + ray.d * t,ray.d},validMaxT);
+                }
                 // Sample a distance from the 'homogenized' volume
                 t -= glm::log(1_f-rng.u()) * inv_max_density;
+                validMaxT -= t;
                 if (t >= tmax) {
                     // Hit with boundary, use surface interaction
                     return {};
@@ -129,11 +132,16 @@ public:
             // Perform ratio tracking [Novak et al. 2014]
             Float Tr = 1_f;
             Float t = tmin;
+            Float validMaxT = -1.0;
 
             //const auto inv_max_density = 1_f / volume_density_->max_scalar();
+            Float inv_max_density;
             while (true) {
-                const auto inv_max_density = 1_f / volume_density_->max_scalar({ray.o + ray.d * t,ray.d});
+                if(validMaxT < 0.0) {// update max scalar
+                    inv_max_density = 1_f / volume_density_->max_scalar({ray.o + ray.d * t,ray.d},validMaxT);
+                }
                 t -= glm::log(1_f - rng.u()) * inv_max_density;
+                validMaxT -= t;
                 if (t >= tmax) {
                     break;
                 }

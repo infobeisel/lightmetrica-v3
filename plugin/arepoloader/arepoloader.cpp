@@ -344,6 +344,12 @@ namespace ArepoLoaderInternals {
 
     };
 
+    static std::vector<ArepoLoaderInternals::CachedSample> & cachedTraversal() {
+        thread_local std::vector<ArepoLoaderInternals::CachedSample> c;
+        c.reserve(10);
+        return c;
+    }
+
 
 
     inline double det3x3(lm::Vec3 b,lm::Vec3 c,lm::Vec3 d) {
@@ -827,13 +833,17 @@ namespace ArepoLoaderInternals {
                     cachedS.minDistI = -1;
                     //also store density at corners
                     cacheCornerValues(cachedS);
+                    //add it to the queue of traversed tetras
                     return true;
+
                 } else {
                     //we totally lost the tetrahedron, need to make request to acceleration structure
                 }
             }
         } else {
             cachedS.sampleIndex = std::numeric_limits<long long>::max();
+            //empty cached traversal queue
+            //cachedTraversal().clear();
         }
         
         lm::stats::add<lm::stats::ResampleAccel,int,long long>(h,1);
@@ -878,6 +888,9 @@ namespace ArepoLoaderInternals {
                 cachedS.minDistI = -1;
                //LM_ERROR("this doesnt happend unfortunately?!");
                 cacheCornerValues(cachedS);
+                //add traversed tetra
+                //cachedTraversal().push_back(cachedS);
+
                 returnValue = true;
             }
             if(!inside) { 
@@ -888,6 +901,8 @@ namespace ArepoLoaderInternals {
                 //didnt find the corresponding tetrahedron...!?
             }
         } else {
+            //cachedTraversal().clear();
+
             returnValue = false;
             cachedS.lastHit.t = std::numeric_limits<lm::Float>::infinity(); 
         }
@@ -1138,7 +1153,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1];
 #endif
     }
-    virtual lm::Float max_scalar(lm::Ray ray) const override {
+    virtual lm::Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong) const override {
 
         auto & info = cachedDistanceSample();
         bool inside = findAndCacheTetra(info, ray.o, ray.d, meshAdapter.get()); 
@@ -1147,6 +1162,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         glm::max(info.cornerVals[2][TF_VAL_DENS],
                     info.cornerVals[3][TF_VAL_DENS]))) : 0.0;
         auto nextBound = inside ? intersectCachedTetra(ray,info) : info.lastHit.t;
+        out_t_forhowlong = nextBound;
         return glm::max(maxScalarInCurrentTetra , 1.0 / nextBound);
     }
 
@@ -1240,30 +1256,62 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
    }
 
     virtual lm::Float eval_transmittance(lm::Ray originalRay, lm::Float tmin, lm::Float tmax) const override {
-        
+        int h = 0;
+        auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
+        auto transmittance = 1.0;
         auto accT = tmin;
         originalRay.o = originalRay.o + originalRay.d * tmin; 
-        auto transmittance = 1.0;
         lm::Float negligibleTransmittance = +0.0;
-        auto cached = cachedTransmittanceSample(); //work directly on cached, as the next request will start from this request's result
-        travel(originalRay, cached,
-        [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) -> bool {
-            bool ret = false;
-            if(!inside) {
-                if(std::isinf(nextT)) { // we wont hit any tetra again
-                } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
-                    accT += nextT;
-                    ret = true;
+        
+        /*if(cachedTraversal()[0].sampleIndex == currentSample) { //can use cached list
+            for(auto & c : cachedTraversal()) {
+                //todo what about holes?
+                if(! insideCachedTetra(originalRay.o, c)) {
+
+                    auto probe = cachedDistanceSample();
+                    auto inside = findAndCacheTetra(probe, originalRay.o,originalRay.d,meshAdapter.get());
+                    //move to boundary of the tetra
+                    auto t = TRAVEL_BIAS + inside ? intersectCachedTetra(originalRay, probe) : probe.lastHit.t;
+                    accT += t;
+                    originalRay.o += originalRay.d * t;
+                    if(std::isinf(t))
+                        LM_ERROR("supposed to hit the cached list tetra ?!");
+                    
+                    if(! insideCachedTetra(originalRay.o,c))
+                        LM_ERROR("supposed to land inside the cached tetra!?");
                 }
-            } else { 
+                //then after making sure that our ray resides inside the cached tetrahedron
+                auto nextT  = intersectCachedTetra(originalRay, c) + TRAVEL_BIAS;
                 auto transmittanceT = glm::min(tmax - accT,  nextT);
-                transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  , info);
-                if( nextT + accT < tmax && transmittance >= negligibleTransmittance)
-                    ret = true;
+                transmittance *= sampleTransmittance(originalRay, 0.0,0.0 + transmittanceT  , c);
+                if( ! (nextT + accT < tmax && transmittance >= negligibleTransmittance))
+                    break;
                 accT += nextT;//TODO ist das richtig?! wird hier nicht zu wenig addiert, wenns in nächster iteration auf jeden fall vom boundary weitergeht?
+                originalRay.o += originalRay.d * nextT;
+
             }
-            return ret;
-        });
+        } else {*///need to traverse mesh
+            
+            auto cached = cachedTransmittanceSample(); //work directly on cached, as the next request will start from this request's result
+            travel(originalRay, cached,
+            [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) -> bool {
+                bool ret = false;
+                if(!inside) {
+                    if(std::isinf(nextT)) { // we wont hit any tetra again
+                    } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
+                        accT += nextT;
+                        ret = true;
+                    }
+                } else { 
+                    auto transmittanceT = glm::min(tmax - accT,  nextT);
+                    transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  , info);
+                    if( nextT + accT < tmax && transmittance >= negligibleTransmittance)
+                        ret = true;
+                    accT += nextT;//TODO ist das richtig?! wird hier nicht zu wenig addiert, wenns in nächster iteration auf jeden fall vom boundary weitergeht?
+                }
+                return ret;
+            });
+        //}
 
         return transmittance;
 
@@ -1346,6 +1394,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         thread_local ArepoLoaderInternals::CachedSample c;
         return c;
     }
+
+    
 
     
     static ArepoLoaderInternals::CachedSample & cachedTransmittanceSample() {
