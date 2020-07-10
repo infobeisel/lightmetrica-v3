@@ -58,8 +58,9 @@ public:
     virtual Bound bound() const = 0;
     virtual bool has_scalar() const = 0;
     virtual Float max_scalar() const = 0;
-    virtual Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong) const = 0;
+    virtual Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong, lm::Float & out_aCoef, lm::Float & out_bCoef) const = 0;
     virtual Float eval_scalar(Vec3 p) const = 0;
+    virtual Float eval_scalar(Vec3 p , Vec3 dir) const = 0;
     virtual bool has_color() const = 0;
     virtual Vec3 eval_color(Vec3 p) const = 0;
     virtual Float sample_distance(Ray ray,lm::Float tmin, lm::Float tmax, lm::Rng& rng) const = 0;

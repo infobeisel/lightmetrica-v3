@@ -393,7 +393,7 @@ namespace ArepoLoaderInternals {
         //this method assumes that the ray resides inside the current tetrahedron
         //therefore it clamps the barycentric coordinates in the b term to 1
         
-        auto lambda012_a = cached.baryInvT * ray.d;
+        //auto lambda012_a = cached.baryInvT * ray.d;
         auto lambda012_b = cached.baryInvT * (ray.o - cached.tetraVs[3]);
 
         auto maxd = glm::max(
@@ -408,8 +408,11 @@ namespace ArepoLoaderInternals {
             cached.cornerVals[2][TF_VAL_DENS] ,
             cached.cornerVals[3][TF_VAL_DENS] );
         //densities *= scale_;
+        auto lambda012_a = glm::transpose(cached.baryInvT) * lm::Vec3(densities);
+        lambda012_a = lambda012_a - glm::transpose(cached.baryInvT) * lm::Vec3(densities[3]);
+
         b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z), densities);
-        a = glm::dot( lm::Vec4(lambda012_a, 1.0 - lambda012_a.x - lambda012_a.y - lambda012_a.z), densities);
+        a = glm::dot( lambda012_a, ray.d);
         
     }
 
@@ -1153,7 +1156,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1];
 #endif
     }
-    virtual lm::Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong) const override {
+    virtual lm::Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong, lm::Float & out_a, lm::Float & out_b) const override {
 
         auto & info = cachedDistanceSample();
         bool inside = findAndCacheTetra(info, ray.o, ray.d, meshAdapter.get()); 
@@ -1163,6 +1166,15 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     info.cornerVals[3][TF_VAL_DENS]))) : 0.0;
         auto nextBound = inside ? intersectCachedTetra(ray,info) : info.lastHit.t;
         out_t_forhowlong = nextBound;
+        if(inside) {
+            lm::Float invNorm; //invnorm is only for numeric stability
+            sampleCachedScalarCoefficients(ray, out_a, out_b, info,invNorm);
+            out_a /= invNorm;
+            out_b /= invNorm;
+        } else {
+            out_a = 0.0;
+            out_b = 0.0;
+        }
         return glm::max(maxScalarInCurrentTetra , 1.0 / nextBound);
     }
 
@@ -1325,7 +1337,15 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals1;
         tmpVals1.clear();
-        gatherValsAtPoint(p, tmpVals1.vals);
+        gatherValsAtPoint(p,glm::normalize(lm::Vec3(1)), tmpVals1.vals);
+        return  tmpVals1.vals[TF_VAL_DENS];
+    }
+
+    virtual lm::Float eval_scalar(lm::Vec3 p , lm::Vec3 dir) const override {
+        
+        thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals1;
+        tmpVals1.clear();
+        gatherValsAtPoint(p, dir, tmpVals1.vals);
         return  tmpVals1.vals[TF_VAL_DENS];
     }
 
@@ -1405,11 +1425,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     
 
-    void gatherValsAtPoint(lm::Vec3 p, std::vector<float> & toVals) const {
+    void gatherValsAtPoint(lm::Vec3 p, lm::Vec3 dir, std::vector<float> & toVals) const {
         
         lm::Ray r;
         r.o = p;
-        r.d = glm::normalize(lm::Vec3(1));
+        r.d = dir;
         auto & cached = cachedDistanceSample();
         if (! findAndCacheTetra(cached,r.o,r.d, meshAdapter.get())) {
            // LM_INFO("return nothing");
