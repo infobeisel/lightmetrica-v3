@@ -454,8 +454,8 @@ namespace ArepoLoaderInternals {
 
         freeT = glm::sqrt(
                 ((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )) ) - b/a;
-        LM_INFO("determinant  {}, a and b {} {}, y {}, freeT {}",
-        ((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )),a/invNorm, b/invNorm, y, freeT);
+        //LM_INFO("determinant  {}, a and b {} {}, y {}, freeT {}",
+        //((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )),a/invNorm, b/invNorm, y, freeT);
         
 
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
@@ -1251,10 +1251,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 if(freeTCandidate > t) {  //we have to continue with the next tetra
                     ret = true;
                     freeT += t;
-
-
                 } else {
-                    LM_INFO("stop inside this tetra: {}", freeT);
                     freeT += freeTCandidate; //we stop inside 
                     //freeT += t; //we stop inside 
                 }

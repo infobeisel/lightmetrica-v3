@@ -30,6 +30,7 @@ private:
     const Volume* volme_albedo_;	// Albedo volume. albedo := \mu_s / \mu_t
     const Phase* phase_;            // Underlying phase function.
     bool deltatracking = false;
+    bool extrapolation = false;
 
 public:
     LM_SERIALIZE_IMPL(ar) {
@@ -42,6 +43,7 @@ public:
         volme_albedo_ = json::comp_ref<Volume>(prop, "volume_albedo");
         phase_ = json::comp_ref<Phase>(prop, "phase");
         deltatracking = lm::json::value<int>(prop,"deltatracking",0) == 1 ? true : false;
+        extrapolation = lm::json::value<int>(prop,"extrapolation",0) == 1 ? true : false;
         
     }
 
@@ -52,7 +54,7 @@ public:
             return {};
         }
         
-        //if(deltatracking) {
+        if(deltatracking) {
             Float validMaxT = -1.0;
             Float t = tmin;
             Float t_it = 0.0;
@@ -77,7 +79,9 @@ public:
                 const auto p = ray.o + ray.d*t;
                 //const auto density = volume_density_->eval_scalar(p, ray.d);
                 //const auto density = bCoef + volume_density_->eval_scalar(p, ray.d);
-                const auto density = bCoef + t_acc * aCoef;
+                const auto density = extrapolation ? 
+                    bCoef + t_acc * aCoef:
+                    volume_density_->eval_scalar(p, ray.d);
 
                 // Determine scattering collision or null collision
                 // Continue tracking if null collusion is seleced
@@ -92,7 +96,7 @@ public:
                     };
                 }
             }
-        /*} else {
+        } else {
             
             
             Float t = volume_density_->sample_distance(ray,tmin,tmax, rng);
@@ -113,7 +117,7 @@ public:
                             // = 1/\mu_t(t) * \mu_s(t) = albedo(t)
                 true
             };
-        }*/
+        }
         LM_UNREACHABLE_RETURN();
     }
     
@@ -156,7 +160,10 @@ public:
                 }
                 const auto p = ray.o + ray.d*t;
                 //const auto density = volume_density_->eval_scalar(p, ray.d);
-                const auto density = bCoef + t_acc * aCoef;
+                const auto density = extrapolation ? 
+                    bCoef + t_acc * aCoef:
+                    volume_density_->eval_scalar(p, ray.d);
+
                 Tr *= 1_f - density * inv_max_density;
             }
 
