@@ -178,10 +178,10 @@ namespace ArepoLoaderInternals {
 
             {
                 tetra t;
-                t.t[0] = 1;
-                t.t[1] = 1;
+                t.t[0] = 2;
+                t.t[1] = 2;
                 t.t[2] = 1;
-                t.t[3] = 1;
+                t.t[3] = 2;
 
                 t.p[0] = 0;
                 t.p[1] = 1;
@@ -200,10 +200,10 @@ namespace ArepoLoaderInternals {
             point p;
             p.x = -1;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.0);
+            densities.push_back(0.000001);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.1);
+            densities.push_back(0.0);
             p.x = 1;p.y = 0;p.z = -2;p.index=2;
             DP.push_back(p);
             densities.push_back(0.0);
@@ -211,16 +211,16 @@ namespace ArepoLoaderInternals {
             DP.push_back(p);
             densities.push_back(0.0);
 
-            //p.x = -1;p.y = 2;p.z = 0;p.index=4;
-            //DP.push_back(p);
-            //densities.push_back(0.1);
+            p.x = -1;p.y = 2;p.z = 0;p.index=4;
+            DP.push_back(p);
+            densities.push_back(0.01);
 
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
 
 
-            /*{
+            {
                 tetra t;
                 t.t[0] = 2;
                 t.t[1] = 2;
@@ -239,7 +239,7 @@ namespace ArepoLoaderInternals {
                 DT.push_back(t);
             }
 
-            {
+            /*{
                 tetra t;
                 t.t[0] = 3;
                 t.t[1] = 3;
@@ -274,13 +274,17 @@ namespace ArepoLoaderInternals {
             tDel.s[3] = 0;
             DT.push_back(tDel);
 
-            Ndt = 2;
-            Ndp = 4;
+            Ndt = 3;
+            Ndp = 5;
 
 
         }
 
         virtual lm::Float getDensity(int index) override  {
+
+            //for(int i = 0; i < densities.size(); i++) {
+            //    LM_INFO("density {}: {}, ask {} ",i, densities[i], index);
+           // }
             return densities[index];
         }
 
@@ -393,7 +397,7 @@ namespace ArepoLoaderInternals {
         //this method assumes that the ray resides inside the current tetrahedron
         //therefore it clamps the barycentric coordinates in the b term to 1
         
-        //auto lambda012_a = cached.baryInvT * ray.d;
+        auto lambda012_a = cached.baryInvT * ray.d;
         auto lambda012_b = cached.baryInvT * (ray.o - cached.tetraVs[3]);
 
         auto maxd = glm::max(
@@ -401,18 +405,47 @@ namespace ArepoLoaderInternals {
             cached.cornerVals[1][TF_VAL_DENS] ,glm::max(
             cached.cornerVals[2][TF_VAL_DENS] ,
             cached.cornerVals[3][TF_VAL_DENS] )));
-        out_invNorm = 1.0 / maxd;
+        out_invNorm = 1.0 ;/// maxd;
+        
         auto densities = out_invNorm * lm::Vec4(
             cached.cornerVals[0][TF_VAL_DENS] ,
             cached.cornerVals[1][TF_VAL_DENS] ,
             cached.cornerVals[2][TF_VAL_DENS] ,
             cached.cornerVals[3][TF_VAL_DENS] );
+
+       
+
         //densities *= scale_;
-        auto lambda012_a = glm::transpose(cached.baryInvT) * lm::Vec3(densities);
-        lambda012_a = lambda012_a - glm::transpose(cached.baryInvT) * lm::Vec3(densities[3]);
+        //auto lambda012_a = glm::transpose(cached.baryInvT) * lm::Vec3(densities);
+        //lambda012_a = lambda012_a - glm::transpose(cached.baryInvT) * lm::Vec3(densities[3]);
 
         b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z), densities);
-        a = glm::dot( lambda012_a, ray.d);
+        a = glm::dot( lambda012_a, lm::Vec3(densities));
+        a +=  densities[3] * (- lambda012_a.x - lambda012_a.y - lambda012_a.z);
+
+        if(b<=0.0) {
+           // LM_ERROR("b is non positive?!");
+           // LM_INFO("b is non positive?!");
+
+             if(densities.x <= 0.0 &&
+        densities.y <= 0.0 &&
+        densities.z <= 0.0 && 
+        densities.w <= 0.0 ) {
+          //          LM_INFO("densities dont have positive value ?!");
+            
+           //     LM_INFO("dens {},{},{},{}",cached.cornerVals[0][TF_VAL_DENS],
+           ///     cached.cornerVals[1][TF_VAL_DENS],
+             //   cached.cornerVals[2][TF_VAL_DENS],
+             //   cached.cornerVals[3][TF_VAL_DENS]);
+            
+        }
+
+        }
+        //if(a < 0.0) {
+        //    LM_ERROR("a is negative?!");
+        //    LM_INFO("a is negative?!");
+        //}
+        
         
     }
 
@@ -446,24 +479,39 @@ namespace ArepoLoaderInternals {
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
         auto y = logxi + a *  0.5 * tmin*tmin  / invNorm + b * tmin / invNorm - out_cdf;
 
+        if(y < 0.0) {
+        //    LM_INFO("wtf y is negative");
+        //    LM_ERROR("wtf y is negative");
+        }
+
         //lm::Float freeT = glm::sqrt(
         //    ((b*b)/(4.0*a*a)) + ( y / (a / invNorm )) ) - b/(2.0*a);
         lm::Float freeT;
         
 
+        //lm::Float 
 
-        freeT = glm::sqrt(
-                ((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )) ) - b/a;
+        //freeT = glm::sqrt(
+        //        ((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )) ) - b/a;
+       
+        freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+       
         //LM_INFO("determinant  {}, a and b {} {}, y {}, freeT {}",
         //((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )),a/invNorm, b/invNorm, y, freeT);
-        
+        if(isnan(freeT)) {
+        //    LM_INFO("wtf freeT is nan, {},{}",a,b);
+        }
 
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
         //for evaluating tau, limit free path to tmax
         lm::Float t = glm::min(freeT + tmin, tmax);
-        
+        lm::Float acc_cdf = ((t - tmin) * b / invNorm +  a  * 0.5 * (t * t - tmin * tmin) / invNorm);
+        if(acc_cdf < 0.0) {
+        //    LM_INFO("wtf cdf never has negative values");
+        //    LM_ERROR("wtf cdf never has negative values");
+        }
             out_cdf += glm::max(0.0,
-            ((t - tmin) * b / invNorm +  a  * 0.5 * (t * t - tmin * tmin) / invNorm)) ; //cdf within tmin and  min of (t , tmax) 
+            acc_cdf) ; //cdf within tmin and  min of (t , tmax) 
         return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
     }
 
