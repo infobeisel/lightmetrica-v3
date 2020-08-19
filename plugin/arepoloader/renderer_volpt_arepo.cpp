@@ -28,6 +28,7 @@ protected:
     Component::Ptr<scheduler::Scheduler> sched_;
     long long spp_;
 
+
 public:
     LM_SERIALIZE_IMPL(ar) {
         ar(scene_, film_, max_verts_, rr_prob_, sched_);
@@ -56,9 +57,11 @@ public:
         sched_ = comp::create<scheduler::Scheduler>(
             "scheduler::spp::" + sched_name, make_loc("scheduler"), prop);
         #endif
+
     }
 };
 class Renderer_VolPT_Arepo final : public Renderer_VolPT_Base {
+
 public:
     virtual Json render() const override {
 		scene_->require_renderable();

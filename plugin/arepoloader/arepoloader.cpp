@@ -971,7 +971,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     
     public:
     
-    Volume_Arepo_Impl() : arepoMesh(nullptr), arepo(nullptr), s(0.0f), tf(s),scene(nullptr) {
+    Volume_Arepo_Impl() : arepoMesh(nullptr), arepo(nullptr), s(0.0f), tf(s),gastetrascene(nullptr),lightscene(nullptr) {
 
     }
     ~Volume_Arepo_Impl() {
@@ -984,20 +984,28 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             return  dynamic_cast<lm::Mesh*>(meshAdapter.get());
             
         } else if(name == "tetraaccel") {
-            return accel.get();
+            return tetraaccel.get();
         } else if(name == "tetrascene") {
-            return scene.get();
+            return gastetrascene.get();
         } else if(name == "dummymat") {
             return dummyMat.get();
+        } else if(name == "lightscene") {
+            return lightscene.get();
+        } else if(name == "lighthierarchy") {
+            return lighthierarchy.get();
         }
+
+
         return nullptr;
 
     }
 
     virtual void foreach_underlying(const ComponentVisitor& visit) override {
         lm::comp::visit(visit, meshAdapter);
-        lm::comp::visit(visit, accel);
-        lm::comp::visit(visit, scene);
+        lm::comp::visit(visit, tetraaccel);
+        lm::comp::visit(visit, gastetrascene);
+        lm::comp::visit(visit, lightscene);
+        lm::comp::visit(visit, lighthierarchy);
         lm::comp::visit(visit, dummyMat);
         
     }
@@ -1011,6 +1019,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         auto pos = cutoutPath.find(".hdf5");
         cutoutPath = cutoutPath.substr(0, pos);
         
+       //Scene * am = reinterpret_cast<ArepoMesh*> ( prop["arepoMesh_addr"].get<uintptr_t>() );
+
         //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
 #ifdef MOCK_AREPO
         arepoMesh = std::make_unique<ArepoMeshMock>();
@@ -1173,22 +1183,39 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         });
 
         
-        accel = lm::comp::create<lm::Accel>("accel::embree", make_loc("tetraaccel"), {});
-        LM_INFO( accel->loc());
-        scene = lm::comp::create<lm::Scene>("scene::default", make_loc("tetrascene"), {
-            {"accel", accel->loc()}
+        tetraaccel = lm::comp::create<lm::Accel>("accel::embree", make_loc("tetraaccel"), {});
+        LM_INFO( tetraaccel->loc());
+        gastetrascene = lm::comp::create<lm::Scene>("scene::default", make_loc("tetrascene"), {
+            {"accel", tetraaccel->loc()}
         });
         
-        accelRef = accel.get();
+        accelRef = tetraaccel.get();
         //
-        auto c = scene->create_primitive_node({
+        auto c = gastetrascene->create_primitive_node({
              {"mesh" , meshAdapter->loc()},
              {"material" , dummyMat->loc()}
         });
-        scene->add_child(scene->root_node(), c);
+        gastetrascene->add_child(gastetrascene->root_node(), c);
         
-        scene->build();
-        //accel->build(*scene.get());
+        gastetrascene->build();
+        //accel->build(*gastetrascene.get());
+
+
+        lighthierarchy = lm::comp::create<lm::AccelKnn>("accel::embree_knn", make_loc("lighthierarchy"), {});
+        //LM_INFO( accel->loc());
+        lightscene = lm::comp::create<lm::Scene>("scene::default", make_loc("lightscene"), {
+            {"accel", lighthierarchy->loc()}
+        });
+        //TODO fill light hierachy with star positions
+        //accelRef = accel.get();
+        //
+        //auto c = lightscene->create_primitive_node({
+        //     {"mesh" , meshAdapter->loc()},
+        //     {"material" , dummyMat->loc()}
+        //});
+        //lightscene->add_child(lightscene->root_node(), c);
+
+       // lightscene->build();
 
 
         
@@ -1449,8 +1476,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     private:    
 
     lm::Component::Ptr<lm::ArepoLMMesh> meshAdapter;
-    lm::Component::Ptr<lm::Accel> accel;
-    lm::Component::Ptr<lm::Scene> scene;
+    lm::Component::Ptr<lm::Accel> tetraaccel;
+    lm::Component::Ptr<lm::Scene> gastetrascene;
+
+
+    lm::Component::Ptr<lm::AccelKnn> lighthierarchy;
+    lm::Component::Ptr<lm::Scene> lightscene;
+
     lm::Component::Ptr<lm::Material> dummyMat;
 
 

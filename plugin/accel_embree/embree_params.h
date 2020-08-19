@@ -12,6 +12,11 @@
 #include <embree3/rtcore.h>
 #pragma warning(pop)
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
+
+
+
+
+
     
 static void handle_embree_error(void*, RTCError code, const char* str = nullptr) {
     if (code == RTC_ERROR_NONE) {

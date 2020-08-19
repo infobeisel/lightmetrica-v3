@@ -70,6 +70,17 @@ public:
     virtual std::optional<Hit> intersect(Ray ray, Float tmin, Float tmax) const = 0;
 };
 
+
+struct KNNResult;
+class AccelKnn : public Accel {
+public:
+    virtual void build(const Scene& scene) = 0;
+    virtual std::optional<Hit> intersect(Ray ray, Float tmin, Float tmax) const = 0;
+    virtual void queryKnn(lm::Float x,lm::Float y,lm::Float z, lm::Float radius, KNNResult & out_result) const = 0;
+};
+
+
+
 /*!
     @}
 */
