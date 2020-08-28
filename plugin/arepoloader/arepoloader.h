@@ -36,6 +36,8 @@ namespace stats {
     struct ResampleAccel {};
     struct TotalTetraTests {};
 
+    struct MaxTransmittance {};
+    struct FreePathTransmittance {};
 }
 class ArepoLMMesh : public Mesh {
 
@@ -63,7 +65,7 @@ public:
     virtual Float eval_scalar(Vec3 p , Vec3 dir) const = 0;
     virtual bool has_color() const = 0;
     virtual Vec3 eval_color(Vec3 p) const = 0;
-    virtual Float sample_distance(Ray ray,lm::Float tmin, lm::Float tmax, lm::Rng& rng) const = 0;
+    virtual Float sample_distance(Ray ray,lm::Float tmin, lm::Float tmax, lm::Rng& rng,lm::Float & out_maxTransmittance) const = 0;
     virtual Float eval_transmittance(lm::Ray ray, Float tmin, Float tmax) const = 0;
 
 };

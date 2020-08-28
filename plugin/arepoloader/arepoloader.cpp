@@ -32,7 +32,7 @@ namespace ArepoLoaderInternals {
 
     #define INSIDE_TOLERANCE 10.0 * std::numeric_limits<lm::Float>::epsilon()
     #define TRAVEL_BIAS 0.01
-    #define DENSITY_CRANKUP 100.0
+    #define DENSITY_CRANKUP 1.0
 
     class  ArepoTempQuantities {
     public:
@@ -200,20 +200,20 @@ namespace ArepoLoaderInternals {
             point p;
             p.x = -1;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.000001);
+            densities.push_back(0.0);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.0);
+            densities.push_back(0.000001);
             p.x = 1;p.y = 0;p.z = -2;p.index=2;
             DP.push_back(p);
             densities.push_back(0.0);
             p.x = 0;p.y = 2;p.z = -1;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.0);
+            densities.push_back(0.00001);
 
             p.x = -1;p.y = 2;p.z = 0;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.01);
+            densities.push_back(0.0);
 
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
@@ -462,11 +462,12 @@ namespace ArepoLoaderInternals {
 
 
 
-    inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached) {
+    inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached, lm::Float cdf_normalization) {
         
         lm::Float a,b,invNorm; //invnorm is only for numeric stability
         sampleCachedScalarCoefficients(ray, a, b, cached,invNorm);
-
+        //a *= cdf_normalization;
+        //b *= cdf_normalization;
         //normalization constant, to make a pdf out of the scalar interpolation
         //float tmintomax = tmax - tmin;
         //auto norm_const =   0.5 * tmintomax*tmintomax  / invNorm + tmintomax / invNorm;
@@ -1299,103 +1300,115 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     }
 
-    virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng) const override {
+    virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng, lm::Float & out_maxTransmittance) const override {
         //auto xi = rng.u();
-        bool sampleWasUpdated = false;
-        auto cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
-        auto freeT = tmin;
 
-        originalRay.o = originalRay.o + originalRay.d * tmin; 
-        lm::Float inoutcdfValue = 0.0;
-        //TODO: cdf ergibt nicht 1
-        auto logxi = -glm::log(1.0-rng.u()) ;
+        lm::Float finalTransmittance = 1.0;
+        { //round one: find out max cdf 
+            auto & cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
+            auto freeT = tmin;
+            lm::Ray probeRay = originalRay;
+            probeRay.o = probeRay.o + probeRay.d * tmin; 
 
-        travel(originalRay, cached,
-        [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
-            bool ret = false;
-            if(!inside) {
-                if(std::isinf(t)) { // we wont hit any tetra again
-                    //do nothing, return because the sample managed to travel through everything without scattering
-                    freeT += tmax;//cached.lastHit.t;
-                } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
-                    freeT += t;
-                    ret = true;
-                }
-            } else {
-                auto freeTCandidate = sampleCachedICDF_andCDF(currentRay, logxi, 0.0, 0.0 + t , inoutcdfValue, info);
-                if(freeTCandidate > t) {  //we have to continue with the next tetra
-                    ret = true;
-                    freeT += t;
+            travel(probeRay, cached,
+            [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
+                bool ret = false;
+                if(!inside) {
+                    if(std::isinf(t)) { // we wont hit any tetra again
+                    } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
+                        ret = true;
+                    }
                 } else {
-                    freeT += freeTCandidate; //we stop inside 
-                    //freeT += t; //we stop inside 
+                    finalTransmittance *= sampleTransmittance(currentRay, 0.0, t, info);
+                    ret = true;
                 }
-            }
-            return ret;
-        });
-        //LM_INFO("return freeT {}", freeT);
+                return ret;
+            });
+            //LM_INFO("return freeT {}", freeT);
+        }
+        out_maxTransmittance = finalTransmittance;
+        lm::stats::set<lm::stats::MaxTransmittance,int,lm::Float>(0,finalTransmittance);
+        auto freeT = tmin;
+        auto freeTransmittance = (1.0 - finalTransmittance);
+        {//round two: normalize sample and find free path
+            bool sampleWasUpdated = false;
+            auto & cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
 
+            originalRay.o = originalRay.o + originalRay.d * tmin; 
+            lm::Float inoutcdfValue = 0.0;
+
+            //warp random number so that sample always falls into volume
+            auto logxi = -glm::log(1.0 -  rng.u() * ( 1.0-finalTransmittance)); 
+            
+            //auto logxi = -glm::log(1.0 - rng.u() ) * (1.0 - finalTransmittance);
+
+            travel(originalRay, cached,
+            [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
+                bool ret = false;
+                if(!inside) {
+                    if(std::isinf(t)) { // we wont hit any tetra again
+                        //do nothing, return because the sample managed to travel through everything without scattering
+                        freeT += tmax;//cached.lastHit.t;
+                    } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
+                        freeT += t;
+                        ret = true;
+                    }
+                } else {
+                    auto freeTCandidate = sampleCachedICDF_andCDF(currentRay, logxi, 0.0, 0.0 + t , inoutcdfValue, info, ( 1.0-finalTransmittance));
+                    if(freeTCandidate > t) {  //we have to continue with the next tetra
+                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, t, info) ;
+                        ret = true;
+                        freeT += t;
+                    } else {
+                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, freeTCandidate, info) ;
+                        freeT += freeTCandidate; //we stop inside 
+                        //freeT += t; //we stop inside 
+                    }
+                }
+                return ret;
+            });
+            //LM_INFO("return freeT {}", freeT);
+        }
+        lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,freeTransmittance);
         return freeT;
 
    }
 
     virtual lm::Float eval_transmittance(lm::Ray originalRay, lm::Float tmin, lm::Float tmax) const override {
-        int h = 0;
+         
+        auto cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
+        
+        //check if we have information from sample_distance available
+        int h = 0;        
         auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
+        if(cached.sampleIndex == currentSample) { //is cached
+            auto maxTransmittance = lm::stats::get<lm::stats::MaxTransmittance,int,lm::Float>(h);
+            auto freePathTransmittance = lm::stats::get<lm::stats::FreePathTransmittance,int,lm::Float>(h);
+            return freePathTransmittance;
+        } 
+
         auto transmittance = 1.0;
         auto accT = tmin;
         originalRay.o = originalRay.o + originalRay.d * tmin; 
         lm::Float negligibleTransmittance = +0.0;
-        
-        /*if(cachedTraversal()[0].sampleIndex == currentSample) { //can use cached list
-            for(auto & c : cachedTraversal()) {
-                //todo what about holes?
-                if(! insideCachedTetra(originalRay.o, c)) {
-
-                    auto probe = cachedDistanceSample();
-                    auto inside = findAndCacheTetra(probe, originalRay.o,originalRay.d,meshAdapter.get());
-                    //move to boundary of the tetra
-                    auto t = TRAVEL_BIAS + inside ? intersectCachedTetra(originalRay, probe) : probe.lastHit.t;
-                    accT += t;
-                    originalRay.o += originalRay.d * t;
-                    if(std::isinf(t))
-                        LM_ERROR("supposed to hit the cached list tetra ?!");
-                    
-                    if(! insideCachedTetra(originalRay.o,c))
-                        LM_ERROR("supposed to land inside the cached tetra!?");
+        travel(originalRay, cached,
+        [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) -> bool {
+            bool ret = false;
+            if(!inside) {
+                if(std::isinf(nextT)) { // we wont hit any tetra again
+                } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
+                    accT += nextT;
+                    ret = true;
                 }
-                //then after making sure that our ray resides inside the cached tetrahedron
-                auto nextT  = intersectCachedTetra(originalRay, c) + TRAVEL_BIAS;
+            } else { 
                 auto transmittanceT = glm::min(tmax - accT,  nextT);
-                transmittance *= sampleTransmittance(originalRay, 0.0,0.0 + transmittanceT  , c);
-                if( ! (nextT + accT < tmax && transmittance >= negligibleTransmittance))
-                    break;
+                transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  , info);
+                if( nextT + accT < tmax && transmittance >= negligibleTransmittance)
+                    ret = true;
                 accT += nextT;//TODO ist das richtig?! wird hier nicht zu wenig addiert, wenns in nächster iteration auf jeden fall vom boundary weitergeht?
-                originalRay.o += originalRay.d * nextT;
-
             }
-        } else {*///need to traverse mesh
-            
-            auto cached = cachedTransmittanceSample(); //work directly on cached, as the next request will start from this request's result
-            travel(originalRay, cached,
-            [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) -> bool {
-                bool ret = false;
-                if(!inside) {
-                    if(std::isinf(nextT)) { // we wont hit any tetra again
-                    } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
-                        accT += nextT;
-                        ret = true;
-                    }
-                } else { 
-                    auto transmittanceT = glm::min(tmax - accT,  nextT);
-                    transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  , info);
-                    if( nextT + accT < tmax && transmittance >= negligibleTransmittance)
-                        ret = true;
-                    accT += nextT;//TODO ist das richtig?! wird hier nicht zu wenig addiert, wenns in nächster iteration auf jeden fall vom boundary weitergeht?
-                }
-                return ret;
-            });
-        //}
+            return ret;
+        });
 
         return transmittance;
 

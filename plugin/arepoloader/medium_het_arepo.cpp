@@ -98,8 +98,8 @@ public:
             }
         } else {
             
-            
-            Float t = volume_density_->sample_distance(ray,tmin,tmax, rng);
+            Float out_maxTransmittance = 0.0;
+            Float t = volume_density_->sample_distance(ray,tmin,tmax, rng, out_maxTransmittance);
             //LM_INFO("result {} ----------------------------------------------", t);
             
             if(t >= tmax) {
