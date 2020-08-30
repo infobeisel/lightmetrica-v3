@@ -38,6 +38,7 @@ namespace stats {
 
     struct MaxTransmittance {};
     struct FreePathTransmittance {};
+    struct PassThrough{};
 }
 class ArepoLMMesh : public Mesh {
 

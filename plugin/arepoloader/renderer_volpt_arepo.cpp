@@ -242,6 +242,7 @@ public:
             stats::clear<lm::stats::UsedNeighborTetra,int,long long>( );
             stats::clear<lm::stats::ResampleAccel,int,long long>( );
             stats::clear<lm::stats::TotalTetraTests,int,long long>( );
+            stats::clear<lm::stats::PassThrough,int,int>( );
 
         } , 
         [&](auto pxlindx,auto smplindx,auto threadid) {
@@ -257,6 +258,8 @@ public:
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
             stats::mergeToGlobal<lm::stats::TotalTetraTests,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
+            stats::mergeToGlobal<lm::stats::PassThrough,int,int>( 
+                [](int & v0,int & v1 ) { return v0 + v1;} );
 
         }
         );
@@ -267,8 +270,9 @@ public:
         auto tetraneighborhits = stats::getGlobal<lm::stats::UsedNeighborTetra,int,long long>(0 );
         auto accelsmpls = stats::getGlobal<lm::stats::ResampleAccel,int,long long>( 0);
         auto totaltetratests = stats::getGlobal<lm::stats::TotalTetraTests,int,long long>(0 );
+        auto passthroughsabsolute = stats::getGlobal<lm::stats::PassThrough,int,int>(0 );
 
-        LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
+        LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}, ", 
          smplhits,
          smplmisses,
          tetrahits,
@@ -276,6 +280,7 @@ public:
          accelsmpls,
          totaltetratests
          );
+         LM_INFO("sample pass through ratio {}",lm::Float(passthroughsabsolute) / lm::Float(size.w * size.h * spp_) );
 
         // Rescale film
         #if VOLPT_IMAGE_SAMPLING
