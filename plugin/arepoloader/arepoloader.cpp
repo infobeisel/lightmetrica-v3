@@ -34,6 +34,7 @@ namespace ArepoLoaderInternals {
     #define TRAVEL_BIAS 0.01
     #define DENSITY_CRANKUP 1.0
     #define REJECTION_SAMPLES_COUNT 10
+    #define RAY_SEGMENT_ALLOC 200
 
     class  ArepoTempQuantities {
     public:
@@ -355,6 +356,22 @@ namespace ArepoLoaderInternals {
         return c;
     }
 
+
+    struct RaySegmentCDF {
+        lm::Float localcdf;
+        lm::Float t;
+        lm::Float a;
+        lm::Float b;
+    };
+    static std::vector<ArepoLoaderInternals::RaySegmentCDF> & raySegments() {
+        thread_local std::vector<ArepoLoaderInternals::RaySegmentCDF> c;
+        if(c.size() < RAY_SEGMENT_ALLOC)
+            c.resize(RAY_SEGMENT_ALLOC);
+        return c;
+    }
+
+
+
     struct UniformSampleCache {
         std::vector<lm::Float> urs;//uniform random samples
         std::vector<lm::Float> acccdf;//accumulated cdfs
@@ -474,17 +491,17 @@ namespace ArepoLoaderInternals {
         
     }
 
-    inline lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT,lm::Float a, lm::Float b, CachedSample const & cached) {
+    inline lm::Float sampleCDF( lm::Float fromT, lm::Float toT,lm::Float a, lm::Float b) {
         return ( b * (toT-fromT)  +  a * 0.5 *(toT * toT - fromT * fromT)  );
     }
 
     inline lm::Float sampleTransmittance(lm::Ray ray, lm::Float fromT, lm::Float toT,lm::Float a, lm::Float b, CachedSample const & cached) {
-        return glm::exp(- sampleCDF(ray,fromT,toT,a,b,cached));
+        return glm::exp(- sampleCDF(fromT,toT,a,b));
     }
 
 
 
-    inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b, CachedSample const & cached) {
+    inline lm::Float sampleCachedICDF_andCDF(lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b) {
         
 
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
@@ -1293,63 +1310,80 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng, lm::Float & out_maxTransmittance) const override {
         
-        auto freeT = tmin;
-        auto freeTransmittance = 1.0;
-        const int rns = REJECTION_SAMPLES_COUNT;
-        {//round two: normalize sample and find free path
-            bool sampleWasUpdated = false;
-            auto & cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
 
+        lm::Float cdfNorm = 1.0;
+        int segmentCount = 0;
+        std::vector<ArepoLoaderInternals::RaySegmentCDF> & segments = raySegments();
+        lm::Float totalacc = 0.0;
+        {
+            auto & cached = cachedDistanceSample(); 
             originalRay.o = originalRay.o + originalRay.d * tmin; 
-
-            auto & smpls = uniformSamples();
+            lm::Float traveledT;
             
-            for(int i = 0; i < rns; i++) {
-                smpls.freet[i] = 0.0;
-                smpls.acccdf[i] = 0.0;
-                smpls.urs[i] = -glm::log(1.0 -  rng.u() );
-            }
-
-           
-            
-            //auto logxi = -glm::log(1.0 - rng.u() ) * (1.0 - finalTransmittance);
-
             travel(originalRay, cached,
             [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
+                
+                if(segments.size() <= segmentCount)
+                    segments.resize(segments.size() * 2);
+
                 bool ret = false;
                 if(!inside) {
                     if(std::isinf(t)) { // we wont hit any tetra again
-                        //do nothing, return because the sample managed to travel through everything without scattering
-                        freeT += tmax;//cached.lastHit.t;
+                        segments[segmentCount].localcdf = 0.0;
+                        segments[segmentCount].t = tmax;
+                        segments[segmentCount].a = 0;
+                        segments[segmentCount].b = 0;
                     } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
-                        freeT += t;
+                        segments[segmentCount].localcdf = 0.0;
+                        segments[segmentCount].t = t;
+                        segments[segmentCount].a = 0;
+                        segments[segmentCount].b = 0;
                         ret = true;
                     }
                 } else {
-                   
                     lm::Float a,b;
                     sampleCachedScalarCoefficients(currentRay,  a, b, info);
-
-                    for(int i = 0; i < rns; i++) {
-                        smpls.freet[i] = sampleCachedICDF_andCDF(currentRay, smpls.urs[i], 0.0, 0.0 + t , smpls.acccdf[i],a,b, info);
-                    }
-                    auto minfreet = smpls.minfreet();
-                    if(minfreet > t) {  //we have to continue with the next tetra
-                        
-                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, t,a,b, info) ;
-                        ret = true;
-                        freeT += t;
-                    } else {
-                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, minfreet,a,b, info);
-                        freeT += minfreet; //we stop inside 
-                        //freeT += t; //we stop inside 
-                    }
+                    segments[segmentCount].localcdf = sampleCDF( 0.0,t, a, b);
+                    segments[segmentCount].t = t;
+                    segments[segmentCount].a = a;
+                    segments[segmentCount].b = b;
+                    totalacc += segments[segmentCount].localcdf;
+                    ret = true;
                 }
+                segmentCount++;
                 return ret;
             });
-            //LM_INFO("return freeT {}", freeT);
         }
-        lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,freeTransmittance );
+
+
+        lm::Float normFac = 1.0 - glm::exp(-totalacc);
+        //have found cdf normalization, now can sample the volume exactly following 
+        //its density
+        lm::Float transmittance = 1.0;
+        lm::Float logxi = -glm::log( 1.0 - rng.u() * normFac);
+        lm::Float acc = 0.0;
+        auto freeT = 0.0;
+        for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
+            auto & raySegment = segments[segmentI];
+            if (  (acc + raySegment.localcdf) > logxi) {
+                auto normcdf =  acc;
+                lm::Float t = sampleCachedICDF_andCDF( logxi, 0.0, 0.0 + raySegment.t ,
+                normcdf ,  raySegment.a,   raySegment.b);
+                freeT += t;
+                normcdf = sampleCDF(0,t,raySegment.a,raySegment.b);
+                acc += normcdf; //accumulate non normalized!
+                //transmittance *= glm::exp(-  normcdf / normFac)  ;
+                break;
+            }
+            freeT += raySegment.t;
+            acc += raySegment.localcdf;
+            //transmittance *= glm::exp(- raySegment.localcdf  / normFac) ;
+        }
+
+        //acccdf contains NON-normalized cdf which is exactly what we want
+        //acccdf *= cdfNorm;
+        lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance);
+        lm::stats::set<lm::stats::MaxTransmittance,int,lm::Float>(0,normFac);
         return freeT;
 
    }
