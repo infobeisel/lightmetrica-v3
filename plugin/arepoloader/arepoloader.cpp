@@ -33,6 +33,7 @@ namespace ArepoLoaderInternals {
     #define INSIDE_TOLERANCE 10.0 * std::numeric_limits<lm::Float>::epsilon()
     #define TRAVEL_BIAS 0.01
     #define DENSITY_CRANKUP 1.0
+    #define REJECTION_SAMPLES_COUNT 10
 
     class  ArepoTempQuantities {
     public:
@@ -354,7 +355,32 @@ namespace ArepoLoaderInternals {
         return c;
     }
 
+    struct UniformSampleCache {
+        std::vector<lm::Float> urs;//uniform random samples
+        std::vector<lm::Float> acccdf;//accumulated cdfs
+        std::vector<lm::Float> freet;//free paths
+        //std::vector<bool> scattered; //the sample already scattered
+        
+        
+        lm::Float minfreet() {
+            lm::Float ret = std::numeric_limits<lm::Float>::max();
+            for(auto & t : freet)
+                ret = glm::min(ret,t);
+            return ret;
+        }
 
+    };
+
+    static ArepoLoaderInternals::UniformSampleCache & uniformSamples() {
+        thread_local ArepoLoaderInternals::UniformSampleCache c;
+        if(c.urs.size() < REJECTION_SAMPLES_COUNT) {
+            c.urs.resize(REJECTION_SAMPLES_COUNT);
+            c.acccdf.resize(REJECTION_SAMPLES_COUNT);
+            c.freet.resize(REJECTION_SAMPLES_COUNT);
+        }
+
+        return c;
+    }
 
     inline double det3x3(lm::Vec3 b,lm::Vec3 c,lm::Vec3 d) {
         //glm::determinant(lm::Mat3(b0,b1,b2));
@@ -393,7 +419,7 @@ namespace ArepoLoaderInternals {
         return inside(c.tmpDets, c.mainDeterminant);
     }
 
-    inline void sampleCachedScalarCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, lm::Float & out_invNorm) {
+    inline void sampleCachedScalarCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached) {
         //this method assumes that the ray resides inside the current tetrahedron
         //therefore it clamps the barycentric coordinates in the b term to 1
         
@@ -405,9 +431,8 @@ namespace ArepoLoaderInternals {
             cached.cornerVals[1][TF_VAL_DENS] ,glm::max(
             cached.cornerVals[2][TF_VAL_DENS] ,
             cached.cornerVals[3][TF_VAL_DENS] )));
-        out_invNorm = 1.0 ;/// maxd;
         
-        auto densities = out_invNorm * lm::Vec4(
+        auto densities = lm::Vec4(
             cached.cornerVals[0][TF_VAL_DENS] ,
             cached.cornerVals[1][TF_VAL_DENS] ,
             cached.cornerVals[2][TF_VAL_DENS] ,
@@ -449,56 +474,25 @@ namespace ArepoLoaderInternals {
         
     }
 
-    inline lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
-        lm::Float a,b, invNorm;
-        //TODO, does this also have to be normnalized
-        sampleCachedScalarCoefficients(ray, a, b, cached,invNorm);
-        return ( b * (toT-fromT) / invNorm +  a * 0.5 *(toT * toT - fromT * fromT) / invNorm );
+    inline lm::Float sampleCDF(lm::Ray ray, lm::Float fromT, lm::Float toT,lm::Float a, lm::Float b, CachedSample const & cached) {
+        return ( b * (toT-fromT)  +  a * 0.5 *(toT * toT - fromT * fromT)  );
     }
 
-    inline lm::Float sampleTransmittance(lm::Ray ray, lm::Float fromT, lm::Float toT, CachedSample const & cached) {
-        return glm::exp(- sampleCDF(ray,fromT,toT,cached));
+    inline lm::Float sampleTransmittance(lm::Ray ray, lm::Float fromT, lm::Float toT,lm::Float a, lm::Float b, CachedSample const & cached) {
+        return glm::exp(- sampleCDF(ray,fromT,toT,a,b,cached));
     }
 
 
 
-    inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf, CachedSample const & cached, lm::Float cdf_normalization) {
+    inline lm::Float sampleCachedICDF_andCDF(lm::Ray ray, lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b, CachedSample const & cached) {
         
-        lm::Float a,b,invNorm; //invnorm is only for numeric stability
-        sampleCachedScalarCoefficients(ray, a, b, cached,invNorm);
-        //a *= cdf_normalization;
-        //b *= cdf_normalization;
-        //normalization constant, to make a pdf out of the scalar interpolation
-        //float tmintomax = tmax - tmin;
-        //auto norm_const =   0.5 * tmintomax*tmintomax  / invNorm + tmintomax / invNorm;
-        //auto norm_const = invNorm;
-
-        //make pdf noramlized:
-        //a = a * norm_const;
-        //b = b * norm_const;
 
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
-        auto y = logxi + a *  0.5 * tmin*tmin  / invNorm + b * tmin / invNorm - out_cdf;
-
-        if(y < 0.0) {
-        //    LM_INFO("wtf y is negative");
-        //    LM_ERROR("wtf y is negative");
-        }
-
-        //lm::Float freeT = glm::sqrt(
-        //    ((b*b)/(4.0*a*a)) + ( y / (a / invNorm )) ) - b/(2.0*a);
+        auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
         lm::Float freeT;
-        
-
-        //lm::Float 
-
-        //freeT = glm::sqrt(
-        //        ((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )) ) - b/a;
        
         freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
-       
-        //LM_INFO("determinant  {}, a and b {} {}, y {}, freeT {}",
-        //((b*b)/(a*a)) + ( 2.0 * y / (a / invNorm )),a/invNorm, b/invNorm, y, freeT);
+
         if(isnan(freeT)) {
         //    LM_INFO("wtf freeT is nan, {},{}",a,b);
         }
@@ -506,7 +500,7 @@ namespace ArepoLoaderInternals {
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
         //for evaluating tau, limit free path to tmax
         lm::Float t = glm::min(freeT + tmin, tmax);
-        lm::Float acc_cdf = ((t - tmin) * b / invNorm +  a  * 0.5 * (t * t - tmin * tmin) / invNorm);
+        lm::Float acc_cdf = ((t - tmin) * b  +  a  * 0.5 * (t * t - tmin * tmin) );
         if(acc_cdf < 0.0) {
         //    LM_INFO("wtf cdf never has negative values");
         //    LM_ERROR("wtf cdf never has negative values");
@@ -1243,10 +1237,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         auto nextBound = inside ? intersectCachedTetra(ray,info) : info.lastHit.t;
         out_t_forhowlong = nextBound;
         if(inside) {
-            lm::Float invNorm; //invnorm is only for numeric stability
-            sampleCachedScalarCoefficients(ray, out_a, out_b, info,invNorm);
-            out_a /= invNorm;
-            out_b /= invNorm;
+            sampleCachedScalarCoefficients(ray, out_a, out_b, info);
         } else {
             out_a = 0.0;
             out_b = 0.0;
@@ -1301,44 +1292,25 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     }
 
     virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng, lm::Float & out_maxTransmittance) const override {
-        //auto xi = rng.u();
-
-        lm::Float finalTransmittance = 1.0;
-        { //round one: find out max cdf 
-            auto & cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
-            auto freeT = tmin;
-            lm::Ray probeRay = originalRay;
-            probeRay.o = probeRay.o + probeRay.d * tmin; 
-
-            travel(probeRay, cached,
-            [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
-                bool ret = false;
-                if(!inside) {
-                    if(std::isinf(t)) { // we wont hit any tetra again
-                    } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
-                        ret = true;
-                    }
-                } else {
-                    finalTransmittance *= sampleTransmittance(currentRay, 0.0, t, info);
-                    ret = true;
-                }
-                return ret;
-            });
-            //LM_INFO("return freeT {}", freeT);
-        }
-        out_maxTransmittance = finalTransmittance;
-        lm::stats::set<lm::stats::MaxTransmittance,int,lm::Float>(0,finalTransmittance);
+        
         auto freeT = tmin;
-        auto freeTransmittance = (1.0 - finalTransmittance);
+        auto freeTransmittance = 1.0;
+        const int rns = REJECTION_SAMPLES_COUNT;
         {//round two: normalize sample and find free path
             bool sampleWasUpdated = false;
             auto & cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
 
             originalRay.o = originalRay.o + originalRay.d * tmin; 
-            lm::Float inoutcdfValue = 0.0;
 
-            //warp random number so that sample always falls into volume
-            auto logxi = -glm::log(1.0 -  rng.u() * ( 1.0-finalTransmittance)); 
+            auto & smpls = uniformSamples();
+            
+            for(int i = 0; i < rns; i++) {
+                smpls.freet[i] = 0.0;
+                smpls.acccdf[i] = 0.0;
+                smpls.urs[i] = -glm::log(1.0 -  rng.u() );
+            }
+
+           
             
             //auto logxi = -glm::log(1.0 - rng.u() ) * (1.0 - finalTransmittance);
 
@@ -1354,14 +1326,22 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                         ret = true;
                     }
                 } else {
-                    auto freeTCandidate = sampleCachedICDF_andCDF(currentRay, logxi, 0.0, 0.0 + t , inoutcdfValue, info, ( 1.0-finalTransmittance));
-                    if(freeTCandidate > t) {  //we have to continue with the next tetra
-                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, t, info) ;
+                   
+                    lm::Float a,b;
+                    sampleCachedScalarCoefficients(currentRay,  a, b, info);
+
+                    for(int i = 0; i < rns; i++) {
+                        smpls.freet[i] = sampleCachedICDF_andCDF(currentRay, smpls.urs[i], 0.0, 0.0 + t , smpls.acccdf[i],a,b, info);
+                    }
+                    auto minfreet = smpls.minfreet();
+                    if(minfreet > t) {  //we have to continue with the next tetra
+                        
+                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, t,a,b, info) ;
                         ret = true;
                         freeT += t;
                     } else {
-                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, freeTCandidate, info) ;
-                        freeT += freeTCandidate; //we stop inside 
+                        freeTransmittance *= sampleTransmittance(currentRay, 0.0, minfreet,a,b, info);
+                        freeT += minfreet; //we stop inside 
                         //freeT += t; //we stop inside 
                     }
                 }
@@ -1369,7 +1349,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             });
             //LM_INFO("return freeT {}", freeT);
         }
-        lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,freeTransmittance);
+        lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,freeTransmittance );
         return freeT;
 
    }
@@ -1382,7 +1362,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         int h = 0;        
         auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
         if(cached.sampleIndex == currentSample) { //is cached
-            auto maxTransmittance = lm::stats::get<lm::stats::MaxTransmittance,int,lm::Float>(h);
+            //auto maxTransmittance = lm::stats::get<lm::stats::MaxTransmittance,int,lm::Float>(h);
             auto freePathTransmittance = lm::stats::get<lm::stats::FreePathTransmittance,int,lm::Float>(h);
             return freePathTransmittance;
         } 
@@ -1402,7 +1382,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 }
             } else { 
                 auto transmittanceT = glm::min(tmax - accT,  nextT);
-                transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  , info);
+                lm::Float a,b;
+                sampleCachedScalarCoefficients(currentRay,  a, b, info);
+
+                transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  ,a,b, info);
                 if( nextT + accT < tmax && transmittance >= negligibleTransmittance)
                     ret = true;
                 accT += nextT;//TODO ist das richtig?! wird hier nicht zu wenig addiert, wenns in nächster iteration auf jeden fall vom boundary weitergeht?
@@ -1527,11 +1510,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
         }
         else {
-            lm::Float a,b,invNorm;
-            sampleCachedScalarCoefficients(r,a,b,cached,invNorm);
+            lm::Float a,b;
+            sampleCachedScalarCoefficients(r,a,b,cached);
             //only need b
            // LM_INFO("return {}", b/invNorm);
-            toVals[TF_VAL_DENS] = b/invNorm;
+            toVals[TF_VAL_DENS] = b;
         }
 
     }
