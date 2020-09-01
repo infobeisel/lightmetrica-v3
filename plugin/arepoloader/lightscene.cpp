@@ -16,6 +16,13 @@
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
+namespace {
+    enum LightSamplingMode {
+        UNIFORM,
+        KNN
+    };
+}
+
 class LightScene_ final : public Scene {
 private:
     AccelKnn* accel_;                                   // Acceleration structure for closest light sampling
@@ -25,7 +32,7 @@ private:
     std::unordered_map<int, int> light_indices_map_; // Map from node indices to light indices.
     std::optional<int> env_light_;                   // Environment light index
     std::optional<int> medium_;                      // Medium index
-
+    LightSamplingMode lightsamplingmode;
 public:
     LM_SERIALIZE_IMPL(ar) {
         ar(accel_, nodes_, camera_, lights_, light_indices_map_, env_light_);
@@ -46,6 +53,8 @@ public:
 public:
     virtual void construct(const Json& prop) override {
         accel_ = json::comp_ref_or_nullptr<AccelKnn>(prop, "accel");
+        lightsamplingmode = lm::json::value<std::string>(prop,"lightsampling","knn") == "knn" ? 
+        LightSamplingMode::KNN : LightSamplingMode::UNIFORM;
         reset();
     }
 
@@ -350,7 +359,71 @@ public:
 
     #pragma region Light sampling
 
+
+    virtual LightSelectionSample sample_light_selection_from_pos(Float u, Vec3 const pos) const override {
+        if(lightsamplingmode == LightSamplingMode::KNN) {
+            const int n = int(lights_.size());
+            int onepercent = int(0.01 * Float(n));  
+            onepercent = onepercent > 0 ? onepercent : 1;
+            KNNResult knnres;
+
+/*
+            unsigned int k;
+  std::priority_queue<Neighbour, std::vector<Neighbour>> knn;
+  std::vector<unsigned int> visited; // primIDs of all visited points
+
+
+unsigned int primID;
+  float d;
+*/
+
+            knnres.k = onepercent;
+            accel_->queryKnn(0.0,0.0,0.0, std::numeric_limits<Float>::max(), knnres);
+            
+            std::vector<Neighbour> sorted;
+            sorted.reserve(knnres.knn.size());
+            //LM_INFO("found {} nearest lights",knnres.knn.size());
+            Float d_total = 0.0;
+            while(!knnres.knn.empty()) {
+                auto & neighbor = knnres.knn.top();
+                d_total += neighbor.d;
+                sorted.push_back(neighbor);
+                knnres.knn.pop();
+            }
+            Float cdf = 0.0;
+            int finalSelectedNodeIndex = 0;
+            Float pL = 0.0;
+            for(auto & neighbor : sorted) {
+                Float d = neighbor.d / d_total;
+                cdf += d;
+                if(u < cdf) {
+                    finalSelectedNodeIndex = neighbor.primID;
+                    pL = d;
+                    break;
+                }
+            }
+            //LM_INFO("chose light index {} with pdf {}",finalSelectedNodeIndex,pL);
+
+            return LightSelectionSample{
+                finalSelectedNodeIndex,
+                pL
+            };
+        }
+
+        if(lightsamplingmode == LightSamplingMode::UNIFORM) {
+            const int n = int(lights_.size());
+            const int i = glm::clamp(int(u * n), 0, n - 1);
+            const auto pL = 1_f / n;
+            return LightSelectionSample{
+                i,
+                pL
+            };
+        }
+    }
+
+
     virtual LightSelectionSample sample_light_selection(Float u) const override {
+        LM_ERROR("dont use this");
         const int n = int(lights_.size());
         const int i = glm::clamp(int(u * n), 0, n - 1);
         const auto pL = 1_f / n;
@@ -358,11 +431,22 @@ public:
             i,
             pL
         };
+    
     }
 
+
     virtual Float pdf_light_selection(int) const override {
-        const int n = int(lights_.size());
-        return 1_f / n;
+        if(lightsamplingmode == LightSamplingMode::UNIFORM) {
+            const int n = int(lights_.size());
+            return 1_f / n;
+        } 
+        if(lightsamplingmode == LightSamplingMode::KNN) {
+            
+            const int n = int(lights_.size());
+            return 1_f / n;
+        } 
+        
+        
     };
 
     virtual LightPrimitiveIndex light_primitive_index_at(int light_index) const override {

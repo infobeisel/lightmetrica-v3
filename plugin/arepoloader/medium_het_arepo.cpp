@@ -98,8 +98,8 @@ public:
             }
         } else {
             
-            Float out_maxTransmittance = 0.0;
-            Float t = volume_density_->sample_distance(ray,tmin,tmax, rng, out_maxTransmittance);
+            Float weight = 0.0;
+            Float t = volume_density_->sample_distance(ray,tmin,tmax, rng, weight);
             //LM_INFO("result {} ----------------------------------------------", t);
             
             if(t >= tmax) {
@@ -113,7 +113,7 @@ public:
             const auto albedo = volme_albedo_->eval_color(p);
             return DistanceSample{
                 p,
-                albedo,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
+                albedo * weight,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
                             // = 1/\mu_t(t) * \mu_s(t) = albedo(t)
                 true
             };

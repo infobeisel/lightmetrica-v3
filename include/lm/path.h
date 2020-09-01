@@ -508,7 +508,7 @@ static std::optional<RaySample> sample_direct(const RaySampleU& u, const Scene* 
     }
     else if (trans_dir == TransDir::LE) {
         // Sample a light
-        const auto [light_index, p_sel] = scene->sample_light_selection(u.upc[0]);
+        const auto [light_index, p_sel] = scene->sample_light_selection_from_pos(u.upc[0],sp.geom.p);
 
         // Sample a position on the light
         const auto light_primitive_index = scene->light_primitive_index_at(light_index);

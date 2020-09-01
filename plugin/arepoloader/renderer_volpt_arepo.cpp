@@ -152,12 +152,12 @@ public:
                         return;
                     }
 
-                    int h = 0;
-                    lm::Float normFac = lm::stats::get<lm::stats::MaxTransmittance,int,lm::Float>(h);
+                    //int h = 0;
+                    //lm::Float normFac = lm::stats::get<lm::stats::MaxTransmittance,int,lm::Float>(h);
 
 
                     // Evaluate and accumulate contribution
-                    const auto C = throughput * Tr * fs * sL->weight * normFac;
+                    const auto C = throughput * Tr * fs * sL->weight;
                     film_->splat(rp, C);
                 }();
 

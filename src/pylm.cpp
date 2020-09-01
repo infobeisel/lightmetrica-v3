@@ -626,6 +626,9 @@ static void bind_scene(pybind11::module& m) {
             PYBIND11_OVERLOAD_PURE(bool, Scene, is_camera, sp);
         }
         // ----------------------------------------------------------------------------------------
+        virtual LightSelectionSample sample_light_selection_from_pos(Float u, Vec3 const p) const override {
+            PYBIND11_OVERLOAD_PURE(LightSelectionSample, Scene, sample_light_selection_from_pos, u, p);
+        }
         virtual LightSelectionSample sample_light_selection(Float u) const override {
             PYBIND11_OVERLOAD_PURE(LightSelectionSample, Scene, sample_light_selection, u);
         }
@@ -680,6 +683,7 @@ static void bind_scene(pybind11::module& m) {
         .def("is_camera", &Scene::is_camera)
         //
         .def("sample_light_selection", &Scene::sample_light_selection)
+        .def("sample_light_selection_from_pos", &Scene::sample_light_selection_from_pos)
         .def("pdf_light_selection", &Scene::pdf_light_selection)
         .def("light_primitive_index_at", &Scene::light_primitive_index_at)
         .def("light_index_at", &Scene::light_index_at)

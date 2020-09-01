@@ -402,11 +402,20 @@ public:
 
     /*!
         \brief Light sampling.
+        \param u Random number input in [0,1]
+        \param pos Spatial position from where a light shall be sampled
+        return Sample light index.
+    */
+    virtual LightSelectionSample sample_light_selection_from_pos(Float u, Vec3 const pos) const = 0;
+
+    /*!
+        \brief Light sampling.
         \param u Random number input in [0,1].
         return Sample light index.
     */
     virtual LightSelectionSample sample_light_selection(Float u) const = 0;
 
+   
     /*!
         \brief Evaluate the PDF for light sampling.
         \param light_index Sampled light index.

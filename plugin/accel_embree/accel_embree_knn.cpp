@@ -12,28 +12,6 @@
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 
-#define KNN_K 10
-
-struct Neighbour
-{
-  unsigned int primID;
-  float d;
-
-  bool operator<(Neighbour const& n1) const { return d < n1.d; }
-};
-
-struct KNNResult
-{
-  KNNResult() 
-  {
-    visited.reserve(2 * KNN_K);
-  }
-
-  unsigned int k;
-  std::priority_queue<Neighbour, std::vector<Neighbour>> knn;
-  std::vector<unsigned int> visited; // primIDs of all visited points
-};
-
 
 namespace {  
 

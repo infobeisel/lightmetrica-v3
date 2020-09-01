@@ -1308,7 +1308,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     }
 
-    virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng, lm::Float & out_maxTransmittance) const override {
+    virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng, lm::Float & weight) const override {
         
 
         lm::Float cdfNorm = 1.0;
@@ -1383,7 +1383,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //acccdf contains NON-normalized cdf which is exactly what we want
         //acccdf *= cdfNorm;
         lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance);
-        lm::stats::set<lm::stats::MaxTransmittance,int,lm::Float>(0,normFac);
+        weight = normFac;
         return freeT;
 
    }

@@ -385,6 +385,11 @@ public:
         };
     }
 
+    
+    virtual LightSelectionSample sample_light_selection_from_pos(Float u, Vec3 const pos) const override {
+        return sample_light_selection(u);
+    }
+
     virtual Float pdf_light_selection(int) const override {
         const int n = int(lights_.size());
         return 1_f / n;
