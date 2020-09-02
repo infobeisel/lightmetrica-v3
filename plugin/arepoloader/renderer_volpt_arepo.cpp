@@ -193,6 +193,16 @@ public:
                     break;
                 }
 
+                //sample next scene interaction following light sources situation
+                scene_->traverse_primitive_nodes(
+                    [&] (const SceneNode& node, Mat4 global_transform) {
+                        if(node.primitive.light != nullptr) {
+                            auto & light = *node.primitive.light;
+                            LM_INFO("found a light {}",node.index);
+                        }
+                });
+
+
                 // --------------------------------------------------------------------------------
 
                 // Update throughput

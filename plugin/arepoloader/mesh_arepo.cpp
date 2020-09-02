@@ -80,10 +80,10 @@ public:
 */
             //skip points 
             //wtf see arepo vtk
-            DPinfinity = -5;
+            DPinfinity = -1;
             //skip outside box
-            if (dts[tetrai].t[0] < 0 || dts[tetrai].p[0] == DPinfinity || dts[tetrai].p[1] == DPinfinity
-                    || dts[tetrai].p[2] == DPinfinity || dts[tetrai].p[3] == DPinfinity
+            if (dts[tetrai].t[0] < 0 || dts[tetrai].p[0] <= DPinfinity || dts[tetrai].p[1] <= DPinfinity
+                    || dts[tetrai].p[2] <= DPinfinity || dts[tetrai].p[3] <= DPinfinity
                     )
             {
                 LM_INFO("deleted because {} or {} {} {} {} is {}",dts[tetrai].t[0]

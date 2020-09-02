@@ -31,7 +31,7 @@ ConfigSet Config;
 namespace ArepoLoaderInternals {
 
     #define INSIDE_TOLERANCE 10.0 * std::numeric_limits<lm::Float>::epsilon()
-    #define TRAVEL_BIAS 0.01
+    #define TRAVEL_BIAS 0.0000001
     #define DENSITY_CRANKUP 1.0
     #define REJECTION_SAMPLES_COUNT 10
     #define RAY_SEGMENT_ALLOC 200
@@ -737,10 +737,10 @@ namespace ArepoLoaderInternals {
         
         //skip points 
         //wtf see arepo vtk
-        DPinfinity = -5;
+        DPinfinity = -1;
         if  (
-        (tetra.t[0] < 0 ||tetra.p[0] == DPinfinity || tetra.p[1] == DPinfinity
-        || tetra.p[2] == DPinfinity || tetra.p[3] == DPinfinity)
+        (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
+        || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
         || tetra.t[0] == -1)
         {
             //LM_INFO("skip");
