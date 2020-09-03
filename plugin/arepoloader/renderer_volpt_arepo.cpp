@@ -188,20 +188,62 @@ public:
                 // --------------------------------------------------------------------------------
 
                 // Sample next scene interaction
-                const auto sd = path::sample_distance(rng, scene_, sp, s->wo);
+                auto sd = path::sample_distance(rng, scene_, sp, s->wo);
                 if (!sd) {
                     break;
                 }
 
-                //sample next scene interaction following light sources situation
-                scene_->traverse_primitive_nodes(
-                    [&] (const SceneNode& node, Mat4 global_transform) {
-                        if(node.primitive.light != nullptr) {
-                            auto & light = *node.primitive.light;
-                            LM_INFO("found a light {}",node.index);
-                        }
-                });
 
+                auto lightDistanceSample = path::DistanceSample();
+                lightDistanceSample.weight = Vec3(0);
+                {
+
+                    //auto mediumindex = scene_->medium_node();
+                    //auto & medium = scene_->node_at(mediumindex);
+                    //medium.primitive.medium->
+                    Ray ray = {
+                    sp.geom.p,
+                    s->wo};
+                    
+                    //sample next scene interaction following light sources situation
+                    scene_->traverse_primitive_nodes(
+                        [&] (const SceneNode& node, Mat4 global_transform) {
+                            if(node.primitive.light != nullptr) {
+                                auto & light = *node.primitive.light;
+                                auto possample = rng.next<Light::PositionSampleU>();
+                                auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;
+                                //LM_INFO("light pos {},{},{}",lightPos.x,lightPos.y,lightPos.z);
+                                auto shortestT = glm::dot((lightPos - ray.o), ray.d) / glm::dot(ray.d,ray.d); 
+                                auto d = ray.o + ray.d * shortestT - lightPos;
+                                auto D = glm::length(d);
+                                auto a = -999;//ray.o - lightPos;
+                                auto b = 999;//ray.o + ray.d * 999999.0 - lightPos;
+                                auto theta_a = glm::atan(a/D);
+                                auto theta_b = glm::atan(b/D);
+                                auto xi = rng.u();
+                                auto t = D * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
+                                auto pdf = D / (theta_b - theta_a) / (D*D+t*t);
+
+                                lightDistanceSample = path::DistanceSample {
+                                    SceneInteraction::make_medium_interaction(
+                                        scene_->medium_node(),
+                                        PointGeometry::make_degenerated(ray.o + ray.d * t)
+                                    ),
+                                    Vec3(pdf)
+                                };
+                                
+                            }
+                    });
+                }
+                sd = lightDistanceSample;
+                //linear combine points
+                //sd->sp.geom.p = lightDistanceSample.sp.geom.p * lightDistanceSample.weight * 0.5 +
+                //                sd->sp.geom.p * sd->weight * 0.5;
+                //draw another uniform value and take one
+                //sd->sp.geom.p = rng.u() > 0.5 ? sd->sp.geom.p : lightDistanceSample.sp.geom.p;
+
+                //always combine all weights together (right now with 0.5 weight)
+                //sd->weight = 0.5 * lightDistanceSample.weight + 0.5 * sd->weight;
 
                 // --------------------------------------------------------------------------------
 

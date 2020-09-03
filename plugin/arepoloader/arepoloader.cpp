@@ -200,20 +200,20 @@ namespace ArepoLoaderInternals {
             
 
             point p;
-            p.x = -1;p.y = 0;p.z = -2;p.index = 0;
+            p.x = -2000;p.y = 0;p.z = -2000;p.index = 0;
             DP.push_back(p);
             densities.push_back(0.0);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
             densities.push_back(0.000001);
-            p.x = 1;p.y = 0;p.z = -2;p.index=2;
+            p.x = 1000;p.y = 0;p.z = -2000;p.index=2;
             DP.push_back(p);
             densities.push_back(0.0);
-            p.x = 0;p.y = 2;p.z = -1;p.index=3;
+            p.x = 0;p.y = 2000;p.z = -1000;p.index=3;
             DP.push_back(p);
             densities.push_back(0.00001);
 
-            p.x = -1;p.y = 2;p.z = 0;p.index=4;
+            p.x = -2000;p.y = 2000;p.z = 0;p.index=4;
             DP.push_back(p);
             densities.push_back(0.0);
 
