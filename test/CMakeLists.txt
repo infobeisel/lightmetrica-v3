@@ -24,7 +24,7 @@ set(_SOURCE_FILES
     "test_exception.cpp"
     "test_component.cpp"
     "test_assets.cpp"
-    "test_json.cpp"
+    #"test_json.cpp"
     "test_serial.cpp"
     "test_logger.cpp")
 set(_PCH_DIR "${PROJECT_SOURCE_DIR}/pch")
