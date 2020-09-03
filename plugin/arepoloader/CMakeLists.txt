@@ -39,13 +39,13 @@ target_include_directories(arepoloader PUBLIC
 "${HDF5_INCLUDE_DIRS}"
 "${GSL_INCLUDE_DIRS}"
 "${GMP_INCLUDES}"
-"/home/beisel/Projects/ArepoVTK/arepo/include/"
-"/home/beisel/Projects/ArepoVTK/include/"
+"/home/beisel/ArepoVTK/arepo/include/"
+"/home/beisel/ArepoVTK/include/"
 )
 
 target_link_libraries(arepoloader PUBLIC
-"/home/beisel/Projects/ArepoVTK/libarepovtk.a"
-"/home/beisel/Projects/ArepoVTK/arepo/libarepo.a"
+"/home/beisel/ArepoVTK/libarepovtk.a"
+"/home/beisel/ArepoVTK/arepo/libarepo.a"
 "${PROJECT_SOURCE_DIR}"
 "${PNG_LIBRARIES}"
 "${OpenMP_CXX_LIBRARIES}"
