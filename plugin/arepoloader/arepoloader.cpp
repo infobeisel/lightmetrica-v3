@@ -200,22 +200,22 @@ namespace ArepoLoaderInternals {
             
 
             point p;
-            p.x = -2000;p.y = 0;p.z = -2000;p.index = 0;
+            p.x = -2;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.0);
+            densities.push_back(0.05);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.000001);
-            p.x = 1000;p.y = 0;p.z = -2000;p.index=2;
+            densities.push_back(0.05);
+            p.x = 1;p.y = 0;p.z = -2;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.0);
-            p.x = 0;p.y = 2000;p.z = -1000;p.index=3;
+            densities.push_back(0.05);
+            p.x = 0;p.y = 2;p.z = -1;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00001);
+            densities.push_back(0.05);
 
-            p.x = -2000;p.y = 2000;p.z = 0;p.index=4;
+            p.x = -2;p.y = 2;p.z = 0;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.0);
+            densities.push_back(0.05);
 
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
@@ -507,8 +507,17 @@ namespace ArepoLoaderInternals {
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
         auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
         lm::Float freeT;
-       
-        freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+
+        if (abs(a) < std::numeric_limits<lm::Float>::epsilon() 
+        && abs(b) < std::numeric_limits<lm::Float>::epsilon()) {
+            freeT = std::numeric_limits<lm::Float>::max();
+        } else if(abs(a) < std::numeric_limits<lm::Float>::epsilon()) {
+            freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
+        }
+        else if(abs(b) < std::numeric_limits<lm::Float>::epsilon()) {
+            freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+        }
+        
 
         if(isnan(freeT)) {
         //    LM_INFO("wtf freeT is nan, {},{}",a,b);
@@ -1309,9 +1318,14 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     }
 
     virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng, lm::Float & weight) const override {
-        
 
-        lm::Float cdfNorm = 1.0;
+        //retrieve distance sample of strategy 0 (equiangular sampling) 
+        int key = 0;
+        //auto equiAngularT = lm::stats::get<lm::stats::EquiangularStrategyDistanceSample,int,lm::Float>(key);
+        //store pdf for sample of strategy 0
+        //auto & pdfs = lm::stats::get<lm::stats::DistanceSamplesPDFs,lm::stats::IJ::,lm::Float>(key);
+                                        
+
         int segmentCount = 0;
         std::vector<ArepoLoaderInternals::RaySegmentCDF> & segments = raySegments();
         lm::Float totalacc = 0.0;
@@ -1363,8 +1377,18 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         lm::Float logxi = -glm::log( 1.0 - rng.u() * normFac);
         lm::Float acc = 0.0;
         auto freeT = 0.0;
+        bool stopAccumulating = false;
+        bool stopEquiangular = false;
         for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
             auto & raySegment = segments[segmentI];
+
+            //by the way, calculate PDF for samples coming from other strategies:
+            //if(equiAngularT < freeT && !stopEquiangular) {
+            //    stopEquiangular = true;
+            //}
+
+
+
             if (  (acc + raySegment.localcdf) > logxi) {
                 auto normcdf =  acc;
                 lm::Float t = sampleCachedICDF_andCDF( logxi, 0.0, 0.0 + raySegment.t ,
@@ -1372,12 +1396,18 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 freeT += t;
                 normcdf = sampleCDF(0,t,raySegment.a,raySegment.b);
                 acc += normcdf; //accumulate non normalized!
-                //transmittance *= glm::exp(-  normcdf / normFac)  ;
-                break;
+                transmittance *= glm::exp(-  normcdf )  ;
+                stopAccumulating = true;
             }
-            freeT += raySegment.t;
-            acc += raySegment.localcdf;
-            //transmittance *= glm::exp(- raySegment.localcdf  / normFac) ;
+
+            if (!stopAccumulating) {
+                freeT += raySegment.t;
+                acc += raySegment.localcdf;
+                transmittance *= glm::exp(- raySegment.localcdf) ;
+            }
+            
+            
+            
         }
 
         //acccdf contains NON-normalized cdf which is exactly what we want

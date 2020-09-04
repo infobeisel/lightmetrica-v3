@@ -25,7 +25,8 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 
 
-
+typedef std::vector<std::vector<lm::Float>&> stdvec2d;
+    
 namespace stats {
     struct CachedSampleId {};
     struct SampleIdCacheHits {};
@@ -38,6 +39,22 @@ namespace stats {
 
     struct MaxTransmittance {};
     struct FreePathTransmittance {};
+
+    struct RegularTrackingStrategyDistanceSample {};
+    struct EquiangularStrategyDistanceSample {};
+
+    struct DistanceSamplesPDFs{};
+    enum IJ {
+        //equiangular sampling, distance sample 0
+        _0_0,
+        //equiangular sampling, distance sample 1
+        _0_1,
+        //regular sampling, distance sample 0
+        _1_0,
+        //regular sampling, distance sample 1
+        _1_1
+    };
+
 }
 class ArepoLMMesh : public Mesh {
 

@@ -86,6 +86,12 @@ public:
              //store the sample id that this thread currently works on 
             stats::set<stats::CachedSampleId,int,long long>(0,spp_ * pixel_index + sample_index);
            //LM_INFO("current sample id : {}", std::to_string(stats::get<stats::CurrentSampleId,long long>(0)));
+            //
+            stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_0,0.0);
+            stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_1,0.0);
+            stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_1_0,0.0);
+            stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_1_1,0.0);
+
 
             // ------------------------------------------------------------------------------------
 
@@ -187,14 +193,12 @@ public:
 
                 // --------------------------------------------------------------------------------
 
+             
                 // Sample next scene interaction
-                auto sd = path::sample_distance(rng, scene_, sp, s->wo);
-                if (!sd) {
-                    break;
-                }
+                
+                //importance sample distance following light source, strategy 0
 
-
-                auto lightDistanceSample = path::DistanceSample();
+                /*auto lightDistanceSample = path::DistanceSample();
                 lightDistanceSample.weight = Vec3(0);
                 {
 
@@ -223,6 +227,11 @@ public:
                                 auto xi = rng.u();
                                 auto t = D * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
                                 auto pdf = D / (theta_b - theta_a) / (D*D+t*t);
+                                //store sample of strategy 0
+                                int key = 0;
+                                stats::set<stats::EquiangularStrategyDistanceSample,int,Float>(key,t);
+                                //store pdf for sample of strategy 0
+                                stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_0,pdf);
 
                                 lightDistanceSample = path::DistanceSample {
                                     SceneInteraction::make_medium_interaction(
@@ -234,8 +243,22 @@ public:
                                 
                             }
                     });
+                }*/
+
+                //importance sample distance following volume 
+                auto sd = path::sample_distance(rng, scene_, sp, s->wo);
+
+                //todo evaluate this!!!
+                if (!sd) {
+                    break;
                 }
-                sd = lightDistanceSample;
+
+
+
+                //auto w_light = 
+
+                //lightDistanceSample.weight * lightDistanceSample.sp.geom.p 
+                //+ sd.weight * sd->sp.geom.p 
                 //linear combine points
                 //sd->sp.geom.p = lightDistanceSample.sp.geom.p * lightDistanceSample.weight * 0.5 +
                 //                sd->sp.geom.p * sd->weight * 0.5;
