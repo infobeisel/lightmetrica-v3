@@ -200,20 +200,20 @@ namespace ArepoLoaderInternals {
             
 
             point p;
-            p.x = -2000;p.y = 0;p.z = -2000;p.index = 0;
+            p.x = -2;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
             densities.push_back(0.5);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
             densities.push_back(0.5);
-            p.x = 1000;p.y = 0;p.z = -2000;p.index=2;
+            p.x = 1;p.y = 0;p.z = -2;p.index=2;
             DP.push_back(p);
             densities.push_back(0.5);
-            p.x = 0;p.y = 2000;p.z = -1000;p.index=3;
+            p.x = 0;p.y = 2;p.z = -1;p.index=3;
             DP.push_back(p);
             densities.push_back(0.5);
 
-            p.x = -2000;p.y = 2000;p.z = 0;p.index=4;
+            p.x = -2;p.y = 2;p.z = 0;p.index=4;
             DP.push_back(p);
             densities.push_back(0.0);
 
@@ -1321,7 +1321,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
         //retrieve distance sample of strategy 0 (equiangular sampling) 
         int key = 0;
-        //auto equiAngularT = lm::stats::get<lm::stats::EquiangularStrategyDistanceSample,int,lm::Float>(key);
+        auto equiAngularT = lm::stats::get<lm::stats::EquiangularStrategyDistanceSample,int,lm::Float>(key);
         //store pdf for sample of strategy 0
         //auto & pdfs = lm::stats::get<lm::stats::DistanceSamplesPDFs,lm::stats::IJ::,lm::Float>(key);
                                         
@@ -1369,14 +1369,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             });
         }
 
-        lm::Float normalizer = 1.0;//1.0 / max_scalar();// max_  1.0 / totalacc;
-
         lm::Float normFac = 1.0 - glm::exp(-totalacc);
         //have found cdf normalization, now can sample the volume exactly following 
         //its density
         lm::Float transmittance = 1.0;
         lm::Float logxi = -glm::log( 1.0 - rng.u() * normFac);
         lm::Float acc = 0.0;
+        lm::Float pdf = 0.0;
         auto freeT = 0.0;
         bool stopAccumulating = false;
         bool stopEquiangular = false;
@@ -1384,18 +1383,21 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             auto & raySegment = segments[segmentI];
 
             //by the way, calculate PDF for samples coming from other strategies:
-            //if(equiAngularT < freeT && !stopEquiangular) {
-            //    stopEquiangular = true;
-            //}
+            if(freeT + raySegment.t > equiAngularT && !stopEquiangular) {
+                stopEquiangular = true;
+                auto equiPDF = raySegment.b + raySegment.a * (equiAngularT - freeT);
+                lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_0,normFac * equiPDF);
+            }
 
-            if (  (acc * normalizer + raySegment.localcdf * normalizer) > logxi) {
-                auto normcdf =  acc * normalizer;
+            if (  (acc  + raySegment.localcdf ) > logxi) {
+                auto normcdf =  acc ;
                 lm::Float t = sampleCachedICDF_andCDF( logxi, 0.0, 0.0 + raySegment.t ,
-                normcdf ,  raySegment.a * normalizer,   raySegment.b * normalizer);
+                normcdf ,  raySegment.a ,   raySegment.b );
                 freeT += t; 
                 normcdf = sampleCDF(0,t,raySegment.a,raySegment.b );
                 acc += normcdf; //accumulate non normalized!
                 transmittance *= glm::exp(-  normcdf )  ;
+                pdf = raySegment.b + raySegment.a * t;
                 stopAccumulating = true;
             }
 
@@ -1412,7 +1414,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //acccdf contains NON-normalized cdf which is exactly what we want
         //acccdf *= cdfNorm;
         lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance);
-        weight = normFac;
+
+        //TODO multiply with normFAC?!?!
+        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_1, normFac * pdf);
+        lm::stats::set<lm::stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(key,freeT);
+        weight = normFac * pdf  ; 
         return freeT;
 
    }

@@ -44,6 +44,7 @@ namespace stats {
     struct EquiangularStrategyDistanceSample {};
 
     struct DistanceSamplesPDFs{};
+    //2 distance samples, first one from equiangular, second one from regular 
     enum IJ {
         //equiangular sampling, distance sample 0
         _0_0,
