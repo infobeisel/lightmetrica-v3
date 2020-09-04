@@ -200,22 +200,22 @@ namespace ArepoLoaderInternals {
             
 
             point p;
-            p.x = -2;p.y = 0;p.z = -2;p.index = 0;
+            p.x = -2000;p.y = 0;p.z = -2000;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.05);
+            densities.push_back(0.5);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.05);
-            p.x = 1;p.y = 0;p.z = -2;p.index=2;
+            densities.push_back(0.5);
+            p.x = 1000;p.y = 0;p.z = -2000;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.05);
-            p.x = 0;p.y = 2;p.z = -1;p.index=3;
+            densities.push_back(0.5);
+            p.x = 0;p.y = 2000;p.z = -1000;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.05);
+            densities.push_back(0.5);
 
-            p.x = -2;p.y = 2;p.z = 0;p.index=4;
+            p.x = -2000;p.y = 2000;p.z = 0;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.05);
+            densities.push_back(0.0);
 
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
@@ -464,7 +464,7 @@ namespace ArepoLoaderInternals {
         b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z), densities);
         a = glm::dot( lambda012_a, lm::Vec3(densities));
         a +=  densities[3] * (- lambda012_a.x - lambda012_a.y - lambda012_a.z);
-
+        //LM_INFO("{} and {}",a,b);
         if(b<=0.0) {
            // LM_ERROR("b is non positive?!");
            // LM_INFO("b is non positive?!");
@@ -508,13 +508,13 @@ namespace ArepoLoaderInternals {
         auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
         lm::Float freeT;
 
-        if (abs(a) < std::numeric_limits<lm::Float>::epsilon() 
-        && abs(b) < std::numeric_limits<lm::Float>::epsilon()) {
+        if (abs(a) < INSIDE_TOLERANCE
+        && abs(b) < INSIDE_TOLERANCE) {
             freeT = std::numeric_limits<lm::Float>::max();
-        } else if(abs(a) < std::numeric_limits<lm::Float>::epsilon()) {
+        } else if(abs(a) < INSIDE_TOLERANCE) {
             freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
         }
-        else if(abs(b) < std::numeric_limits<lm::Float>::epsilon()) {
+        else if(abs(b) < INSIDE_TOLERANCE) {
             freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
         }
         
@@ -1369,6 +1369,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             });
         }
 
+        lm::Float normalizer = 1.0;//1.0 / max_scalar();// max_  1.0 / totalacc;
 
         lm::Float normFac = 1.0 - glm::exp(-totalacc);
         //have found cdf normalization, now can sample the volume exactly following 
@@ -1387,14 +1388,12 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //    stopEquiangular = true;
             //}
 
-
-
-            if (  (acc + raySegment.localcdf) > logxi) {
-                auto normcdf =  acc;
+            if (  (acc * normalizer + raySegment.localcdf * normalizer) > logxi) {
+                auto normcdf =  acc * normalizer;
                 lm::Float t = sampleCachedICDF_andCDF( logxi, 0.0, 0.0 + raySegment.t ,
-                normcdf ,  raySegment.a,   raySegment.b);
-                freeT += t;
-                normcdf = sampleCDF(0,t,raySegment.a,raySegment.b);
+                normcdf ,  raySegment.a * normalizer,   raySegment.b * normalizer);
+                freeT += t; 
+                normcdf = sampleCDF(0,t,raySegment.a,raySegment.b );
                 acc += normcdf; //accumulate non normalized!
                 transmittance *= glm::exp(-  normcdf )  ;
                 stopAccumulating = true;
