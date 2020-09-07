@@ -55,21 +55,11 @@ public:
         }
         
         if(deltatracking) {
-            Float validMaxT = -1.0;
             Float t = tmin;
-            Float t_it = 0.0;
-            Float t_acc = 0.0;
-            Float inv_max_density;
-            Float aCoef, bCoef; // scalar = aCoef * t + bCoef 
+            const auto inv_max_density = 1_f / volume_density_->max_scalar();
             while (true) {
-                if(t_acc >= validMaxT) { // update max scalar
-                    inv_max_density = 1_f / volume_density_->max_scalar({ray.o + ray.d * t,ray.d},validMaxT, aCoef, bCoef);
-                    t_acc = 0.0;
-                }
-                t_it = -glm::log(1_f-rng.u()) * inv_max_density;
                 // Sample a distance from the 'homogenized' volume
-                t += t_it;
-                t_acc += t_it;
+                t -= glm::log(1_f-rng.u()) * inv_max_density;
                 if (t >= tmax) {
                     // Hit with boundary, use surface interaction
                     return {};
@@ -77,11 +67,7 @@ public:
 
                 // Density at the sampled point
                 const auto p = ray.o + ray.d*t;
-                //const auto density = volume_density_->eval_scalar(p, ray.d);
-                //const auto density = bCoef + volume_density_->eval_scalar(p, ray.d);
-                const auto density = extrapolation ? 
-                    bCoef + t_acc * aCoef:
-                    volume_density_->eval_scalar(p, ray.d);
+                const auto density = volume_density_->eval_scalar(p);
 
                 // Determine scattering collision or null collision
                 // Continue tracking if null collusion is seleced
@@ -140,30 +126,15 @@ public:
         } else {
             // Perform ratio tracking [Novak et al. 2014]
             Float Tr = 1_f;
-            Float validMaxT = -1.0;
             Float t = tmin;
-            Float t_it = 0.0;
-            Float t_acc = 0.0;
-            Float inv_max_density;
-            Float aCoef, bCoef; // scalar = aCoef * t + bCoef 
-
+            const auto inv_max_density = 1_f / volume_density_->max_scalar();
             while (true) {
-                if(t_acc >= validMaxT) {// update max scalar
-                    inv_max_density = 1_f / volume_density_->max_scalar({ray.o + ray.d * t,ray.d},validMaxT,aCoef, bCoef);
-                    t_acc = 0.0;
-                }
-                t_it = -glm::log(1_f - rng.u()) * inv_max_density;
-                t += t_it;
-                t_acc += t_it;
+                t -= glm::log(1_f - rng.u()) * inv_max_density;
                 if (t >= tmax) {
                     break;
                 }
                 const auto p = ray.o + ray.d*t;
-                //const auto density = volume_density_->eval_scalar(p, ray.d);
-                const auto density = extrapolation ? 
-                    bCoef + t_acc * aCoef:
-                    volume_density_->eval_scalar(p, ray.d);
-
+                const auto density = volume_density_->eval_scalar(p);
                 Tr *= 1_f - density * inv_max_density;
             }
 

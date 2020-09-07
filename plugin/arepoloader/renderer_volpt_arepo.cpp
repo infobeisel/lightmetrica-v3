@@ -197,7 +197,7 @@ public:
                 // Sample next scene interaction
                 
                 //importance sample distance following light source, strategy 0
-
+/*
                 auto lightDistanceSample = path::DistanceSample();
                 lightDistanceSample.weight = Vec3(0);
                 {
@@ -244,7 +244,7 @@ public:
                             }
                     });
                 }
-
+*/
                 //importance sample distance following volume 
                 auto sd = path::sample_distance(rng, scene_, sp, s->wo);
 
@@ -252,7 +252,7 @@ public:
                 if (!sd) {
                     break;
                 }
-                
+                /*
                 //2 distance samples 0 and 1, 2 strategies 0 and 1,
                 // we miss one pdf value: equiangular pdf 0 of regular distance sample 1
                 {
@@ -321,7 +321,7 @@ public:
 
                 //always combine all weights together (right now with 0.5 weight)
                 //sd->weight = 0.5 * lightDistanceSample.weight + 0.5 * sd->weight;
-
+*/
                 // --------------------------------------------------------------------------------
 
                 // Update throughput

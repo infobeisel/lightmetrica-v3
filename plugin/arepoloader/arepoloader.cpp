@@ -30,8 +30,7 @@ ConfigSet Config;
 
 namespace ArepoLoaderInternals {
 
-    #define INSIDE_TOLERANCE 10.0 * std::numeric_limits<lm::Float>::epsilon()
-    #define TRAVEL_BIAS 0.0000001
+    #define INSIDE_TOLERANCE 100.0 * std::numeric_limits<lm::Float>::epsilon()
     #define DENSITY_CRANKUP 1.0
     #define REJECTION_SAMPLES_COUNT 10
     #define RAY_SEGMENT_ALLOC 200
@@ -180,10 +179,16 @@ namespace ArepoLoaderInternals {
 
             {
                 tetra t;
-                t.t[0] = 2;
+                t.t[0] = 1;
+                t.t[1] = 1;
+                t.t[2] = 1;
+                t.t[3] = 1;
+
+                /*t.t[0] = 2;
                 t.t[1] = 2;
                 t.t[2] = 1;
                 t.t[3] = 2;
+*/
 
                 t.p[0] = 0;
                 t.p[1] = 1;
@@ -199,38 +204,39 @@ namespace ArepoLoaderInternals {
 
             
 
+       
+
             point p;
-            p.x = -2;p.y = 0;p.z = -2;p.index = 0;
+            p.x = -200;p.y = 0;p.z = -200;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.5);
+            densities.push_back(0.0001);
             p.x = 0;p.y = 0;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.5);
-            p.x = 1;p.y = 0;p.z = -2;p.index=2;
+            densities.push_back(0.0001);
+            p.x = 100;p.y = 0;p.z = -200;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.5);
-            p.x = 0;p.y = 2;p.z = -1;p.index=3;
+            densities.push_back(0.0001);
+            p.x = 0;p.y = 200;p.z = -100;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.5);
+            densities.push_back(0.0001);
 
-            p.x = -2;p.y = 2;p.z = 0;p.index=4;
-            DP.push_back(p);
-            densities.push_back(0.0);
-
+            //p.x = 200;p.y = 200;p.z = 100;p.index=4;
+            //DP.push_back(p);
+            //densities.push_back(0.01);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
 
 
-            {
+           /*{
                 tetra t;
                 t.t[0] = 2;
                 t.t[1] = 2;
                 t.t[2] = 2;
                 t.t[3] = 0;
 
-                t.p[0] = 0;
-                t.p[1] = 1;
+                t.p[0] = 1;
+                t.p[1] = 2;
                 t.p[2] = 3;
                 t.p[3] = 4;
                 t.s[0] = 1;
@@ -240,7 +246,7 @@ namespace ArepoLoaderInternals {
 
                 DT.push_back(t);
             }
-
+*/
             /*{
                 tetra t;
                 t.t[0] = 3;
@@ -276,8 +282,8 @@ namespace ArepoLoaderInternals {
             tDel.s[3] = 0;
             DT.push_back(tDel);
 
-            Ndt = 3;
-            Ndp = 5;
+            Ndt = 2;
+            Ndp = 4;
 
 
         }
@@ -464,6 +470,7 @@ namespace ArepoLoaderInternals {
         b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z), densities);
         a = glm::dot( lambda012_a, lm::Vec3(densities));
         a +=  densities[3] * (- lambda012_a.x - lambda012_a.y - lambda012_a.z);
+        
         //LM_INFO("{} and {}",a,b);
         if(b<=0.0) {
            // LM_ERROR("b is non positive?!");
@@ -1036,6 +1043,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     virtual void construct(const lm::Json& prop) override {
         const auto configPath = lm::json::value<std::string>(prop, "configpath");
+        tetraTestMargin = lm::json::value<lm::Float>(prop, "tetrahedronTestMargin", 0.1);
         auto cutoutPath = lm::json::value<std::string>(prop, "cutoutpath");
         auto pos = cutoutPath.find(".hdf5");
         cutoutPath = cutoutPath.substr(0, pos);
@@ -1283,9 +1291,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         lm::Float t = 0.0;
         auto & info = useCache; 
         auto correctedRay = ray;
+        ray.o += ray.d *  tetraTestMargin;
         do {
             //step
-            ray.o += ray.d * (t + TRAVEL_BIAS);
+            correctedRay.o = ray.o;
+            ray.o += ray.d * (t + tetraTestMargin);
             /*if(inside) { //last iteration we were inside, can test neighbors
                 auto ni = arepoMeshRef->DT[info.tetraI].t[(info.looksAtTriId - 1) % 4]; //next tetrahedron with common face
                 if(ni >= 0 && ni < arepoMeshRef->Ndt) {
@@ -1311,9 +1321,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             t = (!inside ? info.lastHit.t : 
                 intersectCachedTetra(ray,info));
             //t = info.lastHit.t;
-            correctedRay.o = ray.o - ray.d * TRAVEL_BIAS;
+            correctedRay.o = ray.o;//+= ray.d * t;
             //LM_INFO("inside: {}, t: {}",inside,t);
-        } while(processor(inside,correctedRay,t + TRAVEL_BIAS,info));
+        } while(processor(inside,correctedRay,t ,info));
 
     }
 
@@ -1368,14 +1378,14 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 return ret;
             });
         }
-
+       // LM_INFO("total {},",totalacc);
         lm::Float normFac = 1.0 - glm::exp(-totalacc);
         //have found cdf normalization, now can sample the volume exactly following 
         //its density
-        lm::Float transmittance = 1.0;
+        lm::Float transmittance = 1.0 ;
         lm::Float logxi = -glm::log( 1.0 - rng.u() * normFac);
         lm::Float acc = 0.0;
-        lm::Float pdf = 0.0;
+        lm::Float pdf = 1.0;
         auto freeT = 0.0;
         bool stopAccumulating = false;
         bool stopEquiangular = false;
@@ -1389,22 +1399,23 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_0,normFac * equiPDF);
             }
 
-            if (  (acc  + raySegment.localcdf ) > logxi) {
+            if ( !stopAccumulating &&  (acc  + raySegment.localcdf ) > logxi) {
                 auto normcdf =  acc ;
                 lm::Float t = sampleCachedICDF_andCDF( logxi, 0.0, 0.0 + raySegment.t ,
                 normcdf ,  raySegment.a ,   raySegment.b );
                 freeT += t; 
                 normcdf = sampleCDF(0,t,raySegment.a,raySegment.b );
                 acc += normcdf; //accumulate non normalized!
-                transmittance *= glm::exp(-  normcdf )  ;
-                pdf = raySegment.b + raySegment.a * t;
+                pdf = (raySegment.b + raySegment.a * t) * glm::exp(-acc) / normFac;
+                transmittance *= glm::exp(-  normcdf );
                 stopAccumulating = true;
             }
 
             if (!stopAccumulating) {
                 freeT += raySegment.t;
-                acc += raySegment.localcdf;
-                transmittance *= glm::exp(- raySegment.localcdf) ;
+                acc += raySegment.localcdf ;
+                //pdf *= (raySegment.b + raySegment.a * raySegment.t) * glm::exp(-raySegment.localcdf) ;
+                transmittance *= glm::exp(- raySegment.localcdf);
             }
             
             
@@ -1416,9 +1427,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance);
 
         //TODO multiply with normFAC?!?!
-        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_1, normFac * pdf);
+        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_1, pdf);
         lm::stats::set<lm::stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(key,freeT);
-        weight = normFac * pdf  ; 
+        weight = 1.0 / pdf ; 
         return freeT;
 
    }
@@ -1525,6 +1536,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Float scale_;
     lm::Bound bound_;
     lm::Float max_scalar_;
+    lm::Float tetraTestMargin;
 
 #ifdef MOCK_AREPO
     std::unique_ptr<IArepoMeshMock>  arepoMesh;
