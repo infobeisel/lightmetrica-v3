@@ -197,7 +197,7 @@ public:
                 // Sample next scene interaction
                 
                 //importance sample distance following light source, strategy 0
-/*
+
                 auto lightDistanceSample = path::DistanceSample();
                 lightDistanceSample.weight = Vec3(0);
                 {
@@ -244,9 +244,12 @@ public:
                             }
                     });
                 }
-*/
+
                 //importance sample distance following volume 
                 auto sd = path::sample_distance(rng, scene_, sp, s->wo);
+
+                //second choice: sample equiangular
+               // sd = lightDistanceSample;
 
                 //todo evaluate this!!!
                 if (!sd) {
@@ -309,7 +312,7 @@ public:
                 //third choice: balance heuristic
                 sd->sp.geom.p  =    w_Equi * lightDistanceSample.sp.geom.p 
                                 +   w_Regular * sd->sp.geom.p  ;
-                sd->weight = Vec3(equiStratEquiSmplPDF * regularStratRegularSmplPDF);// Vec3(1.0);//sd->weight  + lightDistanceSample.weight ;
+                sd->weight = Vec3(1.0 / (equiStratEquiSmplPDF * regularStratRegularSmplPDF));// Vec3(1.0);//sd->weight  + lightDistanceSample.weight ;
                 //LM_INFO("weights sum {}" ,Vec3(sd->weight  + lightDistanceSample.weight )[0]);
                 //lightDistanceSample.weight * lightDistanceSample.sp.geom.p 
                 //+ sd.weight * sd->sp.geom.p 
@@ -321,7 +324,9 @@ public:
 
                 //always combine all weights together (right now with 0.5 weight)
                 //sd->weight = 0.5 * lightDistanceSample.weight + 0.5 * sd->weight;
+
 */
+                
                 // --------------------------------------------------------------------------------
 
                 // Update throughput
