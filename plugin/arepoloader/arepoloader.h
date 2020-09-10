@@ -43,6 +43,8 @@ namespace stats {
     struct RegularTrackingStrategyDistanceSample {};
     struct EquiangularStrategyDistanceSample {};
 
+    struct ScatteringAlbedo {};
+
     struct DistanceSamplesPDFs{};
     //2 distance samples, first one from equiangular, second one from regular 
     enum IJ {

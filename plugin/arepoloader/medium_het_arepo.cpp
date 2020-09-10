@@ -73,7 +73,17 @@ public:
                 // Continue tracking if null collusion is seleced
                 if (density * inv_max_density > rng.u()) {
                     // Scattering collision
-                    const auto albedo = volme_albedo_->eval_color(p);
+                    //const auto albedo = volme_albedo_->eval_color(p);
+                    //calculate albedo myself
+                    auto crosssection = 1.0;
+                    auto particle_density = density;
+                    auto mu_a = crosssection * particle_density;
+                    auto phase_integrated = 1.0;//isotrope
+                    auto mu_s = phase_integrated* particle_density;
+                    auto mu_t = mu_a + mu_s;
+                    auto scattering_albedo = mu_s / mu_t; 
+                    const auto albedo =  lm::Vec3(scattering_albedo);
+                    
                     return DistanceSample{
                         ray.o + ray.d*t,
                         albedo,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
@@ -93,13 +103,13 @@ public:
                 return {};
             }
 
-            t = glm::min(t, tmax);
+            //t = glm::min(t, tmax);
 
             auto p = ray.o + ray.d*t;
             const auto albedo = volme_albedo_->eval_color(p);
             return DistanceSample{
                 p,
-                albedo * weight,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
+                albedo,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
                             // = 1/\mu_t(t) * \mu_s(t) = albedo(t)
                 true
             };

@@ -20,7 +20,9 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 class Renderer_VolPT_Base : public Renderer {
 protected:
+    std::string strategy_;
     Scene* scene_;
+    Volume_Arepo* volume_;
     Film* film_;
     int max_verts_;
     Float rr_prob_;
@@ -42,7 +44,9 @@ public:
 
 public:
     virtual void construct(const Json& prop) override {
+        strategy_ = json::value<std::string>(prop, "strategy");
         scene_ = json::comp_ref<Scene>(prop, "scene");
+        volume_= json::comp_ref<Volume_Arepo>(prop, "volume");
         film_ = json::comp_ref<Film>(prop, "output");
         max_verts_ = json::value<int>(prop, "max_verts");
         seed_ = json::value_or_none<unsigned int>(prop, "seed");
@@ -83,9 +87,7 @@ public:
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
             
-             //store the sample id that this thread currently works on 
-            stats::set<stats::CachedSampleId,int,long long>(0,spp_ * pixel_index + sample_index);
-           //LM_INFO("current sample id : {}", std::to_string(stats::get<stats::CurrentSampleId,long long>(0)));
+             //LM_INFO("current sample id : {}", std::to_string(stats::get<stats::CurrentSampleId,long long>(0)));
             //
             stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_0,0.0);
             stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_1,0.0);
@@ -124,6 +126,12 @@ public:
             Vec3 wi{};
             Vec2 raster_pos{};
             for (int num_verts = 1; num_verts < max_verts_; num_verts++) {
+
+
+                //store the sample id that this thread currently works on 
+                stats::set<stats::CachedSampleId,int,long long>(0,max_verts_ * spp_ * pixel_index + max_verts_ * sample_index + num_verts);
+           
+
                 // Sample a NEE edge
                 #if VOLPT_IMAGE_SAMPLING
                 const auto samplable_by_nee = !path::is_specular_component(scene_, sp, comp);
@@ -198,12 +206,13 @@ public:
                 
                 //importance sample distance following light source, strategy 0
 
+                
                 auto lightDistanceSample = path::DistanceSample();
                 lightDistanceSample.weight = Vec3(0);
-                {
+                if(strategy_ != "delta" && strategy_ != "regular") {
 
-                    //auto mediumindex = scene_->medium_node();
-                    //auto & medium = scene_->node_at(mediumindex);
+                    auto mediumindex = scene_->medium_node();
+                    auto & medium = scene_->node_at(mediumindex);
                     //medium.primitive.medium->
                     Ray ray = {
                     sp.geom.p,
@@ -212,33 +221,43 @@ public:
                     //sample next scene interaction following light sources situation
                     scene_->traverse_primitive_nodes(
                         [&] (const SceneNode& node, Mat4 global_transform) {
-                            if(node.primitive.light != nullptr) {
+                            if(node.primitive.light != nullptr && !node.primitive.light->is_infinite()) {
                                 auto & light = *node.primitive.light;
                                 auto possample = rng.next<Light::PositionSampleU>();
                                 auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;
                                 //LM_INFO("light pos {},{},{}",lightPos.x,lightPos.y,lightPos.z);
-                                auto shortestT = glm::dot((lightPos - ray.o), ray.d) / glm::dot(ray.d,ray.d); 
+                                auto shortestT = glm::dot((lightPos - ray.o), ray.d); 
                                 auto d = ray.o + ray.d * shortestT - lightPos;
                                 auto D = glm::length(d);
-                                auto a = -999;//ray.o - lightPos;
-                                auto b = 999;//ray.o + ray.d * 999999.0 - lightPos;
-                                auto theta_a = glm::atan(a/D);
-                                auto theta_b = glm::atan(b/D);
+                                Float a = -10.0;//ray.o - lightPos;
+                                Float b =  10.0;//ray.o + ray.d * 999999.0 - lightPos;
+                                auto theta_a = glm::atan(a,D);
+                                auto theta_b = glm::atan(b,D);
                                 auto xi = rng.u();
-                                auto t = D * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
-                                auto pdf = D / (theta_b - theta_a) / (D*D+t*t);
+                                auto equiT = D * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
+                                auto pdf = D / ((theta_b - theta_a) * (D*D+equiT*equiT));
+                                auto t = equiT + shortestT;
                                 //store sample of strategy 0
                                 int key = 0;
                                 stats::set<stats::EquiangularStrategyDistanceSample,int,Float>(key,t);
                                 //store pdf for sample of strategy 0
                                 stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_0,pdf);
 
+                                auto T = medium.primitive.medium->eval_transmittance(
+                                 rng,  ray,0.0, t);
+                                auto mu_s = volume_->eval_scalar(ray.o + ray.d * t,ray.d);
+                                //assume mu_s with isotropic phase, i.e.,particle_dens *  1
+
+                                auto albedo = Vec3( mu_s* T );
+
+
+
                                 lightDistanceSample = path::DistanceSample {
                                     SceneInteraction::make_medium_interaction(
                                         scene_->medium_node(),
                                         PointGeometry::make_degenerated(ray.o + ray.d * t)
                                     ),
-                                    Vec3(pdf)
+                                    albedo
                                 };
                                 
                             }
@@ -247,18 +266,13 @@ public:
 
                 //importance sample distance following volume 
                 auto sd = path::sample_distance(rng, scene_, sp, s->wo);
+                
+                
 
-                //second choice: sample equiangular
-               // sd = lightDistanceSample;
-
-                //todo evaluate this!!!
-                if (!sd) {
-                    break;
-                }
-                /*
+                
                 //2 distance samples 0 and 1, 2 strategies 0 and 1,
                 // we miss one pdf value: equiangular pdf 0 of regular distance sample 1
-                {
+                if(strategy_ != "delta" && strategy_ != "regular") {
 
                     //auto mediumindex = scene_->medium_node();
                     //auto & medium = scene_->node_at(mediumindex);
@@ -266,28 +280,27 @@ public:
                     Ray ray = {
                     sp.geom.p,
                     s->wo};
-                    
+                    int key = 0;
+                    auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,Float>(key);
+                                
                     //sample next scene interaction following light sources situation
                     scene_->traverse_primitive_nodes(
                         [&] (const SceneNode& node, Mat4 global_transform) {
-                            if(node.primitive.light != nullptr) {
+                            if(node.primitive.light != nullptr && !node.primitive.light->is_infinite()) {
                                 auto & light = *node.primitive.light;
                                 auto possample = rng.next<Light::PositionSampleU>();
                                 auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;
                                 //LM_INFO("light pos {},{},{}",lightPos.x,lightPos.y,lightPos.z);
-                                auto shortestT = glm::dot((lightPos - ray.o), ray.d) / glm::dot(ray.d,ray.d); 
+                                auto shortestT = glm::dot((lightPos - ray.o), ray.d); 
                                 auto d = ray.o + ray.d * shortestT - lightPos;
                                 auto D = glm::length(d);
-                                auto a = -999;//ray.o - lightPos;
-                                auto b = 999;//ray.o + ray.d * 999999.0 - lightPos;
-                                auto theta_a = glm::atan(a/D);
-                                auto theta_b = glm::atan(b/D);
+                                Float a = -10.0;//ray.o - lightPos;
+                                Float b =  10.0;//ray.o + ray.d * 999999.0 - lightPos;
+                                auto theta_a = glm::atan(a,D);
+                                auto theta_b = glm::atan(b,D);
                                 //auto xi = rng.u();
-                                //auto t = D * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
-                                int key = 0;
-                                auto t = stats::get<stats::RegularTrackingStrategyDistanceSample,int,Float>(key);
-                                auto pdf = D / (theta_b - theta_a) / (D*D+t*t);
-                                //store sample of strategy 0
+                                auto equiT = regularT - shortestT;
+                                auto pdf = D / ((theta_b - theta_a) * (D*D+equiT*equiT));
                                 //store pdf for sample of strategy 0
                                 stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_1,pdf);                                
                             }
@@ -309,10 +322,42 @@ public:
                 //second choice: sample equiangular
                 //sd = lightDistanceSample;
 
-                //third choice: balance heuristic
-                sd->sp.geom.p  =    w_Equi * lightDistanceSample.sp.geom.p 
-                                +   w_Regular * sd->sp.geom.p  ;
-                sd->weight = Vec3(1.0 / (equiStratEquiSmplPDF * regularStratRegularSmplPDF));// Vec3(1.0);//sd->weight  + lightDistanceSample.weight ;
+
+                //no medium interaction at all
+                //todo evaluate this!!!
+                if (!sd) {
+                    break;
+                }
+
+                if(strategy_ == "experimental_mis") {
+
+                    //third choice: balance heuristic
+                    auto equiContr = lightDistanceSample.weight;
+                    auto regularContr = sd->weight;
+                    auto equiScatterPoint = lightDistanceSample.sp.geom.p;
+                    auto regularScatterPoint = sd->sp.geom.p;
+                    sd->sp.geom.p  =    w_Equi * lightDistanceSample.sp.geom.p / equiStratEquiSmplPDF
+                                    +   w_Regular * sd->sp.geom.p  / regularStratRegularSmplPDF;
+                                
+                    sd->weight =  w_Equi * lightDistanceSample.weight / equiStratEquiSmplPDF
+                                +   w_Regular * sd->weight  / regularStratRegularSmplPDF;
+                } else if(strategy_ == "equiangular" ) {
+                    sd = lightDistanceSample;
+                    sd->weight = sd->weight / equiStratEquiSmplPDF;
+                } else if(strategy_ == "regular") {
+                    sd->weight = sd->weight / regularStratRegularSmplPDF;
+                    //already done
+                } else if(strategy_ == "onesample_mis") {
+                    auto chooseStrategy =  rng.u();
+                    if(chooseStrategy < 0.5) {
+                        sd->weight = w_Regular * sd->weight / regularStratRegularSmplPDF / 0.5;
+                    } else {
+                        sd = lightDistanceSample;
+                        sd->weight = w_Equi * sd->weight / equiStratEquiSmplPDF / 0.5;
+                    }
+                } else if(strategy_ == "delta") {
+                    //everythin is as it should be
+                }
                 //LM_INFO("weights sum {}" ,Vec3(sd->weight  + lightDistanceSample.weight )[0]);
                 //lightDistanceSample.weight * lightDistanceSample.sp.geom.p 
                 //+ sd.weight * sd->sp.geom.p 
@@ -325,7 +370,11 @@ public:
                 //always combine all weights together (right now with 0.5 weight)
                 //sd->weight = 0.5 * lightDistanceSample.weight + 0.5 * sd->weight;
 
-*/
+                
+
+                //sd->weight = sd->weight / regularStratRegularSmplPDF;
+                //sd->weight = sd->weight / equiStratEquiSmplPDF;
+                
                 
                 // --------------------------------------------------------------------------------
 

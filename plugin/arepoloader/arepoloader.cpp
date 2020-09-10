@@ -203,22 +203,22 @@ namespace ArepoLoaderInternals {
        
 
             point p;
-            p.x = -2 + 4;p.y = 0;p.z = -2;p.index = 0;
+            p.x = -2;p.y = 0;p.z = -2;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.01);
-            p.x = 0+ 4;p.y = -1;p.z = 0;p.index=1;
+            densities.push_back(0.1);
+            p.x = 0;p.y = -1;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.01);
-            p.x = 1+ 4;p.y = 0;p.z = -2;p.index=2;
+            densities.push_back(0.1);
+            p.x = 1;p.y = 0;p.z = -2;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.01);
-            p.x = 0+ 4;p.y = 2;p.z = -1;p.index=3;
+            densities.push_back(0.1);
+            p.x = 0;p.y = 2;p.z = -1;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.01);
+            densities.push_back(0.1);
 
-            p.x = 2+ 4;p.y = 2;p.z = 1;p.index=4;
+            p.x = 2;p.y = 2;p.z = 1;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.01);
+            densities.push_back(0.1);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
@@ -1391,7 +1391,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         auto equiAngularT = lm::stats::get<lm::stats::EquiangularStrategyDistanceSample,int,lm::Float>(key);
         //store pdf for sample of strategy 0
         //auto & pdfs = lm::stats::get<lm::stats::DistanceSamplesPDFs,lm::stats::IJ::,lm::Float>(key);
-                                        
+        lm::stats::IJ pdfkey = lm::stats::IJ::_0_0;
+        //auto equipdf = lm::stats::get<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(pdfkey);
+                             
 
         int segmentCount = 0;
         std::vector<ArepoLoaderInternals::RaySegmentCDF> & segments = raySegments();
@@ -1437,6 +1439,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         }
        // LM_INFO("total {},",totalacc);
         lm::Float normFac =  1.0 - glm::exp(-totalacc);
+        lm::Float integratedNormFac = 1.0;//1.0 - glm::exp(- (totalacc));
         //have found cdf normalization, now can sample the volume exactly following 
         //its density
         lm::Float transmittance = 1.0;
@@ -1444,6 +1447,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //lm::Float logxi = -glm::log( 1.0 - xi);
         lm::Float logxi = -gsl_log1p(-xi);
         lm::Float acc = 0.0;
+        lm::Float contribution = 0.0;
         lm::Float pdf = 1.0;
         auto freeT = 0.0;
         auto retFreeT = std::numeric_limits<lm::Float>::max();
@@ -1453,25 +1457,47 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
             auto & raySegment = segments[segmentI];
 
+
             //by the way, calculate PDF for samples coming from other strategies:
             if(freeT + raySegment.t > equiAngularT && !stopEquiangular) {
                 stopEquiangular = true;
                 auto cdf = acc + sampleCDF((equiAngularT - freeT),raySegment.a,raySegment.b );
-                auto equiPDF = (raySegment.b + raySegment.a * (equiAngularT - freeT)) * glm::exp(-cdf) / totalacc;
+                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                auto t = (equiAngularT - freeT);
+                auto particle_density = raySegment.b + raySegment.a * t;
+                auto mu_a = crosssection * particle_density;
+                auto phase_integrated = 1.0;//isotrope
+                auto mu_s = phase_integrated* particle_density;
+                auto mu_t = mu_a + mu_s;
+                auto scattering_albedo = mu_s / mu_t; 
+                auto regularPF_of_equiSample = mu_t * glm::exp(-cdf) / normFac; 
                 lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
-                    lm::stats::IJ::_1_0,equiPDF/normFac);
+                    lm::stats::IJ::_1_0,regularPF_of_equiSample);
+                
             }
 
             if ( !stopAccumulating &&  (acc  + raySegment.localcdf ) > logxi) {
                 auto normcdf =  acc ;
                 lm::Float t = sampleCachedICDF_andCDF( logxi,xi , raySegment.t ,
                 normcdf ,  raySegment.a ,   raySegment.b );
-                retFreeT = freeT + t; 
+                retFreeT = tmin + freeT + t; 
                 normcdf = sampleCDF(t,raySegment.a,raySegment.b );
-                 //accumulate non normalized!
-                retAcc = acc + normcdf;
-                pdf = (raySegment.b + raySegment.a * t) * glm::exp(-retAcc) / totalacc;
                 transmittance *= glm::exp(-  normcdf );
+                //accumulate non normalized!
+                retAcc = acc + normcdf;
+                integratedNormFac *= (1.0 - glm::exp(- (totalacc-retAcc)));
+                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                auto particle_density = raySegment.b + raySegment.a * t;
+                auto mu_a = crosssection * particle_density;
+                auto phase_integrated = 1.0;//isotrope
+                auto mu_s = phase_integrated* particle_density;
+                auto mu_t = mu_a + mu_s;
+                auto scattering_albedo = mu_s / mu_t; 
+                contribution = mu_s * transmittance;
+
+                pdf = mu_t * transmittance / normFac;             
+                //pdf = (raySegment.b + raySegment.a * t) * glm::exp(-retAcc) ; //normfac already at scatter albedo
+
                 stopAccumulating = true;
             }
 
@@ -1479,20 +1505,27 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 //pdf *= (raySegment.b + raySegment.a * raySegment.t) * glm::exp(-raySegment.localcdf) ;
                 transmittance *= glm::exp(- raySegment.localcdf);
             }
+            
+            integratedNormFac *= (1.0 - glm::exp(- (totalacc - acc)));
+            
             acc += raySegment.localcdf ;
             freeT += raySegment.t;
-         
+            
+            
             
         }
+
+        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, contribution);
+
 
         //acccdf contains NON-normalized cdf which is exactly what we want
         //acccdf *= cdfNorm;
         lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance );
 
         //TODO multiply with normFAC?!?!
-        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_1, pdf/normFac);
-        lm::stats::set<lm::stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(key,freeT);
-        weight = normFac / pdf; 
+        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_1, pdf);
+        lm::stats::set<lm::stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(key,retFreeT);
+        //weight =  1.0/pdf; 
         return retFreeT;
 
    }
@@ -1507,7 +1540,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         if(cached.sampleIndex == currentSample) { //is cached
             //auto maxTransmittance = lm::stats::get<lm::stats::MaxTransmittance,int,lm::Float>(h);
             auto freePathTransmittance = lm::stats::get<lm::stats::FreePathTransmittance,int,lm::Float>(h);
-            return freePathTransmittance;
+          //  return freePathTransmittance;
         } 
 
         auto transmittance = 1.0;
@@ -1549,14 +1582,37 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals1;
         tmpVals1.clear();
         gatherValsAtPoint(p,glm::normalize(lm::Vec3(1)), tmpVals1.vals);
+
+
+        //cache scattering albedo
+        auto particle_density = tmpVals1.vals[TF_VAL_DENS];
+        auto crosssection = 1.0;//327.0/1000.0; //barn ...? Hydrogen
+        auto mu_a = crosssection * particle_density;
+        auto phase_integrated = 1.0;//isotrope
+        auto mu_s = phase_integrated * particle_density;
+        auto mu_t = mu_a + mu_s;
+        auto scattering_albedo = mu_s / mu_t; 
+        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, scattering_albedo);
+
         return  tmpVals1.vals[TF_VAL_DENS];
     }
 
     virtual lm::Float eval_scalar(lm::Vec3 p , lm::Vec3 dir) const override {
-        
         thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals1;
         tmpVals1.clear();
         gatherValsAtPoint(p, dir, tmpVals1.vals);
+
+        //cache scattering albedo
+        auto particle_density = tmpVals1.vals[TF_VAL_DENS];
+        auto crosssection = 1.0;//327.0/1000.0; //barn ...? Hydrogen
+        auto mu_a = crosssection * particle_density;
+        auto phase_integrated = 1.0;//isotrope
+        auto mu_s = phase_integrated* particle_density;
+        auto mu_t = mu_a + mu_s;
+        auto scattering_albedo = mu_s / mu_t; 
+        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, scattering_albedo);
+
+
         return  tmpVals1.vals[TF_VAL_DENS];
     }
 
@@ -1565,9 +1621,36 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     }
     virtual lm::Vec3 eval_color(lm::Vec3 p) const override {
         //thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals2;
+        auto cached = cachedDistanceSample();
+        //check if we have information from sample_distance available
+        int h = 0;        
+        auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
+        if(cached.sampleIndex == currentSample) { //is cached
+            auto scatteringAlbedo = lm::stats::get<lm::stats::ScatteringAlbedo,int,lm::Float>(h);
+            return lm::Vec3(scatteringAlbedo);
+        } 
+
+        //else search for it 
+        if(! findAndCacheTetra(cached,p,lm::Vec3(1,0,0),meshAdapter.get())) {
+            return lm::Vec3(1.0);
+        } else {
+            auto crosssection = 1.0;//327.0/1000.0; //barn ...?
+
+            lm::Ray r;
+            r.o = p;
+            r.d = lm::Vec3(1,0,0);
+            lm::Float a,b;
+            sampleCachedScalarCoefficients(r,a,b,cached);
+            auto particle_density = b;
+            auto mu_a = crosssection * particle_density;
+            auto phase_integrated = 1.0;//isotrope
+            auto mu_s = phase_integrated* particle_density;
+            auto mu_t = mu_a + mu_s;
+            auto scattering_albedo = mu_s / mu_t; 
+            return lm::Vec3(scattering_albedo);
+        }
 
 
-        return lm::Vec3(1.0);
         //TODOOOOOOOOOOOOOOOOOOOOOOO
         /*auto copy = cachedSample();
         if(! findAndCacheTetra(cachedSample(),p)) {
