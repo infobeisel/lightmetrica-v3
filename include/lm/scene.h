@@ -423,6 +423,15 @@ public:
     */
     virtual Float pdf_light_selection(int light_index) const = 0;
 
+    /*!
+        \brief Evaluate the PDF for light sampling.
+        \param light_index Sampled light index.
+        \return Evaluated PDF.
+    */
+    virtual Float pdf_light_selection_from_pos(int light_index, Vec3 const pos) const = 0;
+
+
+
     //! Get primitive node index from light index.
     virtual LightPrimitiveIndex light_primitive_index_at(int light_index) const = 0;
 

@@ -635,6 +635,10 @@ static void bind_scene(pybind11::module& m) {
         virtual Float pdf_light_selection(int light_index) const override {
             PYBIND11_OVERLOAD_PURE(Float, Scene, pdf_light_selection, light_index);
         }
+        virtual Float pdf_light_selection_from_pos(int light_index, Vec3 pos) const override {
+            PYBIND11_OVERLOAD_PURE(Float, Scene, pdf_light_selection, light_index, pos);
+        }
+        
         virtual LightPrimitiveIndex light_primitive_index_at(int light_index) const override {
             PYBIND11_OVERLOAD_PURE(LightPrimitiveIndex, Scene, light_primitive_index_at, light_index);
         }
@@ -685,6 +689,7 @@ static void bind_scene(pybind11::module& m) {
         .def("sample_light_selection", &Scene::sample_light_selection)
         .def("sample_light_selection_from_pos", &Scene::sample_light_selection_from_pos)
         .def("pdf_light_selection", &Scene::pdf_light_selection)
+        .def("pdf_light_selection_from_pos", &Scene::pdf_light_selection_from_pos)
         .def("light_primitive_index_at", &Scene::light_primitive_index_at)
         .def("light_index_at", &Scene::light_index_at)
         .PYLM_DEF_COMP_BIND(Scene);

@@ -45,6 +45,11 @@ namespace stats {
 
     struct ScatteringAlbedo {};
 
+
+    struct DistanceSampleRandomValues {};
+    struct EquiDistanceSampleRandomValueVertexIndex {};
+    struct RegularDistanceSampleRandomValueVertexIndex {};
+
     struct DistanceSamplesPDFs{};
     //2 distance samples, first one from equiangular, second one from regular 
     enum IJ {

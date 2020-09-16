@@ -203,22 +203,22 @@ namespace ArepoLoaderInternals {
        
 
             point p;
-            p.x = -2;p.y = 0;p.z = -2;p.index = 0;
+            p.x = -2000;p.y = 0;p.z = -2000;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.1);
-            p.x = 0;p.y = -1;p.z = 0;p.index=1;
+            densities.push_back(0.00000001);
+            p.x = 0;p.y = -1000;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.1);
-            p.x = 1;p.y = 0;p.z = -2;p.index=2;
+            densities.push_back(0.00000001);
+            p.x = 1000;p.y = 0;p.z = -2000;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.1);
-            p.x = 0;p.y = 2;p.z = -1;p.index=3;
+            densities.push_back(0.00000001);
+            p.x = 0;p.y = 2000;p.z = -1000;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.1);
+            densities.push_back(0.00000001);
 
-            p.x = 2;p.y = 2;p.z = 1;p.index=4;
+            p.x = 2000;p.y = 2000;p.z = 1000;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.1);
+            densities.push_back(0.00000001);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
@@ -1395,15 +1395,22 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //auto equipdf = lm::stats::get<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(pdfkey);
                              
 
+        int currentRegularRngU_I = lm::stats::get<lm::stats::RegularDistanceSampleRandomValueVertexIndex,int,int>(key);
+        //receive current random sample
+        auto rng_u_regular = lm::stats::get<lm::stats::DistanceSampleRandomValues,int,lm::Float>(currentRegularRngU_I);
+        
+
+
         int segmentCount = 0;
         std::vector<ArepoLoaderInternals::RaySegmentCDF> & segments = raySegments();
         lm::Float totalacc = 0.0;
+        lm::Float totalT = 0.0;
         {
             auto & cached = cachedDistanceSample(); 
             originalRay.o = originalRay.o + originalRay.d * tmin; 
             lm::Float traveledT;
             
-            travel(originalRay, cached,rng.u(),
+            travel(originalRay, cached,0.0,//rng.u(),
             [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
                 
                 if(segments.size() <= segmentCount)
@@ -1433,10 +1440,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     totalacc += segments[segmentCount].localcdf;
                     ret = true;
                 }
+                totalT += segments[segmentCount].t;
                 segmentCount++;
                 return ret;
             });
         }
+
+
        // LM_INFO("total {},",totalacc);
         lm::Float normFac =  1.0 - glm::exp(-totalacc);
         lm::Float integratedNormFac = 1.0;//1.0 - glm::exp(- (totalacc));
@@ -1444,36 +1454,47 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //its density
         lm::Float transmittance = 1.0;
         lm::Float xi =  rng.u() * normFac;
+        //lm::Float xi =  rng_u_regular * normFac;
+        
         //lm::Float logxi = -glm::log( 1.0 - xi);
         lm::Float logxi = -gsl_log1p(-xi);
         lm::Float acc = 0.0;
         lm::Float contribution = 0.0;
-        lm::Float pdf = 1.0;
+        lm::Float pdf = 0.0;
+        lm::Float regularPF_of_equiSample= 0.0;
         auto freeT = 0.0;
         auto retFreeT = std::numeric_limits<lm::Float>::max();
         auto retAcc = 0.0;
         bool stopAccumulating = false;
         bool stopEquiangular = false;
+
+        //if(equiAngularT < 0.0 || normFac < std::numeric_limits<lm::Float>::epsilon()) {
+        //    stopEquiangular = true;
+        //    lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
+        //            lm::stats::IJ::_1_0,0.0);
+       // }
+
+        
         for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
             auto & raySegment = segments[segmentI];
 
 
+            
             //by the way, calculate PDF for samples coming from other strategies:
             if(freeT + raySegment.t > equiAngularT && !stopEquiangular) {
                 stopEquiangular = true;
-                auto cdf = acc + sampleCDF((equiAngularT - freeT),raySegment.a,raySegment.b );
-                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
                 auto t = (equiAngularT - freeT);
+                auto cdf = acc + sampleCDF(t,raySegment.a,raySegment.b );
+                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
                 auto particle_density = raySegment.b + raySegment.a * t;
                 auto mu_a = crosssection * particle_density;
                 auto phase_integrated = 1.0;//isotrope
                 auto mu_s = phase_integrated* particle_density;
                 auto mu_t = mu_a + mu_s;
                 auto scattering_albedo = mu_s / mu_t; 
-                auto regularPF_of_equiSample = mu_t * glm::exp(-cdf) / normFac; 
-                lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
-                    lm::stats::IJ::_1_0,regularPF_of_equiSample);
+                regularPF_of_equiSample = mu_t * glm::exp(-cdf) ;/// normFac; 
                 
+
             }
 
             if ( !stopAccumulating &&  (acc  + raySegment.localcdf ) > logxi) {
@@ -1514,7 +1535,12 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             
             
         }
+        
 
+        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
+                    lm::stats::IJ::_1_0,regularPF_of_equiSample);
+                
+                
         lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, contribution);
 
 
