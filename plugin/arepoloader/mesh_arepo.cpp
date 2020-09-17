@@ -87,8 +87,8 @@ public:
                     || dts[tetrai].p[2] <= DPinfinity || dts[tetrai].p[3] <= DPinfinity
                     )
             {
-                LM_INFO("deleted because {} or {} {} {} {} is {}",dts[tetrai].t[0]
-                , dts[tetrai].p[0], dts[tetrai].p[1], dts[tetrai].p[2], dts[tetrai].p[3],DPinfinity);
+                //LM_INFO("deleted because {} or {} {} {} {} is {}",dts[tetrai].t[0]
+                //, dts[tetrai].p[0], dts[tetrai].p[1], dts[tetrai].p[2], dts[tetrai].p[3],DPinfinity);
                 // the tetra got deleted during the simulation but we have to keep the triangle count consistent, so that later face id lookups for the densities will be correct 
                 /*for(int i = 0; i < 4; i++) {
                     triangles.push_back({ 
