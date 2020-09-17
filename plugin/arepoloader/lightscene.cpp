@@ -381,6 +381,9 @@ unsigned int primID;
   float d;
 */
 
+            int key = 0;
+            auto & visitor = *stats::get<stats::LightKnnVisitor,int,std::function<void(int,Float)>*>(key);
+
             knnres.k = onepercent;
             accel_->queryKnn(pos.x,pos.y,pos.z, std::numeric_limits<Float>::max(), knnres);
             
@@ -395,26 +398,39 @@ unsigned int primID;
                 knnres.knn.pop();
             }
 
+            
+
+
             Float cdf = 0.0;
             int finalSelectedNodeIndex = 0;
             Float pL = onepercent   ;
+            bool stopUpdating = false;
             for(auto & neighbor : sorted) {
                 Float d = neighbor.d / d_total;
+                visitor(neighbor.primID,d);
                 cdf += d;
-                if(u < cdf) {
+                if(u < cdf && !stopUpdating) {
                     finalSelectedNodeIndex = neighbor.primID;
                     pL = d / d_total;
-                    break;
+                    stopUpdating = true;
                 }
             }
             //LM_INFO("chose light index {} with pdf {}",finalSelectedNodeIndex,pL);
             stats::set<stats::SelectedLightPDF,int,Vec3>(finalSelectedNodeIndex,pos);
             stats::set<stats::SelectedLightPDF,int,Float>(finalSelectedNodeIndex,pL);
 
+            const int i = glm::clamp(int(u * static_cast<Float>(sorted.size())), 0, static_cast<int>(sorted.size()) - 1);
+            pL = 1_f / n;
             return LightSelectionSample{
-                finalSelectedNodeIndex,
+                i,
                 pL
             };
+
+
+            //return LightSelectionSample{
+            //    finalSelectedNodeIndex,
+            //    pL
+            //};
         }
 
         if(lightsamplingmode == LightSamplingMode::UNIFORM) {

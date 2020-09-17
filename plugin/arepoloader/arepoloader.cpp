@@ -8,7 +8,10 @@
 #include "fileio.h"
 #include "geometry.h"
 #include "arepo.h"
+
 #include <memory>
+
+#include "pluecker.h"
 
 #include "lm/stats.h"
 #include "statstags.h"
@@ -20,6 +23,8 @@
 #include <lm/jsontype.h>
 #include <lm/mesh.h>
 #include <lm/accel.h>
+
+
 
 #include <algorithm>
 //extern ConfigSet Config;
@@ -35,6 +40,9 @@ namespace ArepoLoaderInternals {
     #define REJECTION_SAMPLES_COUNT 10
     #define RAY_SEGMENT_ALLOC 200
 
+
+    static lm::Float MODEL_SCALE;
+
     class  ArepoTempQuantities {
     public:
         std::vector<float> vals;
@@ -48,6 +56,8 @@ namespace ArepoLoaderInternals {
     };
 
     struct ArepoMeshWrapper : public IArepoMeshMock {
+
+
         ArepoMesh * ref;
         std::vector<lm::Float> emptyDensities;
         ArepoMeshWrapper(ArepoMesh*m) : ref(m) {}
@@ -203,22 +213,22 @@ namespace ArepoLoaderInternals {
        
 
             point p;
-            p.x = -2000;p.y = 0;p.z = -2000;p.index = 0;
+            p.x = -20;p.y = 0;p.z = -20;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.00000001);
-            p.x = 0;p.y = -1000;p.z = 0;p.index=1;
+            densities.push_back(0.1);
+            p.x = 0;p.y = -10;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.00000001);
-            p.x = 1000;p.y = 0;p.z = -2000;p.index=2;
+            densities.push_back(0.1);
+            p.x = 10;p.y = 0;p.z = -20;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.00000001);
-            p.x = 0;p.y = 2000;p.z = -1000;p.index=3;
+            densities.push_back(0.1);
+            p.x = 0;p.y = 20;p.z = -10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
 
-            p.x = 2000;p.y = 2000;p.z = 1000;p.index=4;
+            p.x = 20;p.y = 20;p.z = 10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
@@ -289,11 +299,11 @@ namespace ArepoLoaderInternals {
             //for(int i = 0; i < densities.size(); i++) {
             //    LM_INFO("density {}: {}, ask {} ",i, densities[i], index);
            // }
-            return densities[index];
+            return MODEL_SCALE * densities[index];
         }
 
         virtual lm::Float max_density() override  {
-            return *std::max_element(densities.begin(), densities.end());
+            return MODEL_SCALE * (*std::max_element(densities.begin(), densities.end()));
         }
     };
 
@@ -302,6 +312,7 @@ namespace ArepoLoaderInternals {
 #else
     static IArepoMeshMock * arepoMeshRef = nullptr;
 #endif
+
 
     static lm::Accel *  accelRef = nullptr;
 
@@ -360,14 +371,9 @@ namespace ArepoLoaderInternals {
     }
 
 
-    struct RaySegmentCDF {
-        lm::Float localcdf;
-        lm::Float t;
-        lm::Float a;
-        lm::Float b;
-    };
-    static std::vector<ArepoLoaderInternals::RaySegmentCDF> & raySegments() {
-        thread_local std::vector<ArepoLoaderInternals::RaySegmentCDF> c;
+    
+    static std::vector<lm::RaySegmentCDF> & raySegments() {
+        thread_local std::vector<lm::RaySegmentCDF> c;
         if(c.size() < RAY_SEGMENT_ALLOC)
             c.resize(RAY_SEGMENT_ALLOC);
         return c;
@@ -555,7 +561,7 @@ namespace ArepoLoaderInternals {
         return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
     }
 
-    inline lm::Float intersectCachedTetra(lm::Ray ray, CachedSample & cached)  {
+    inline lm::Float intersectCachedTetra(lm::Ray ray, CachedSample & cached, bool usepluecker)  {
 
         //assumes ray.o is within cached tetra!
 
@@ -660,7 +666,38 @@ namespace ArepoLoaderInternals {
 
                LM_INFO("maindet {}",mainD);*/
         cached.looksAtTriId = faceid;
-        return t;
+
+        if(!usepluecker) {
+            //test plucker instead
+            return t;
+
+        } else {
+        
+        
+            lm::Float plueckert = 0.0;
+            std::vector<lm::Vec3> vertList = {cached.tetraVs[0],cached.tetraVs[1],cached.tetraVs[2],cached.tetraVs[3]};
+            int enterface, leaveface;
+            lm::Vec3 enterpoint, leavepoint;
+            lm::Float uenter1, uenter2, uleave1, uleave2, tenter, tleave;
+            bool retval = RayTetraPluecker(ray.o, ray.d,
+                vertList.data(),
+                enterface, leaveface,
+                enterpoint,leavepoint,
+                uenter1, uenter2, uleave1,uleave2,
+                tenter, tleave);
+                // LM_INFO(" {} t enter and leave {}, {} vs {}",retval,tenter,tleave, accelT  );
+            if(retval) {
+                if(tleave < tenter) { 
+                    if(tleave < 0.0 && tenter > 0.0)  // tenter is valid
+                        plueckert = tenter;
+                    if(tleave > 0.0) // tleave is valud
+                        plueckert = tleave;
+                }
+            }
+            return plueckert;
+        }
+
+        
     }
 
 
@@ -733,7 +770,7 @@ namespace ArepoLoaderInternals {
                 int hydroIndex = getCorrectedHydroInd(num);
                 
                 if(hydroIndex > -1 && num  < NumGas) {
-                    addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP);//lengths[minDistIndex] / totalD );
+                    addValsContribution(cachedS.cornerVals[i],hydroIndex,MODEL_SCALE);//lengths[minDistIndex] / totalD );
                 }  
             }
 #endif
@@ -753,8 +790,8 @@ namespace ArepoLoaderInternals {
         
         for(int i = 0; i < 4; i++) {
             vertInds[i] = tetra.p[i];
-            auto av = arepoMeshRef->getDP()[vertInds[i]];
-            verts[i] = lm::Vec3(av.x,av.y,av.z);
+            auto av =  arepoMeshRef->getDP()[vertInds[i]];
+            verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
             pVs[i] = verts[i] - p;
         }
 
@@ -1060,6 +1097,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         const auto configPath = lm::json::value<std::string>(prop, "configpath");
         tetraTestMargin = lm::json::value<lm::Float>(prop, "tetrahedronTestMargin", 0.1);
         auto cutoutPath = lm::json::value<std::string>(prop, "cutoutpath");
+
+        // Density scale
+        scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
+        MODEL_SCALE = scale_;
+        usepluecker_ = lm::json::value<bool>(prop, "usepluecker", false);
         auto pos = cutoutPath.find(".hdf5");
         cutoutPath = cutoutPath.substr(0, pos);
         
@@ -1095,14 +1137,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
          LM_INFO("constructed Volume Arepo");
          std::cout << " loaded snapshot " << std::endl;
-        // Density scale
-        scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
+        
         
         LM_INFO("constructed Volume Arepo");
         
         max_scalar_ = max_scalar();
         LM_INFO("max scalar  {}",max_scalar_);
-        LM_INFO("mean scalar  {}",arepo->valBounds[TF_VAL_DENS*3 + 2]);
+        LM_INFO("mean scalar  {}",MODEL_SCALE * arepo->valBounds[TF_VAL_DENS*3 + 2]);
         LM_INFO("num gas  {}",NumGas);
         LM_INFO("test delaunay mesh");
         auto arepoBound = arepoMeshWrapper->WorldBound();
@@ -1117,6 +1158,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             bound_.max = glm::max(bound_.max,currentP);
             bound_.min = glm::min(bound_.min,currentP);
         }
+        bound_.min *= MODEL_SCALE;
+        bound_.max *= MODEL_SCALE;
         LM_INFO("spatial bounds {},{},{} ; {},{},{}",bound_.min.x,bound_.min.y,bound_.min.z, bound_.max.x, bound_.max.y, bound_.max.z);
 
        
@@ -1212,6 +1255,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //{"ts_addr", (const tetra*)arepoMesh->DT},
             //{"ts_addr", reinterpret_cast<uintptr_t>(arepoMesh->DT)},
             {"arepoMesh_addr", reinterpret_cast<uintptr_t>(arepoMesh.get())},
+            {"scale", scale_}
             //{"ts_count", arepoMesh->Ndt}
         });
         
@@ -1273,7 +1317,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 #ifdef MOCK_AREPO
         return arepoMesh->max_density();
 #else
-        return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1];
+        return MODEL_SCALE * arepo->valBounds[TF_VAL_DENS*3 + 1];
 #endif
     }
     virtual lm::Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong, lm::Float & out_a, lm::Float & out_b) const override {
@@ -1284,7 +1328,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         glm::max(info.cornerVals[1][TF_VAL_DENS],
         glm::max(info.cornerVals[2][TF_VAL_DENS],
                     info.cornerVals[3][TF_VAL_DENS]))) : 0.0;
-        auto nextBound = inside ? intersectCachedTetra(ray,info) : info.lastHit.t;
+        auto nextBound = inside ? intersectCachedTetra(ray,info,usepluecker_) : info.lastHit.t;
         out_t_forhowlong = nextBound;
         if(inside) {
             sampleCachedScalarCoefficients(ray, out_a, out_b, info);
@@ -1341,34 +1385,27 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             auto accelT = info.lastHit.t;
 
             
-            if(info.looksAtTriId >= 0 && !std::isinf(accelT) ) {
-
-                //LM_INFO("calculate better intersection");
-                auto p = ray.o;
-                //glm::tmat4x3<lm::Float> pVs;//point to vertex connections
-                //connectP(info.tetraVs,p, pVs);
-                int face = info.looksAtTriId;
-                auto v0 = info.lastHitTri.p1.p;//info.tetraVs[(face + 0) % 4];
-                auto v1 = info.lastHitTri.p2.p;//info.tetraVs[(face + 1) % 4];
-                auto v2 = info.lastHitTri.p3.p;//info.tetraVs[(face + 2) % 4];
-                auto pV0 = v0 - p;
-                auto pV1 = v1 - p;
-                auto pV2 = v2 - p;
-                auto m = abs(det3x3(pV0,pV1,pV2));
-                //pV0 /= m;
-                //pV1 /= m;
-                //pV2 /= m;
-                auto b0 = abs(det3x3( pV1, pV2, ray.d) );
-                auto b1 = abs(det3x3( pV0, pV2, ray.d) );
-                auto b2 = abs(det3x3( pV0, pV1, ray.d) );
-
-                //b0 = info.lastHit.uv[0] ;
-                //b1 = info.lastHit.uv[1] ;
-                //b2 = 1.0 - info.lastHit.uv[0] - info.lastHit.uv[1];
-                auto hitPoint = v0 * b0 + v1 * b1 + b2 * v2;
-                accelT = m / (b0 + b1 + b2);
-                //accelT = glm::distance(hitPoint,ray.o);
-                //accelT *= m;
+            if(info.looksAtTriId >= 0 && !std::isinf(accelT) && usepluecker_) {
+                std::vector<lm::Vec3> verts = {info.tetraVs[0],info.tetraVs[1],info.tetraVs[2],info.tetraVs[3]};
+                int enterface, leaveface;
+                lm::Vec3 enterpoint, leavepoint;
+                lm::Float uenter1, uenter2, uleave1, uleave2, tenter, tleave;
+                bool retval = RayTetraPluecker(ray.o, ray.d,
+                    verts.data(),
+                    enterface, leaveface,
+                    enterpoint,leavepoint,
+                    uenter1, uenter2, uleave1,uleave2,
+                    tenter, tleave);
+                   // LM_INFO(" {} t enter and leave {}, {} vs {}",retval,tenter,tleave, accelT  );
+                if(retval) {
+                    if(tleave < tenter) { 
+                        if(tleave < 0.0 && tenter > 0.0)  // tenter is valid
+                            accelT = tenter;
+                        if(tleave > 0.0) // tleave is valud
+                            accelT = tleave;
+                    }
+                }
+                  //  accelT = tenter < 0.0 ? tleave : tenter;
                 
             }
             //LM_INFO("hit {} on fac {}",info.lastHit.primitive, info.lastHit.face );
@@ -1376,7 +1413,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //auto accelT = glm::distance(hitPoint.p,ray.o);
 
             t = (!inside ? accelT : 
-                intersectCachedTetra(ray,info));
+                intersectCachedTetra(ray,info,usepluecker_));
             //t = info.lastHit.t;
             correctedRay.o = ray.o;//+= ray.d * t;
             //LM_INFO("inside: {}, t: {}",inside,t);
@@ -1400,9 +1437,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         auto rng_u_regular = lm::stats::get<lm::stats::DistanceSampleRandomValues,int,lm::Float>(currentRegularRngU_I);
         
 
+        auto & visitor = *lm::stats::get<lm::stats::BoundaryVisitor,int,std::function<void(lm::Vec3,lm::RaySegmentCDF const &)>*>(key);
+
 
         int segmentCount = 0;
-        std::vector<ArepoLoaderInternals::RaySegmentCDF> & segments = raySegments();
+        std::vector<lm::RaySegmentCDF> & segments = raySegments();
         lm::Float totalacc = 0.0;
         lm::Float totalT = 0.0;
         {
@@ -1479,7 +1518,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             auto & raySegment = segments[segmentI];
 
 
-            
+            visitor(originalRay.o + originalRay.d * freeT, raySegment);
             //by the way, calculate PDF for samples coming from other strategies:
             if(freeT + raySegment.t > equiAngularT && !stopEquiangular) {
                 stopEquiangular = true;
@@ -1733,6 +1772,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Component::Ptr<lm::Scene> lightscene;
 
     lm::Component::Ptr<lm::Material> dummyMat;
+
+    bool usepluecker_;
 
 
 

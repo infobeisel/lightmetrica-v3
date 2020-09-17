@@ -63,7 +63,19 @@ namespace stats {
         _1_1
     };
 
+    struct BoundaryVisitor{};
+
+    
+
 }
+
+struct RaySegmentCDF {
+        lm::Float localcdf;
+        lm::Float t;
+        lm::Float a;
+        lm::Float b;
+    };
+    
 class ArepoLMMesh : public Mesh {
 
 public:

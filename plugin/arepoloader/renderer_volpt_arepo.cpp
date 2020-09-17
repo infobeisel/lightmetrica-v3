@@ -11,6 +11,7 @@
 #include <lm/path.h>
 #include <lm/timer.h>
 #include <lm/stats.h>
+#include <lm/light.h>
 #include "statstags.h"
 #include "arepoloader.h"
 #define VOLPT_IMAGE_SAMPLING 0
@@ -128,9 +129,9 @@ public:
             //generate uniform distributed samples here to make the same samples accessible 
             //for both paths
 
-            for(int i = 0; i < 2 * max_verts_;i++) { //we have two strategies therefore twice the amount
+            /*for(int i = 0; i < 2 * max_verts_;i++) { //we have two strategies therefore twice the amount
                 stats::set<stats::DistanceSampleRandomValues,int,Float>(i,rng.u());
-            }
+            }*/
 
             std::vector<Vec3> EquiMeasurementContributions;
             EquiMeasurementContributions.reserve(max_verts_);
@@ -207,10 +208,37 @@ public:
                     if (samplable_by_nee) [&] {
                         // Sample a light
                         const auto sL = path::sample_direct(rng, scene_, sp, TransDir::LE);
-                        //if (!sL) {
+
+                        // Transmittance
+                        const auto Tr = path::eval_transmittance(rng, scene_, sp, sL->sp);
+                        //if (math::is_zero(Tr)) {
                         //    return;
                        // }
 
+                        if (!sL || math::is_zero(Tr)) {
+                            if(usestrategy == "equiangular") {
+
+                                EquiMeasurementContributions.push_back(contribution);
+
+                                EquiPdfOfEquiSmpls.push_back(0);
+                                RegularPdfOfEquiSmpls.push_back(0);
+                            
+                            }
+                            if(usestrategy == "regular") {
+                                RegularMeasurementContributions.push_back(contribution);
+
+                                EquiPdfOfRegularSmpls.push_back(0);
+                                RegularPdfOfRegularSmpls.push_back(0);
+                                    
+                            }
+                            return;
+                        }
+                        auto sp_from = sp;
+                        auto sp_to = sL->sp;
+                        auto area_measure_conversion = 1.0 / glm::abs(glm::dot(sp_from.geom.p, sp_to.geom.p));
+                        //TODO not sure if  - sL->wo OR sL->wo
+                        //auto solidangledirectionpdf = 1.0;//path::pdf_direct(scene_, sp_from, sp_to, -sL->wo,false);
+                        
                         // Recompute raster position for the primary edge
                         Vec2 rp = raster_pos;
                         if (num_verts == 1) {
@@ -219,16 +247,22 @@ public:
                             rp = *rp_;
                         }
 
-                        // Transmittance
-                        const auto Tr = path::eval_transmittance(rng, scene_, sp, sL->sp);
-                        //if (math::is_zero(Tr)) {
-                        //    return;
-                       // }
+                        
 
                         // Evaluate BSDF
                         const auto wo = -sL->wo;
-                        const auto fs = path::eval_contrb_direction(scene_, sp, wi, wo, comp, TransDir::EL, true);
+                        auto fs = path::eval_contrb_direction(scene_, sp, wi, wo, comp, TransDir::EL, true);
+
+                        const auto& primitive = scene_->node_at(sp.primitive).primitive;
+                        //todo directions correct ?
+                        auto solidangledirectionpdf = primitive.medium->phase()->pdf_direction(sp.geom, wi, wo);
                         
+                        //eliminate pdf from phase again:
+                        fs *= solidangledirectionpdf;
+
+                        solidangledirectionpdf *= area_measure_conversion;
+                        
+
                         //if (math::is_zero(fs)) {
                         //    return;
                        // }
@@ -238,25 +272,34 @@ public:
 
 
                         // Evaluate and accumulate contribution
-                        const auto C = throughput * Tr * fs * sL->weight;
+                        //leave light contribution as is 
+                        //phase does not contain pdf anymore, check!
+                        const auto C = throughput * Tr * fs * sL->weight; 
                         contribution *= C;
-                       
-                    //TODO there must be some more pdf to make this correct
-                    if(usestrategy == "equiangular") {
 
-                        EquiMeasurementContributions.push_back(contribution);
+                        int key = 0;
+                        auto pdfLight = stats::get<stats::LastSampledPDF,int,Float>(key);
+                        //LM_INFO("pdf light{}",pdfLight);
 
-                        EquiPdfOfEquiSmpls.push_back(pathPdfEquiStrategyEquiSamples);
-                        RegularPdfOfEquiSmpls.push_back(pathPdfRegularStrategyEquiSamples);
-                        
-                    }
-                    if(usestrategy == "regular") {
-                        RegularMeasurementContributions.push_back(contribution);
+                        //convert to vertex area measure
+                        //solidangledirectionpdf *= glm::dot(wi, wo) / glm::dot(sp.geom)
 
-                        EquiPdfOfRegularSmpls.push_back(pathPdfEquiStrategyRegularSamples);
-                        RegularPdfOfRegularSmpls.push_back(pathPdfRegularStrategyRegularSamples);
+                        //TODO there must be some more pdf to make this correct
+                        if(usestrategy == "equiangular") {
+
+                            EquiMeasurementContributions.push_back(contribution);
+
+                            EquiPdfOfEquiSmpls.push_back(pathPdfEquiStrategyEquiSamples * solidangledirectionpdf );
+                            RegularPdfOfEquiSmpls.push_back(pathPdfRegularStrategyEquiSamples* solidangledirectionpdf );
                             
-                    }
+                        }
+                        if(usestrategy == "regular") {
+                            RegularMeasurementContributions.push_back(contribution);
+
+                            EquiPdfOfRegularSmpls.push_back(pathPdfEquiStrategyRegularSamples* solidangledirectionpdf );
+                            RegularPdfOfRegularSmpls.push_back(pathPdfRegularStrategyRegularSamples* solidangledirectionpdf );
+                                
+                        }
                         
                         //film_->splat(rp, C);
                     }();
@@ -264,7 +307,7 @@ public:
                     // --------------------------------------------------------------------------------
 
                     // Sample direction
-                    const auto s = [&]() -> std::optional<path::DirectionSample> {
+                    auto s = [&]() -> std::optional<path::DirectionSample> {
                         if (num_verts == 1) {
                             const auto [x, y, w, h] = window.data.data;
                             const auto ud = Vec2(x + w * rng.u(), y + h * rng.u());
@@ -274,10 +317,29 @@ public:
                             return path::sample_direction(rng, scene_, sp, wi, comp, TransDir::EL);
                         }
                     }();
+                    
                     //if (!s) {
-                    //    break;
+                    //    return contribution;
                     //}
 
+                    auto directionpdf = 0.0;
+                    {//remember direction pdf
+                        if (s) {
+                        
+                            const auto& primitive = scene_->node_at(sp.primitive).primitive;
+                            if(primitive.medium)
+                                directionpdf = primitive.medium->phase()->pdf_direction(sp.geom, wi, s->wo);
+                            else //camera 
+                                directionpdf = 1.0;
+                            
+                            //eliminate pdf from s again
+                            s->weight *= directionpdf;
+
+                            
+                        }
+
+                        
+                    }
                     // --------------------------------------------------------------------------------
 
                     // Compute and cache raster position
@@ -287,14 +349,40 @@ public:
 
                     // --------------------------------------------------------------------------------
 
-                
+                    //hash map to save nearest lights
+                    //auto nearestLights = std::unordered_map<int,Float>();
+                    //nearestLights.reserve(scene_->num_lights() * 0.1);
+                    Float nearestD = std::numeric_limits<Float>::max();
+                    int nearestI = 0;
+                    std::function<void(int,Float)> nearestLightsVisitor = [&] (int nodeindex,Float distance) -> void {
+                        //if(nearestLights[nodeindex] > distance)
+                        //    nearestLights[nodeindex] = distance;
+                        if(distance < nearestD)
+                            nearestI = nodeindex;
+                    };
+                    stats::set<stats::LightKnnVisitor,int,std::function<void(int,Float)>*>(0,&nearestLightsVisitor);
+
+                    //save nearest lights along current ray 
+                    std::function<void(Vec3,RaySegmentCDF const &)> raysegmentVisitor = [&] (lm::Vec3 boundarypos,lm::RaySegmentCDF const & tetrasegment) -> void {
+                    //do nothing for the moment//    scene_->sample_light_selection_from_pos(0.0,boundarypos);
+                    };
+                    stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &)>*>(0,&raysegmentVisitor);
+
+                    //ask nearest light to current vertex
+                    scene_->sample_light_selection_from_pos(0.0,sp.geom.p);
+
+                    auto lightprim = scene_->light_primitive_index_at(nearestI);
+                    
+
                     // Sample next scene interaction
                     
                     //importance sample distance following light source, strategy 0
 
+
                     
                     auto lightDistanceSample = path::DistanceSample();
                     lightDistanceSample.weight = Vec3(0);
+                    auto equiangularT = 0.0;
                     if(usestrategy != "delta") {
 
                         auto mediumindex = scene_->medium_node();
@@ -305,8 +393,10 @@ public:
                         s->wo};
                         
                         //sample next scene interaction following light sources situation
-                        scene_->traverse_primitive_nodes(
-                            [&] (const SceneNode& node, Mat4 global_transform) {
+                       // scene_->traverse_primitive_nodes(
+                        //    [&] (const SceneNode& node, Mat4 global_transform) {
+                        const auto & node = scene_->node_at(lightprim.index);
+                        Mat4 global_transform = lightprim.global_transform.M;
                                 if(node.primitive.light != nullptr && !node.primitive.light->is_infinite()) {
                                     auto & light = *node.primitive.light;
                                     auto possample = rng.next<Light::PositionSampleU>();
@@ -327,6 +417,7 @@ public:
                                     auto equiT = h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
                                     auto pdf = h / (h*h+glm::pow(equiT,2.0) *(theta_b-theta_a));
                                     auto t = th +  equiT ;
+                                    equiangularT = t;
                                     
                                     //store sample of strategy 0
                                     int key = 0;
@@ -352,9 +443,12 @@ public:
                                     };
                                     
                                 }
-                        });
+                       //});
                     }
 
+                    
+
+                    
                     //importance sample distance following volume 
                     auto sd = path::sample_distance(rng, scene_, sp, s->wo);
                     
@@ -363,6 +457,8 @@ public:
                     
                     //2 distance samples 0 and 1, 2 strategies 0 and 1,
                     // we miss one pdf value: equiangular pdf 0 of regular distance sample 1
+                    int key = 0;
+                    auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,Float>(key);
                     if(usestrategy != "delta") {
 
                         //auto mediumindex = scene_->medium_node();
@@ -371,12 +467,13 @@ public:
                         Ray ray = {
                         sp.geom.p,
                         s->wo};
-                        int key = 0;
-                        auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,Float>(key);
                                     
                         //sample next scene interaction following light sources situation
-                        scene_->traverse_primitive_nodes(
-                            [&] (const SceneNode& node, Mat4 global_transform) {
+                        //scene_->traverse_primitive_nodes(
+                        //    [&] (const SceneNode& node, Mat4 global_transform) {
+                        const auto & node = scene_->node_at(lightprim.index);
+                        Mat4 global_transform = lightprim.global_transform.M;
+
                                 if(node.primitive.light != nullptr && !node.primitive.light->is_infinite()) {
                                     auto & light = *node.primitive.light;
                                     auto possample = rng.next<Light::PositionSampleU>();
@@ -400,7 +497,7 @@ public:
                                     //store pdf for sample of strategy 0
                                     stats::set<stats::DistanceSamplesPDFs,stats::IJ,Float>(stats::IJ::_0_1,pdf);                                
                                 }
-                        });
+                        //});
                     }
                     auto _strat_smpl_key = stats::IJ::_0_0;
                     auto equiStratEquiSmplPDF = stats::get<stats::DistanceSamplesPDFs,stats::IJ,Float>(_strat_smpl_key);                                
@@ -413,15 +510,19 @@ public:
                     auto w_Equi = glm::pow(1.0 * equiStratEquiSmplPDF,1.0) / (glm::pow(1.0 * equiStratEquiSmplPDF,1.0) + glm::pow(1.0 * regularStratEquiSmplPDF,1.0));
                     auto w_Regular = glm::pow(1.0 * regularStratRegularSmplPDF,1.0) / (glm::pow(1.0 * equiStratRegularSmplPDF,1.0) + glm::pow(1.0 * regularStratRegularSmplPDF,1.0));
                     
-
+                
                     if(usestrategy == "equiangular") {
-
-                        pathPdfEquiStrategyEquiSamples *= equiStratEquiSmplPDF;
-                        pathPdfRegularStrategyEquiSamples *= regularStratEquiSmplPDF;
+                        //convert directionpdf to vertex area measure
+                        pathPdfEquiStrategyEquiSamples *= equiStratEquiSmplPDF * directionpdf
+                            /* glm::abs(glm::dot(wi, s->wo))*/ / equiangularT / equiangularT;
+                        pathPdfRegularStrategyEquiSamples *= regularStratEquiSmplPDF * directionpdf  
+                            / regularT / regularT;
                     }
                     if(usestrategy == "regular") {
-                        pathPdfRegularStrategyRegularSamples *= regularStratRegularSmplPDF;
-                        pathPdfEquiStrategyRegularSamples *= equiStratRegularSmplPDF;
+                        pathPdfRegularStrategyRegularSamples *= regularStratRegularSmplPDF* directionpdf
+                            / regularT / regularT;
+                        pathPdfEquiStrategyRegularSamples *= equiStratRegularSmplPDF * directionpdf  
+                             / equiangularT / equiangularT;
 
                     }
                     //first choice: leave sd as is
@@ -544,8 +645,13 @@ public:
                 samplePath("regular");
                 contributionRegularStrategy = Vec3(0.0);
                 for(int i = 0; i < RegularMeasurementContributions.size(); i++) {
-                    contributionRegularStrategy += RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[i];
+                    auto boolvec3 =  glm::isinf(RegularMeasurementContributions[i]);
+                    if(boolvec3.x || boolvec3.y || boolvec3.z || RegularPdfOfRegularSmpls[i] < std::numeric_limits<Float>::epsilon()) {
+                        //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
+                    } else 
+                        contributionRegularStrategy += RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[i];
                 }
+                contributionRegularStrategy /= static_cast<Float>(RegularMeasurementContributions.size()); //divided by how many paths
             }
             else if(strategy_ == "mis") {
                 samplePath("equiangular");
@@ -574,7 +680,9 @@ public:
                     weightRegularStrategy = std::isnan(weightRegularStrategy) ? 0.0 : weightRegularStrategy;
                     contribution += weightRegularStrategy * RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[j] ;
                     contribution += weightEquiStrategy * EquiMeasurementContributions[i] / EquiPdfOfEquiSmpls[j] ;
-                   // LM_INFO("weights {} , {}",weightEquiStrategy ,weightRegularStrategy);
+                    //contribution += 0.5 * RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[j] ;
+                    //contribution += 0.5 * EquiMeasurementContributions[i] / EquiPdfOfEquiSmpls[j] ;
+                    LM_INFO("weights {} , {}",weightEquiStrategy ,weightRegularStrategy);
                 }
                 film_->splat(raster_pos,contribution);
                 
@@ -590,7 +698,7 @@ public:
 
             //film_->splat(raster_pos, contributionEquiStrategy);
             if(strategy_ == "regular")
-                film_->splat(raster_pos, contributionRegularStrategy);
+                film_->splat(raster_pos, contributionRegularStrategy / static_cast<Float>(spp_));
             else if(strategy_ == "equiangular")
                 film_->splat(raster_pos, contributionEquiStrategy);
             
@@ -641,7 +749,7 @@ public:
         #if VOLPT_IMAGE_SAMPLING
         film_->rescale(Float(size.w* size.h) / processed);
         #else
-        film_->rescale(1_f / processed);
+       // film_->rescale(1_f / processed);
         #endif
 
         return { {"processed", processed}, {"elapsed", st.now()} };

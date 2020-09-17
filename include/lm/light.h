@@ -11,6 +11,11 @@
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
+namespace stats {
+    struct LastSampledPDF{};
+    struct LightKnnVisitor{};
+}
+
 /*!
     \addtogroup light
     @{
