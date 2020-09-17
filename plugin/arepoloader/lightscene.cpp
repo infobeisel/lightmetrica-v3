@@ -13,14 +13,18 @@
 #include <lm/model.h>
 #include <lm/medium.h>
 #include <lm/phase.h>
+#include <lm/stats.h>
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
-
+namespace stats {
+    struct SelectedLightPDF{};
+}
 namespace {
     enum LightSamplingMode {
         UNIFORM,
         KNN
     };
+    
 }
 
 class LightScene_ final : public Scene {
@@ -377,8 +381,11 @@ unsigned int primID;
   float d;
 */
 
+            int key = 0;
+            auto & visitor = *stats::get<stats::LightKnnVisitor,int,std::function<void(int,Float)>*>(key);
+
             knnres.k = onepercent;
-            accel_->queryKnn(0.0,0.0,0.0, std::numeric_limits<Float>::max(), knnres);
+            accel_->queryKnn(pos.x,pos.y,pos.z, std::numeric_limits<Float>::max(), knnres);
             
             std::vector<Neighbour> sorted;
             sorted.reserve(knnres.knn.size());
@@ -390,24 +397,40 @@ unsigned int primID;
                 sorted.push_back(neighbor);
                 knnres.knn.pop();
             }
+
+            
+
+
             Float cdf = 0.0;
             int finalSelectedNodeIndex = 0;
-            Float pL = 0.0;
+            Float pL = onepercent   ;
+            bool stopUpdating = false;
             for(auto & neighbor : sorted) {
                 Float d = neighbor.d / d_total;
+                visitor(neighbor.primID,d);
                 cdf += d;
-                if(u < cdf) {
+                if(u < cdf && !stopUpdating) {
                     finalSelectedNodeIndex = neighbor.primID;
-                    pL = d;
-                    break;
+                    pL = d / d_total;
+                    stopUpdating = true;
                 }
             }
             //LM_INFO("chose light index {} with pdf {}",finalSelectedNodeIndex,pL);
+            stats::set<stats::SelectedLightPDF,int,Vec3>(finalSelectedNodeIndex,pos);
+            stats::set<stats::SelectedLightPDF,int,Float>(finalSelectedNodeIndex,pL);
 
+            const int i = glm::clamp(int(u * static_cast<Float>(sorted.size())), 0, static_cast<int>(sorted.size()) - 1);
+            pL = 1_f / n;
             return LightSelectionSample{
-                finalSelectedNodeIndex,
+                i,
                 pL
             };
+
+
+            //return LightSelectionSample{
+            //    finalSelectedNodeIndex,
+            //    pL
+            //};
         }
 
         if(lightsamplingmode == LightSamplingMode::UNIFORM) {
@@ -435,19 +458,37 @@ unsigned int primID;
     }
 
 
-    virtual Float pdf_light_selection(int) const override {
+    virtual Float pdf_light_selection(int finalSelectedNodeIndex) const override {
         if(lightsamplingmode == LightSamplingMode::UNIFORM) {
             const int n = int(lights_.size());
             return 1_f / n;
         } 
         if(lightsamplingmode == LightSamplingMode::KNN) {
+            LM_ERROR("could not implement");
+           
             
-            const int n = int(lights_.size());
-            return 1_f / n;
+            return 0.0;
         } 
         
         
     };
+
+
+
+    virtual Float pdf_light_selection_from_pos(int light_index, Vec3 const pos) const override {
+        if(lightsamplingmode == LightSamplingMode::UNIFORM) {
+            return pdf_light_selection(light_index);
+        } 
+        if(lightsamplingmode == LightSamplingMode::KNN) {
+            
+            LM_ERROR("could not implement, but need to");
+
+            return 0.0;
+        } 
+        
+        
+    };
+
 
     virtual LightPrimitiveIndex light_primitive_index_at(int light_index) const override {
         return lights_.at(light_index);

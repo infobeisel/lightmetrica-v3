@@ -394,6 +394,11 @@ public:
         const int n = int(lights_.size());
         return 1_f / n;
     };
+    virtual Float pdf_light_selection_from_pos(int a, Vec3 const pos) const override {
+        return pdf_light_selection(a);
+    };
+
+    
 
     virtual LightPrimitiveIndex light_primitive_index_at(int light_index) const override {
         return lights_.at(light_index);

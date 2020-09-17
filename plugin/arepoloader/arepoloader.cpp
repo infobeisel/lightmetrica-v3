@@ -8,7 +8,10 @@
 #include "fileio.h"
 #include "geometry.h"
 #include "arepo.h"
+
 #include <memory>
+
+#include "pluecker.h"
 
 #include "lm/stats.h"
 #include "statstags.h"
@@ -21,6 +24,8 @@
 #include <lm/mesh.h>
 #include <lm/accel.h>
 
+
+
 #include <algorithm>
 //extern ConfigSet Config;
 //extern char ParameterFile[MAXLEN_PATH];
@@ -30,11 +35,13 @@ ConfigSet Config;
 
 namespace ArepoLoaderInternals {
 
-    #define INSIDE_TOLERANCE 10.0 * std::numeric_limits<lm::Float>::epsilon()
-    #define TRAVEL_BIAS 0.0000001
+    #define INSIDE_TOLERANCE 100.0 * std::numeric_limits<lm::Float>::epsilon()
     #define DENSITY_CRANKUP 1.0
     #define REJECTION_SAMPLES_COUNT 10
     #define RAY_SEGMENT_ALLOC 200
+
+
+    static lm::Float MODEL_SCALE;
 
     class  ArepoTempQuantities {
     public:
@@ -49,6 +56,8 @@ namespace ArepoLoaderInternals {
     };
 
     struct ArepoMeshWrapper : public IArepoMeshMock {
+
+
         ArepoMesh * ref;
         std::vector<lm::Float> emptyDensities;
         ArepoMeshWrapper(ArepoMesh*m) : ref(m) {}
@@ -180,63 +189,66 @@ namespace ArepoLoaderInternals {
 
             {
                 tetra t;
+               
                 t.t[0] = 2;
                 t.t[1] = 2;
                 t.t[2] = 1;
                 t.t[3] = 2;
 
+
                 t.p[0] = 0;
                 t.p[1] = 1;
                 t.p[2] = 2;
                 t.p[3] = 3;
-                t.s[0] = 1;
-                t.s[1] = 1;
-                t.s[2] = 1;
-                t.s[3] = 1;
+                t.s[0] = -1;
+                t.s[1] = -1;
+                t.s[2] = -1;
+                t.s[3] = -1;
 
                 DT.push_back(t);
             }
 
             
 
+       
+
             point p;
-            p.x = -2000;p.y = 0;p.z = -2000;p.index = 0;
+            p.x = -20;p.y = 0;p.z = -20;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.0);
-            p.x = 0;p.y = 0;p.z = 0;p.index=1;
+            densities.push_back(0.1);
+            p.x = 0;p.y = -10;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.000001);
-            p.x = 1000;p.y = 0;p.z = -2000;p.index=2;
+            densities.push_back(0.1);
+            p.x = 10;p.y = 0;p.z = -20;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.0);
-            p.x = 0;p.y = 2000;p.z = -1000;p.index=3;
+            densities.push_back(0.1);
+            p.x = 0;p.y = 20;p.z = -10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00001);
+            densities.push_back(0.1);
 
-            p.x = -2000;p.y = 2000;p.z = 0;p.index=4;
+            p.x = 20;p.y = 20;p.z = 10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.0);
-
+            densities.push_back(0.1);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
 
 
-            {
+           {
                 tetra t;
                 t.t[0] = 2;
                 t.t[1] = 2;
                 t.t[2] = 2;
                 t.t[3] = 0;
 
-                t.p[0] = 0;
-                t.p[1] = 1;
+                t.p[0] = 1;
+                t.p[1] = 2;
                 t.p[2] = 3;
                 t.p[3] = 4;
-                t.s[0] = 1;
-                t.s[1] = 1;
-                t.s[2] = 1;
-                t.s[3] = 1;
+                t.s[0] = -1;
+                t.s[1] = -1;
+                t.s[2] = -1;
+                t.s[3] = -1;
 
                 DT.push_back(t);
             }
@@ -266,10 +278,10 @@ namespace ArepoLoaderInternals {
             tDel.t[1] = -1;
             tDel.t[2] = -1;
             tDel.t[3] = -1;
-            tDel.p[0] = 0;
-            tDel.p[1] = 0;
-            tDel.p[2] = 0;
-            tDel.p[3] = 0;
+            tDel.p[0] = -1;
+            tDel.p[1] = -1;
+            tDel.p[2] = -1;
+            tDel.p[3] = -1;
             tDel.s[0] = 0;
             tDel.s[1] = 0;
             tDel.s[2] = 0;
@@ -287,11 +299,11 @@ namespace ArepoLoaderInternals {
             //for(int i = 0; i < densities.size(); i++) {
             //    LM_INFO("density {}: {}, ask {} ",i, densities[i], index);
            // }
-            return densities[index];
+            return MODEL_SCALE * densities[index];
         }
 
         virtual lm::Float max_density() override  {
-            return *std::max_element(densities.begin(), densities.end());
+            return MODEL_SCALE * (*std::max_element(densities.begin(), densities.end()));
         }
     };
 
@@ -300,6 +312,7 @@ namespace ArepoLoaderInternals {
 #else
     static IArepoMeshMock * arepoMeshRef = nullptr;
 #endif
+
 
     static lm::Accel *  accelRef = nullptr;
 
@@ -329,6 +342,7 @@ namespace ArepoLoaderInternals {
 
         int looksAtTriId;//the tetrahedron's triangle index (0-3) the current sample ray looks at.
         lm::Accel::Hit lastHit;
+        lm::Mesh::Tri lastHitTri;
 
         //lm::Float max_scalar_;
 
@@ -357,14 +371,9 @@ namespace ArepoLoaderInternals {
     }
 
 
-    struct RaySegmentCDF {
-        lm::Float localcdf;
-        lm::Float t;
-        lm::Float a;
-        lm::Float b;
-    };
-    static std::vector<ArepoLoaderInternals::RaySegmentCDF> & raySegments() {
-        thread_local std::vector<ArepoLoaderInternals::RaySegmentCDF> c;
+    
+    static std::vector<lm::RaySegmentCDF> & raySegments() {
+        thread_local std::vector<lm::RaySegmentCDF> c;
         if(c.size() < RAY_SEGMENT_ALLOC)
             c.resize(RAY_SEGMENT_ALLOC);
         return c;
@@ -464,7 +473,11 @@ namespace ArepoLoaderInternals {
         b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z), densities);
         a = glm::dot( lambda012_a, lm::Vec3(densities));
         a +=  densities[3] * (- lambda012_a.x - lambda012_a.y - lambda012_a.z);
+        
+        //a = 0.001;
+        //b = 0.000001;
 
+        //LM_INFO("{} and {}",a,b);
         if(b<=0.0) {
            // LM_ERROR("b is non positive?!");
            // LM_INFO("b is non positive?!");
@@ -491,24 +504,45 @@ namespace ArepoLoaderInternals {
         
     }
 
-    inline lm::Float sampleCDF( lm::Float fromT, lm::Float toT,lm::Float a, lm::Float b) {
-        return ( b * (toT-fromT)  +  a * 0.5 *(toT * toT - fromT * fromT)  );
+    inline lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b) {
+        return ( b * toT  +  a * 0.5 *toT * toT   );
     }
 
     inline lm::Float sampleTransmittance(lm::Ray ray, lm::Float fromT, lm::Float toT,lm::Float a, lm::Float b, CachedSample const & cached) {
-        return glm::exp(- sampleCDF(fromT,toT,a,b));
+        return glm::exp(- sampleCDF(toT,a,b));
     }
 
 
 
-    inline lm::Float sampleCachedICDF_andCDF(lm::Float logxi, lm::Float tmin, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b) {
+    inline lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b) {
         
 
         //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
-        auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
+        //auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
+        auto y = logxi - out_cdf;
         lm::Float freeT;
-       
-        freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+
+        if (abs(a) < INSIDE_TOLERANCE
+        && abs(b) < INSIDE_TOLERANCE) {
+            freeT = std::numeric_limits<lm::Float>::max();
+        } else if(abs(a) < INSIDE_TOLERANCE) {
+            //freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
+            freeT = y / b;
+        }
+        else if(abs(b) < INSIDE_TOLERANCE) {
+            //freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+            freeT = glm::sqrt(2.0 * y * a) / a;
+        } else if (abs(a) < abs(b)) {
+            freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
+        } else if (abs(b) < abs(a)) {
+            freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+        }
+        //lm::Float k = glm::exp(-0.5*a);
+        //lm::Float logk_of_1_xi  = glm::log(1.0 - xi) / glm::log(k);
+        //freeT = glm::sqrt(logk_of_1_xi) - b/a;
+
+        //freeT = y / b;
+        
 
         if(isnan(freeT)) {
         //    LM_INFO("wtf freeT is nan, {},{}",a,b);
@@ -516,8 +550,8 @@ namespace ArepoLoaderInternals {
 
         freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
         //for evaluating tau, limit free path to tmax
-        lm::Float t = glm::min(freeT + tmin, tmax);
-        lm::Float acc_cdf = ((t - tmin) * b  +  a  * 0.5 * (t * t - tmin * tmin) );
+        lm::Float t = glm::min(freeT , tmax);
+        lm::Float acc_cdf = t  * b  +  a  * 0.5 * t * t;
         if(acc_cdf < 0.0) {
         //    LM_INFO("wtf cdf never has negative values");
         //    LM_ERROR("wtf cdf never has negative values");
@@ -527,7 +561,7 @@ namespace ArepoLoaderInternals {
         return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
     }
 
-    inline lm::Float intersectCachedTetra(lm::Ray ray, CachedSample & cached)  {
+    inline lm::Float intersectCachedTetra(lm::Ray ray, CachedSample & cached, bool usepluecker)  {
 
         //assumes ray.o is within cached tetra!
 
@@ -606,12 +640,13 @@ namespace ArepoLoaderInternals {
         //TODO already better but still having t issues O:O
         lm::Float volumeRelation = std::abs(mainD) + std::abs(det3x3(pVs[indices[0]],pVs[indices[1]], pVs[indices[2]]));
         volumeRelation =  volumeRelation / std::abs(mainD); 
-        lm::Float bary0 = std::abs( det3x3(cached.tmpPVs[indices[1]],cached.tmpPVs[indices[2]], ray.d) / mainD);
-        lm::Float bary1 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[2]], ray.d) / mainD);
-        lm::Float bary2 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[1]], ray.d) / mainD);
+        //ray.d *= abs(mainD);
+        lm::Float bary0 = std::abs( det3x3(cached.tmpPVs[indices[1]],cached.tmpPVs[indices[2]], ray.d) );
+        lm::Float bary1 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[2]], ray.d) );
+        lm::Float bary2 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[1]], ray.d) );
         lm::Float baryOrigin = 1.0 - bary0 - bary1 - bary2;
         
-        auto t = 1.0 / (bary0 + bary1 + bary2); 
+        auto t =  abs(mainD) / (bary0 + bary1 + bary2); 
         //auto t = (1.0 / volumeRelation); 
         //so this is the t the ray dir can be multiplied to, without leaving the tetra
         //ray.o + ray.d * t is intersection point.
@@ -631,7 +666,38 @@ namespace ArepoLoaderInternals {
 
                LM_INFO("maindet {}",mainD);*/
         cached.looksAtTriId = faceid;
-        return t;
+
+        if(!usepluecker) {
+            //test plucker instead
+            return t;
+
+        } else {
+        
+        
+            lm::Float plueckert = 0.0;
+            std::vector<lm::Vec3> vertList = {cached.tetraVs[0],cached.tetraVs[1],cached.tetraVs[2],cached.tetraVs[3]};
+            int enterface, leaveface;
+            lm::Vec3 enterpoint, leavepoint;
+            lm::Float uenter1, uenter2, uleave1, uleave2, tenter, tleave;
+            bool retval = RayTetraPluecker(ray.o, ray.d,
+                vertList.data(),
+                enterface, leaveface,
+                enterpoint,leavepoint,
+                uenter1, uenter2, uleave1,uleave2,
+                tenter, tleave);
+                // LM_INFO(" {} t enter and leave {}, {} vs {}",retval,tenter,tleave, accelT  );
+            if(retval) {
+                if(tleave < tenter) { 
+                    if(tleave < 0.0 && tenter > 0.0)  // tenter is valid
+                        plueckert = tenter;
+                    if(tleave > 0.0) // tleave is valud
+                        plueckert = tleave;
+                }
+            }
+            return plueckert;
+        }
+
+        
     }
 
 
@@ -686,7 +752,7 @@ namespace ArepoLoaderInternals {
         //already computed at this point cachedS.mainDeterminant =  (a * A + b * B + c * C);
         cachedS.baryInvT = 
         lm::Mat3(lm::Vec3(A,B,C),lm::Vec3(D,E,F),lm::Vec3(G,H,I))
-        * (1.0 / cachedS.mainDeterminant);
+        / (a*A+b*B+c*C); //cachedS.mainDeterminant;
 
     }
 
@@ -704,7 +770,7 @@ namespace ArepoLoaderInternals {
                 int hydroIndex = getCorrectedHydroInd(num);
                 
                 if(hydroIndex > -1 && num  < NumGas) {
-                    addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP);//lengths[minDistIndex] / totalD );
+                    addValsContribution(cachedS.cornerVals[i],hydroIndex,MODEL_SCALE);//lengths[minDistIndex] / totalD );
                 }  
             }
 #endif
@@ -724,8 +790,8 @@ namespace ArepoLoaderInternals {
         
         for(int i = 0; i < 4; i++) {
             vertInds[i] = tetra.p[i];
-            auto av = arepoMeshRef->getDP()[vertInds[i]];
-            verts[i] = lm::Vec3(av.x,av.y,av.z);
+            auto av =  arepoMeshRef->getDP()[vertInds[i]];
+            verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
             pVs[i] = verts[i] - p;
         }
 
@@ -919,8 +985,10 @@ namespace ArepoLoaderInternals {
         if (hit != std::nullopt && hit.value().face >= 0 && hit.value().face < toQueryTetraId->num_triangles()) { //check if inside the tetra of hit triangle
             //LM_INFO("hit sth");
             cachedS.lastHit = hit.value(); //save hit value
-            int localFaceIndex = (hit.value().face - 1) % 4;
+            int localFaceIndex = (hit.value().face ) % 4;
+            cachedS.looksAtTriId = localFaceIndex;
             int tetraIndex =  toQueryTetraId->correspondingTetra(hit.value().face);
+            cachedS.lastHitTri =  toQueryTetraId->triangle_at(hit.value().face);
             //auto ni = arepoMeshRef->DT[tetraIndex].t[localFaceIndex];
             bool inside = insideTetra(tetraIndex, p, cachedS) ;//|| insideTetra(ni, p, cachedS);
             //LM_INFO("inside {} : {}", tetraIndex, inside);
@@ -1027,7 +1095,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     virtual void construct(const lm::Json& prop) override {
         const auto configPath = lm::json::value<std::string>(prop, "configpath");
+        tetraTestMargin = lm::json::value<lm::Float>(prop, "tetrahedronTestMargin", 0.1);
         auto cutoutPath = lm::json::value<std::string>(prop, "cutoutpath");
+
+        // Density scale
+        scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
+        MODEL_SCALE = scale_;
+        usepluecker_ = lm::json::value<bool>(prop, "usepluecker", false);
         auto pos = cutoutPath.find(".hdf5");
         cutoutPath = cutoutPath.substr(0, pos);
         
@@ -1063,14 +1137,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
          LM_INFO("constructed Volume Arepo");
          std::cout << " loaded snapshot " << std::endl;
-        // Density scale
-        scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
+        
         
         LM_INFO("constructed Volume Arepo");
         
         max_scalar_ = max_scalar();
         LM_INFO("max scalar  {}",max_scalar_);
-        LM_INFO("mean scalar  {}",arepo->valBounds[TF_VAL_DENS*3 + 2]);
+        LM_INFO("mean scalar  {}",MODEL_SCALE * arepo->valBounds[TF_VAL_DENS*3 + 2]);
         LM_INFO("num gas  {}",NumGas);
         LM_INFO("test delaunay mesh");
         auto arepoBound = arepoMeshWrapper->WorldBound();
@@ -1085,6 +1158,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             bound_.max = glm::max(bound_.max,currentP);
             bound_.min = glm::min(bound_.min,currentP);
         }
+        bound_.min *= MODEL_SCALE;
+        bound_.max *= MODEL_SCALE;
         LM_INFO("spatial bounds {},{},{} ; {},{},{}",bound_.min.x,bound_.min.y,bound_.min.z, bound_.max.x, bound_.max.y, bound_.max.z);
 
        
@@ -1180,6 +1255,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //{"ts_addr", (const tetra*)arepoMesh->DT},
             //{"ts_addr", reinterpret_cast<uintptr_t>(arepoMesh->DT)},
             {"arepoMesh_addr", reinterpret_cast<uintptr_t>(arepoMesh.get())},
+            {"scale", scale_}
             //{"ts_count", arepoMesh->Ndt}
         });
         
@@ -1195,6 +1271,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         });
 
         
+        //tetraaccel = lm::comp::create<lm::Accel>("accel::nanort", make_loc("tetraaccel"), {});
         tetraaccel = lm::comp::create<lm::Accel>("accel::embree", make_loc("tetraaccel"), {});
         LM_INFO( tetraaccel->loc());
         gastetrascene = lm::comp::create<lm::Scene>("scene::default", make_loc("tetrascene"), {
@@ -1240,7 +1317,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 #ifdef MOCK_AREPO
         return arepoMesh->max_density();
 #else
-        return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1];
+        return MODEL_SCALE * arepo->valBounds[TF_VAL_DENS*3 + 1];
 #endif
     }
     virtual lm::Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong, lm::Float & out_a, lm::Float & out_b) const override {
@@ -1251,7 +1328,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         glm::max(info.cornerVals[1][TF_VAL_DENS],
         glm::max(info.cornerVals[2][TF_VAL_DENS],
                     info.cornerVals[3][TF_VAL_DENS]))) : 0.0;
-        auto nextBound = inside ? intersectCachedTetra(ray,info) : info.lastHit.t;
+        auto nextBound = inside ? intersectCachedTetra(ray,info,usepluecker_) : info.lastHit.t;
         out_t_forhowlong = nextBound;
         if(inside) {
             sampleCachedScalarCoefficients(ray, out_a, out_b, info);
@@ -1269,14 +1346,16 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
 
 
-    void travel(lm::Ray ray,  CachedSample & useCache, std::function<bool(bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info)> processor) const {
+    void travel(lm::Ray ray,  CachedSample & useCache, lm::Float tPerturbation, std::function<bool(bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info)> processor) const {
         bool inside = false;
         lm::Float t = 0.0;
         auto & info = useCache; 
         auto correctedRay = ray;
+        ray.o += ray.d *  tetraTestMargin * tPerturbation; //perturbate a bit 
         do {
             //step
-            ray.o += ray.d * (t + TRAVEL_BIAS);
+            correctedRay.o = ray.o;
+            ray.o += ray.d * (t + tetraTestMargin);
             /*if(inside) { //last iteration we were inside, can test neighbors
                 auto ni = arepoMeshRef->DT[info.tetraI].t[(info.looksAtTriId - 1) % 4]; //next tetrahedron with common face
                 if(ni >= 0 && ni < arepoMeshRef->Ndt) {
@@ -1299,28 +1378,78 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //if(!inside) {
                 inside = findAndCacheTetra(info,ray.o, ray.d, meshAdapter.get());
             //}
-            t = (!inside ? info.lastHit.t : 
-                intersectCachedTetra(ray,info));
+
+            //this seems to be numerically unstable (depending on the vertex order of the triangle O.o)
+            //try to hide it by interpolating with barycentric coordinates 3 times (with all vertex combis)
+            //and average the result
+            auto accelT = info.lastHit.t;
+
+            
+            if(info.looksAtTriId >= 0 && !std::isinf(accelT) && usepluecker_) {
+                std::vector<lm::Vec3> verts = {info.tetraVs[0],info.tetraVs[1],info.tetraVs[2],info.tetraVs[3]};
+                int enterface, leaveface;
+                lm::Vec3 enterpoint, leavepoint;
+                lm::Float uenter1, uenter2, uleave1, uleave2, tenter, tleave;
+                bool retval = RayTetraPluecker(ray.o, ray.d,
+                    verts.data(),
+                    enterface, leaveface,
+                    enterpoint,leavepoint,
+                    uenter1, uenter2, uleave1,uleave2,
+                    tenter, tleave);
+                   // LM_INFO(" {} t enter and leave {}, {} vs {}",retval,tenter,tleave, accelT  );
+                if(retval) {
+                    if(tleave < tenter) { 
+                        if(tleave < 0.0 && tenter > 0.0)  // tenter is valid
+                            accelT = tenter;
+                        if(tleave > 0.0) // tleave is valud
+                            accelT = tleave;
+                    }
+                }
+                  //  accelT = tenter < 0.0 ? tleave : tenter;
+                
+            }
+            //LM_INFO("hit {} on fac {}",info.lastHit.primitive, info.lastHit.face );
+            //auto hitPoint = meshAdapter->surface_point(info.lastHit.face, info.lastHit.uv);
+            //auto accelT = glm::distance(hitPoint.p,ray.o);
+
+            t = (!inside ? accelT : 
+                intersectCachedTetra(ray,info,usepluecker_));
             //t = info.lastHit.t;
-            correctedRay.o = ray.o - ray.d * TRAVEL_BIAS;
+            correctedRay.o = ray.o;//+= ray.d * t;
             //LM_INFO("inside: {}, t: {}",inside,t);
-        } while(processor(inside,correctedRay,t + TRAVEL_BIAS,info));
+        } while(processor(inside,correctedRay,t + tetraTestMargin ,info));
 
     }
 
     virtual lm::Float sample_distance(lm::Ray originalRay,lm::Float tmin, lm::Float tmax, lm::Rng& rng, lm::Float & weight) const override {
+
+        //retrieve distance sample of strategy 0 (equiangular sampling) 
+        int key = 0;
+        auto equiAngularT = lm::stats::get<lm::stats::EquiangularStrategyDistanceSample,int,lm::Float>(key);
+        //store pdf for sample of strategy 0
+        //auto & pdfs = lm::stats::get<lm::stats::DistanceSamplesPDFs,lm::stats::IJ::,lm::Float>(key);
+        lm::stats::IJ pdfkey = lm::stats::IJ::_0_0;
+        //auto equipdf = lm::stats::get<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(pdfkey);
+                             
+
+        int currentRegularRngU_I = lm::stats::get<lm::stats::RegularDistanceSampleRandomValueVertexIndex,int,int>(key);
+        //receive current random sample
+        auto rng_u_regular = lm::stats::get<lm::stats::DistanceSampleRandomValues,int,lm::Float>(currentRegularRngU_I);
         
 
-        lm::Float cdfNorm = 1.0;
+        auto & visitor = *lm::stats::get<lm::stats::BoundaryVisitor,int,std::function<void(lm::Vec3,lm::RaySegmentCDF const &)>*>(key);
+
+
         int segmentCount = 0;
-        std::vector<ArepoLoaderInternals::RaySegmentCDF> & segments = raySegments();
+        std::vector<lm::RaySegmentCDF> & segments = raySegments();
         lm::Float totalacc = 0.0;
+        lm::Float totalT = 0.0;
         {
             auto & cached = cachedDistanceSample(); 
             originalRay.o = originalRay.o + originalRay.d * tmin; 
             lm::Float traveledT;
             
-            travel(originalRay, cached,
+            travel(originalRay, cached,0.0,//rng.u(),
             [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
                 
                 if(segments.size() <= segmentCount)
@@ -1343,48 +1472,126 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 } else {
                     lm::Float a,b;
                     sampleCachedScalarCoefficients(currentRay,  a, b, info);
-                    segments[segmentCount].localcdf = sampleCDF( 0.0,t, a, b);
+                    segments[segmentCount].localcdf = sampleCDF( t, a, b);
                     segments[segmentCount].t = t;
                     segments[segmentCount].a = a;
                     segments[segmentCount].b = b;
                     totalacc += segments[segmentCount].localcdf;
                     ret = true;
                 }
+                totalT += segments[segmentCount].t;
                 segmentCount++;
                 return ret;
             });
         }
 
 
-        lm::Float normFac = 1.0 - glm::exp(-totalacc);
+       // LM_INFO("total {},",totalacc);
+        lm::Float normFac =  1.0 - glm::exp(-totalacc);
+        lm::Float integratedNormFac = 1.0;//1.0 - glm::exp(- (totalacc));
         //have found cdf normalization, now can sample the volume exactly following 
         //its density
         lm::Float transmittance = 1.0;
-        lm::Float logxi = -glm::log( 1.0 - rng.u() * normFac);
+        lm::Float xi =  rng.u() * normFac;
+        //lm::Float xi =  rng_u_regular * normFac;
+        
+        //lm::Float logxi = -glm::log( 1.0 - xi);
+        lm::Float logxi = -gsl_log1p(-xi);
         lm::Float acc = 0.0;
+        lm::Float contribution = 0.0;
+        lm::Float pdf = 0.0;
+        lm::Float regularPF_of_equiSample= 0.0;
         auto freeT = 0.0;
+        auto retFreeT = std::numeric_limits<lm::Float>::max();
+        auto retAcc = 0.0;
+        bool stopAccumulating = false;
+        bool stopEquiangular = false;
+
+        //if(equiAngularT < 0.0 || normFac < std::numeric_limits<lm::Float>::epsilon()) {
+        //    stopEquiangular = true;
+        //    lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
+        //            lm::stats::IJ::_1_0,0.0);
+       // }
+
+        
         for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
             auto & raySegment = segments[segmentI];
-            if (  (acc + raySegment.localcdf) > logxi) {
-                auto normcdf =  acc;
-                lm::Float t = sampleCachedICDF_andCDF( logxi, 0.0, 0.0 + raySegment.t ,
-                normcdf ,  raySegment.a,   raySegment.b);
-                freeT += t;
-                normcdf = sampleCDF(0,t,raySegment.a,raySegment.b);
-                acc += normcdf; //accumulate non normalized!
-                //transmittance *= glm::exp(-  normcdf / normFac)  ;
-                break;
+
+
+            visitor(originalRay.o + originalRay.d * freeT, raySegment);
+            //by the way, calculate PDF for samples coming from other strategies:
+            if(freeT + raySegment.t > equiAngularT && !stopEquiangular) {
+                stopEquiangular = true;
+                auto t = (equiAngularT - freeT);
+                auto cdf = acc + sampleCDF(t,raySegment.a,raySegment.b );
+                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                auto particle_density = raySegment.b + raySegment.a * t;
+                auto mu_a = crosssection * particle_density;
+                auto phase_integrated = 1.0;//isotrope
+                auto mu_s = phase_integrated* particle_density;
+                auto mu_t = mu_a + mu_s;
+                auto scattering_albedo = mu_s / mu_t; 
+                regularPF_of_equiSample = mu_t * glm::exp(-cdf) ;/// normFac; 
+                
+
             }
+
+            if ( !stopAccumulating &&  (acc  + raySegment.localcdf ) > logxi) {
+                auto normcdf =  acc ;
+                lm::Float t = sampleCachedICDF_andCDF( logxi,xi , raySegment.t ,
+                normcdf ,  raySegment.a ,   raySegment.b );
+                retFreeT = tmin + freeT + t; 
+                normcdf = sampleCDF(t,raySegment.a,raySegment.b );
+                transmittance *= glm::exp(-  normcdf );
+                //accumulate non normalized!
+                retAcc = acc + normcdf;
+                integratedNormFac *= (1.0 - glm::exp(- (totalacc-retAcc)));
+                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                auto particle_density = raySegment.b + raySegment.a * t;
+                auto mu_a = crosssection * particle_density;
+                auto phase_integrated = 1.0;//isotrope
+                auto mu_s = phase_integrated* particle_density;
+                auto mu_t = mu_a + mu_s;
+                auto scattering_albedo = mu_s / mu_t; 
+                contribution = mu_s * transmittance;
+
+                pdf = mu_t * transmittance / normFac;             
+                //pdf = (raySegment.b + raySegment.a * t) * glm::exp(-retAcc) ; //normfac already at scatter albedo
+
+                stopAccumulating = true;
+            }
+
+            if (!stopAccumulating) {
+                //pdf *= (raySegment.b + raySegment.a * raySegment.t) * glm::exp(-raySegment.localcdf) ;
+                transmittance *= glm::exp(- raySegment.localcdf);
+            }
+            
+            integratedNormFac *= (1.0 - glm::exp(- (totalacc - acc)));
+            
+            acc += raySegment.localcdf ;
             freeT += raySegment.t;
-            acc += raySegment.localcdf;
-            //transmittance *= glm::exp(- raySegment.localcdf  / normFac) ;
+            
+            
+            
         }
+        
+
+        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
+                    lm::stats::IJ::_1_0,regularPF_of_equiSample);
+                
+                
+        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, contribution);
+
 
         //acccdf contains NON-normalized cdf which is exactly what we want
         //acccdf *= cdfNorm;
-        lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance);
-        weight = normFac;
-        return freeT;
+        lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance );
+
+        //TODO multiply with normFAC?!?!
+        lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_1, pdf);
+        lm::stats::set<lm::stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(key,retFreeT);
+        //weight =  1.0/pdf; 
+        return retFreeT;
 
    }
 
@@ -1398,14 +1605,14 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         if(cached.sampleIndex == currentSample) { //is cached
             //auto maxTransmittance = lm::stats::get<lm::stats::MaxTransmittance,int,lm::Float>(h);
             auto freePathTransmittance = lm::stats::get<lm::stats::FreePathTransmittance,int,lm::Float>(h);
-            return freePathTransmittance;
+          //  return freePathTransmittance;
         } 
 
         auto transmittance = 1.0;
         auto accT = tmin;
         originalRay.o = originalRay.o + originalRay.d * tmin; 
         lm::Float negligibleTransmittance = +0.0;
-        travel(originalRay, cached,
+        travel(originalRay, cached,0.0,
         [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) -> bool {
             bool ret = false;
             if(!inside) {
@@ -1440,14 +1647,37 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals1;
         tmpVals1.clear();
         gatherValsAtPoint(p,glm::normalize(lm::Vec3(1)), tmpVals1.vals);
+
+
+        //cache scattering albedo
+        auto particle_density = tmpVals1.vals[TF_VAL_DENS];
+        auto crosssection = 1.0;//327.0/1000.0; //barn ...? Hydrogen
+        auto mu_a = crosssection * particle_density;
+        auto phase_integrated = 1.0;//isotrope
+        auto mu_s = phase_integrated * particle_density;
+        auto mu_t = mu_a + mu_s;
+        auto scattering_albedo = mu_s / mu_t; 
+        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, scattering_albedo);
+
         return  tmpVals1.vals[TF_VAL_DENS];
     }
 
     virtual lm::Float eval_scalar(lm::Vec3 p , lm::Vec3 dir) const override {
-        
         thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals1;
         tmpVals1.clear();
         gatherValsAtPoint(p, dir, tmpVals1.vals);
+
+        //cache scattering albedo
+        auto particle_density = tmpVals1.vals[TF_VAL_DENS];
+        auto crosssection = 1.0;//327.0/1000.0; //barn ...? Hydrogen
+        auto mu_a = crosssection * particle_density;
+        auto phase_integrated = 1.0;//isotrope
+        auto mu_s = phase_integrated* particle_density;
+        auto mu_t = mu_a + mu_s;
+        auto scattering_albedo = mu_s / mu_t; 
+        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, scattering_albedo);
+
+
         return  tmpVals1.vals[TF_VAL_DENS];
     }
 
@@ -1456,9 +1686,36 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     }
     virtual lm::Vec3 eval_color(lm::Vec3 p) const override {
         //thread_local ArepoLoaderInternals::ArepoTempQuantities tmpVals2;
+        auto cached = cachedDistanceSample();
+        //check if we have information from sample_distance available
+        int h = 0;        
+        auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
+        if(cached.sampleIndex == currentSample) { //is cached
+            auto scatteringAlbedo = lm::stats::get<lm::stats::ScatteringAlbedo,int,lm::Float>(h);
+            return lm::Vec3(scatteringAlbedo);
+        } 
+
+        //else search for it 
+        if(! findAndCacheTetra(cached,p,lm::Vec3(1,0,0),meshAdapter.get())) {
+            return lm::Vec3(1.0);
+        } else {
+            auto crosssection = 1.0;//327.0/1000.0; //barn ...?
+
+            lm::Ray r;
+            r.o = p;
+            r.d = lm::Vec3(1,0,0);
+            lm::Float a,b;
+            sampleCachedScalarCoefficients(r,a,b,cached);
+            auto particle_density = b;
+            auto mu_a = crosssection * particle_density;
+            auto phase_integrated = 1.0;//isotrope
+            auto mu_s = phase_integrated* particle_density;
+            auto mu_t = mu_a + mu_s;
+            auto scattering_albedo = mu_s / mu_t; 
+            return lm::Vec3(scattering_albedo);
+        }
 
 
-        return lm::Vec3(1.0);
         //TODOOOOOOOOOOOOOOOOOOOOOOO
         /*auto copy = cachedSample();
         if(! findAndCacheTetra(cachedSample(),p)) {
@@ -1490,6 +1747,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Float scale_;
     lm::Bound bound_;
     lm::Float max_scalar_;
+    lm::Float tetraTestMargin;
 
 #ifdef MOCK_AREPO
     std::unique_ptr<IArepoMeshMock>  arepoMesh;
@@ -1514,6 +1772,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     lm::Component::Ptr<lm::Scene> lightscene;
 
     lm::Component::Ptr<lm::Material> dummyMat;
+
+    bool usepluecker_;
 
 
 

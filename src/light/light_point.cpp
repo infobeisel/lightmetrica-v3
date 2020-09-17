@@ -6,7 +6,7 @@
 #include <pch.h>
 #include <lm/core.h>
 #include <lm/light.h>
-
+#include <lm/stats.h>
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 /*!
@@ -85,10 +85,15 @@ public:
         const auto wo = glm::normalize(geom.p - position_);
         const auto geomL = PointGeometry::make_degenerated(position_);
         const auto pL = pdf_direct(geom, geomL, {}, wo, {});
+
+        stats::set<stats::LastSampledPDF,int,Float>(0,pL);
+        
         if (pL == 0_f) {
             return {};
         }
-        const auto C = Le_ / pL;
+
+        
+        const auto C = Le_ / pL; //see pdf return via stats above
         return RaySample{
             geomL,
             wo,

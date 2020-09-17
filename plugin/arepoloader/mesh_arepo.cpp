@@ -51,11 +51,12 @@ public:
         auto ndt = am->Ndt;
 #endif
         
-        LM_INFO("num tets and points {} {}",ndt,ndp);
     
         
+        auto scale = lm::json::value<lm::Float>(prop, "scale", 1.0);
 
-        
+        LM_INFO("num tets and points {} {}, scale them {}",ndt,ndp, scale);
+
 
 
 
@@ -100,14 +101,14 @@ public:
             } else {
 
                 auto addTriangl = [&] (int tetrai, int a, int b, int c ) {
-                    auto v0 = lm::Vec3(dps[dts[tetrai].p[a]].x, dps[dts[tetrai].p[a]].y, dps[dts[tetrai].p[a]].z);
-                    auto v1 = lm::Vec3(dps[dts[tetrai].p[b]].x, dps[dts[tetrai].p[b]].y, dps[dts[tetrai].p[b]].z);
-                    auto v2 = lm::Vec3(dps[dts[tetrai].p[c]].x, dps[dts[tetrai].p[c]].y, dps[dts[tetrai].p[c]].z);
+                    auto v0 = scale * lm::Vec3(dps[dts[tetrai].p[a]].x, dps[dts[tetrai].p[a]].y, dps[dts[tetrai].p[a]].z);
+                    auto v1 = scale *lm::Vec3(dps[dts[tetrai].p[b]].x, dps[dts[tetrai].p[b]].y, dps[dts[tetrai].p[b]].z);
+                    auto v2 = scale *lm::Vec3(dps[dts[tetrai].p[c]].x, dps[dts[tetrai].p[c]].y, dps[dts[tetrai].p[c]].z);
                     auto triangleNormal = glm::cross (glm::normalize(v1 - v0),glm::normalize(v2 - v0));
                     triangles.push_back({ 
-                        {v0,triangleNormal,lm::Vec2(v0.x)},
-                        {v1,triangleNormal, lm::Vec2(v0.y)},
-                        {v2,triangleNormal, lm::Vec2(v0.z)},
+                        {v0,triangleNormal,lm::Vec2(0.0)},
+                        {v1,triangleNormal, lm::Vec2(0.0)},
+                        {v2,triangleNormal, lm::Vec2(0.0)},
                     });
                 };
 
@@ -181,8 +182,8 @@ public:
         return triangleIndexToTetraIndex[face];
     }
 
+    //averages a 3
     virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const override {
-
         auto triangle = triangle_at(face);
         auto triangleNormal = triangle.p1.n;
         return {
