@@ -519,15 +519,15 @@ public:
                     if(usestrategy == "equiangular") {
                         //convert directionpdf to vertex area measure
                         pathPdfEquiStrategyEquiSamples *= equiStratEquiSmplPDF * directionpdf
-                            /* glm::abs(glm::dot(wi, s->wo))*/ / equiangularT / equiangularT;
+                       ;/// equiangularT / equiangularT;
                         pathPdfRegularStrategyEquiSamples *= regularStratEquiSmplPDF * directionpdf  
-                            / regularT / regularT;
+                       ;//    / regularT / regularT;
                     }
                     if(usestrategy == "regular") {
                         pathPdfRegularStrategyRegularSamples *= regularStratRegularSmplPDF* directionpdf
-                            / regularT / regularT;
+                      ;//      / regularT / regularT;
                         pathPdfEquiStrategyRegularSamples *= equiStratRegularSmplPDF * directionpdf  
-                             / equiangularT / equiangularT;
+                        ;//     / equiangularT / equiangularT;
 
                     }
                     //first choice: leave sd as is

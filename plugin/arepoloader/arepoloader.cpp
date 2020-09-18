@@ -218,17 +218,17 @@ namespace ArepoLoaderInternals {
             densities.push_back(0.00000001);
             p.x = 0;p.y = -10;p.z = 0;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             p.x = 10;p.y = 0;p.z = -20;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             p.x = 0;p.y = 20;p.z = -10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
 
             p.x = 20;p.y = 20;p.z = 10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
@@ -299,11 +299,11 @@ namespace ArepoLoaderInternals {
             //for(int i = 0; i < densities.size(); i++) {
             //    LM_INFO("density {}: {}, ask {} ",i, densities[i], index);
            // }
-            return MODEL_SCALE * densities[index];
+            return densities[index] / MODEL_SCALE;
         }
 
         virtual lm::Float max_density() override  {
-            return MODEL_SCALE * (*std::max_element(densities.begin(), densities.end()));
+            return (*std::max_element(densities.begin(), densities.end())) / MODEL_SCALE;
         }
     };
 
@@ -770,7 +770,7 @@ namespace ArepoLoaderInternals {
                 int hydroIndex = getCorrectedHydroInd(num);
                 
                 if(hydroIndex > -1 && num  < NumGas) {
-                    addValsContribution(cachedS.cornerVals[i],hydroIndex,MODEL_SCALE);//lengths[minDistIndex] / totalD );
+                    addValsContribution(cachedS.cornerVals[i],hydroIndex,1.0/MODEL_SCALE);//lengths[minDistIndex] / totalD );
                 }  
             }
 #endif
@@ -1098,7 +1098,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         tetraTestMargin = lm::json::value<lm::Float>(prop, "tetrahedronTestMargin", 0.1);
         auto cutoutPath = lm::json::value<std::string>(prop, "cutoutpath");
 
-        // Density scale
+        // scale
         scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
         MODEL_SCALE = scale_;
         usepluecker_ = lm::json::value<bool>(prop, "usepluecker", false);
@@ -1143,7 +1143,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         max_scalar_ = max_scalar();
         LM_INFO("max scalar  {}",max_scalar_);
-        LM_INFO("mean scalar  {}",MODEL_SCALE * arepo->valBounds[TF_VAL_DENS*3 + 2]);
+        LM_INFO("mean scalar  {}", arepo->valBounds[TF_VAL_DENS*3 + 2]) / MODEL_SCALE;
         LM_INFO("num gas  {}",NumGas);
         LM_INFO("test delaunay mesh");
         auto arepoBound = arepoMeshWrapper->WorldBound();
@@ -1317,7 +1317,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 #ifdef MOCK_AREPO
         return arepoMesh->max_density();
 #else
-        return MODEL_SCALE * arepo->valBounds[TF_VAL_DENS*3 + 1];
+        return arepo->valBounds[TF_VAL_DENS*3 + 1] / MODEL_SCALE;
 #endif
     }
     virtual lm::Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong, lm::Float & out_a, lm::Float & out_b) const override {
