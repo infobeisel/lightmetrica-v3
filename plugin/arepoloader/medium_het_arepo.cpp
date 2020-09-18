@@ -135,9 +135,12 @@ public:
             return Vec3(ret);
         } else {
             // Perform ratio tracking [Novak et al. 2014]
+            
             Float Tr = 1_f;
             Float t = tmin;
             const auto inv_max_density = 1_f / volume_density_->max_scalar();
+            //if(std::isnan(tmin) || std::isnan(tmax) || std::isinf(tmin) || std::isinf(tmax))
+            //    return Vec3(Tr); //very ugly, normally this method is  not called with nan
             while (true) {
                 t -= glm::log(1_f - rng.u()) * inv_max_density;
                 if (t >= tmax) {
@@ -147,7 +150,6 @@ public:
                 const auto density = volume_density_->eval_scalar(p);
                 Tr *= 1_f - density * inv_max_density;
             }
-
             return Vec3(Tr);
         }
     }

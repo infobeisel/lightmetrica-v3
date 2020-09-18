@@ -122,6 +122,9 @@ public:
             auto pathPdfRegularStrategyRegularSamples = 1.0;
             auto pathPdfRegularStrategyEquiSamples = 1.0;
 
+
+            auto pathPdfDeltaStrategy = 1.0;
+
             Vec3 contributionRegularStrategy = Vec3(0.0);
             Vec3 contributionEquiStrategy = Vec3(0.0);
 
@@ -156,7 +159,7 @@ public:
                 stats::set<stats::EquiDistanceSampleRandomValueVertexIndex,int,int>(vertexIndexStatsKey,0);
                 stats::set<stats::RegularDistanceSampleRandomValueVertexIndex,int,int>(vertexIndexStatsKey,max_verts_);
 
-                Vec3 contribution = Vec3(1);
+                Vec3 contribution = usestrategy == "delta" ? Vec3(0) : Vec3(1);
 
                 // ------------------------------------------------------------------------------------
 
@@ -173,12 +176,6 @@ public:
                 Vec3 wi{};
 
 
-                //measurement contribution for first segment
-                //if(usestrategy == "equiangular")
-                //    EquiMeasurementContributions.push_back(contribution);
-                //if(usestrategy == "regular")
-                 //   RegularMeasurementContributions.push_back(contribution);
-                
                 for (int num_verts = 1; num_verts < max_verts_; num_verts++) {
                     
                     
@@ -189,7 +186,7 @@ public:
                     //receive current random sample
                                     
 
-                    auto rng_u_i_equi = stats::get<stats::DistanceSampleRandomValues,int,Float>(num_verts);
+                    //auto rng_u_i_equi = stats::get<stats::DistanceSampleRandomValues,int,Float>(num_verts);
 
                     //auto rng_u_i_regular = stats::get<stats::DistanceSampleRandomValues,int,Float>(num_verts + max_verts_);
                     
@@ -275,7 +272,7 @@ public:
                         //leave light contribution as is 
                         //phase does not contain pdf anymore, check!
                         const auto C = throughput * Tr * fs * sL->weight; 
-                        contribution *= C;
+                        contribution = usestrategy == "delta" ? contribution + C : contribution * C;
 
                         int key = 0;
                         auto pdfLight = stats::get<stats::LastSampledPDF,int,Float>(key);
@@ -300,6 +297,8 @@ public:
                             RegularPdfOfRegularSmpls.push_back(pathPdfRegularStrategyRegularSamples* solidangledirectionpdf );
                                 
                         }
+                        if(usestrategy == "delta")
+                            contribution /= solidangledirectionpdf;
                         
                         //film_->splat(rp, C);
                     }();
@@ -371,8 +370,7 @@ public:
                     //ask nearest light to current vertex
                     scene_->sample_light_selection_from_pos(0.0,sp.geom.p);
 
-                    auto lightprim = scene_->light_primitive_index_at(nearestI);
-                    
+                    lm::Scene::LightPrimitiveIndex lightprim; 
 
                     // Sample next scene interaction
                     
@@ -384,6 +382,10 @@ public:
                     lightDistanceSample.weight = Vec3(0);
                     auto equiangularT = 0.0;
                     if(usestrategy != "delta") {
+
+
+                        lightprim = scene_->light_primitive_index_at(nearestI);
+
 
                         auto mediumindex = scene_->medium_node();
                         auto & medium = scene_->node_at(mediumindex);
@@ -450,16 +452,19 @@ public:
 
                     
                     //importance sample distance following volume 
-                    auto sd = path::sample_distance(rng, scene_, sp, s->wo);
+                    std::optional<path::DistanceSample> sd = path::sample_distance(rng, scene_, sp, s->wo);
                     
-                    
+                    if(!sd && usestrategy == "delta")
+                        return contribution ;
 
                     
                     //2 distance samples 0 and 1, 2 strategies 0 and 1,
                     // we miss one pdf value: equiangular pdf 0 of regular distance sample 1
                     int key = 0;
-                    auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,Float>(key);
+                    Float regularT = 0.0;
+                    
                     if(usestrategy != "delta") {
+                        regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,Float>(key);
 
                         //auto mediumindex = scene_->medium_node();
                         //auto & medium = scene_->node_at(mediumindex);
@@ -624,22 +629,13 @@ public:
             //combine contributions with MIS
 
             if(strategy_ == "equiangular") {
-
-
-            /*std::vector<Float> EquiMeasurementContributions;
-            std::vector<Float> EquiPdfOfEquiSmpls;
-            std::vector<Float> EquiPdfOfRegularSmpls;
-            
-            std::vector<Float> RegularMeasurementContributions;
-            std::vector<Float> RegularPdfOfEquiSmpls;
-            std::vector<Float> RegularPdfOfRegularSmpls;*/
-
                 samplePath("equiangular");
                 contributionEquiStrategy = Vec3(0.0);
                 for(int i = 0; i < EquiMeasurementContributions.size(); i++) {
                     contributionEquiStrategy += EquiMeasurementContributions[i] / EquiPdfOfEquiSmpls[i];
                 }
-
+                contributionEquiStrategy /= static_cast<Float>(EquiMeasurementContributions.size()); //divided by how many paths
+                film_->splat(raster_pos, contributionEquiStrategy / static_cast<Float>(spp_));
             }
             else if(strategy_ == "regular") {
                 samplePath("regular");
@@ -652,20 +648,12 @@ public:
                         contributionRegularStrategy += RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[i];
                 }
                 contributionRegularStrategy /= static_cast<Float>(RegularMeasurementContributions.size()); //divided by how many paths
+                film_->splat(raster_pos, contributionRegularStrategy / static_cast<Float>(spp_));
             }
             else if(strategy_ == "mis") {
                 samplePath("equiangular");
                 samplePath("regular");
                 auto contribution = Vec3(0.0);
-                /*LM_INFO("sizes {},{},{}, {},{},{}",
-                EquiMeasurementContributions.size(),
-                EquiPdfOfEquiSmpls.size(),
-                EquiPdfOfRegularSmpls.size(),
-                RegularMeasurementContributions.size(),
-                RegularPdfOfEquiSmpls.size(),
-                RegularPdfOfRegularSmpls.size());*/
-
-
                 if(RegularMeasurementContributions.size() != EquiMeasurementContributions.size())
                     LM_INFO("not the same path lengths");
 
@@ -684,23 +672,12 @@ public:
                     //contribution += 0.5 * EquiMeasurementContributions[i] / EquiPdfOfEquiSmpls[j] ;
                     LM_INFO("weights {} , {}",weightEquiStrategy ,weightRegularStrategy);
                 }
-                film_->splat(raster_pos,contribution);
-                
-
-
+                film_->splat(raster_pos,contribution);  
             } else { //onesample_mis or delta strategy 
-                auto c = samplePath(strategy_);
-                film_->splat(raster_pos, c);
+                auto c = samplePath("delta");
+                film_->splat(raster_pos, c/ static_cast<Float>(spp_));
             }
-
-
-                   
-
-            //film_->splat(raster_pos, contributionEquiStrategy);
-            if(strategy_ == "regular")
-                film_->splat(raster_pos, contributionRegularStrategy / static_cast<Float>(spp_));
-            else if(strategy_ == "equiangular")
-                film_->splat(raster_pos, contributionEquiStrategy);
+        
             
         },  
         [&](auto pxlindx,auto smplindx,auto threadid) {
