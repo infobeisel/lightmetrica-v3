@@ -213,13 +213,13 @@ namespace ArepoLoaderInternals {
        
 
             point p;
-            p.x = -20;p.y = 0;p.z = -20;p.index = 0;
+            p.x = -20;p.y = -10;p.z = -20;p.index = 0;
             DP.push_back(p);
             densities.push_back(0.00000001);
-            p.x = 0;p.y = -10;p.z = 0;p.index=1;
+            p.x = 0;p.y = -10;p.z = 20;p.index=1;
             DP.push_back(p);
             densities.push_back(0.1);
-            p.x = 10;p.y = 0;p.z = -20;p.index=2;
+            p.x = 10;p.y = -10;p.z = -20;p.index=2;
             DP.push_back(p);
             densities.push_back(0.1);
             p.x = 0;p.y = 20;p.z = -10;p.index=3;
@@ -1143,7 +1143,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         max_scalar_ = max_scalar();
         LM_INFO("max scalar  {}",max_scalar_);
-        LM_INFO("mean scalar  {}", arepo->valBounds[TF_VAL_DENS*3 + 2]) / MODEL_SCALE;
+        LM_INFO("mean scalar  {}", arepo->valBounds[TF_VAL_DENS*3 + 2] / MODEL_SCALE);
         LM_INFO("num gas  {}",NumGas);
         LM_INFO("test delaunay mesh");
         auto arepoBound = arepoMeshWrapper->WorldBound();
@@ -1437,8 +1437,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         auto rng_u_regular = lm::stats::get<lm::stats::DistanceSampleRandomValues,int,lm::Float>(currentRegularRngU_I);
         
 
-        auto & visitor = *lm::stats::get<lm::stats::BoundaryVisitor,int,std::function<void(lm::Vec3,lm::RaySegmentCDF const &)>*>(key);
+        auto visitor = lm::stats::get<lm::stats::BoundaryVisitor,int,std::function<void(lm::Vec3,lm::RaySegmentCDF const &)>>(key);
 
+        auto visitor2 = lm::stats::get<lm::stats::BoundaryVisitor,int,std::function<void(lm::Vec3,lm::RaySegmentCDF const &, int tetraindex)>>(key);
 
         int segmentCount = 0;
         std::vector<lm::RaySegmentCDF> & segments = raySegments();
@@ -1479,6 +1480,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     totalacc += segments[segmentCount].localcdf;
                     ret = true;
                 }
+
+                //visitor that needs to know the tetrahedron index corresponding to the ray segment as well
+                if(visitor2)
+                    visitor2(originalRay.o + originalRay.d * totalT, segments[segmentCount], info.tetraI);
+
                 totalT += segments[segmentCount].t;
                 segmentCount++;
                 return ret;
@@ -1518,7 +1524,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             auto & raySegment = segments[segmentI];
 
 
-            visitor(originalRay.o + originalRay.d * freeT, raySegment);
+            if(visitor) visitor(originalRay.o + originalRay.d * freeT, raySegment);
             //by the way, calculate PDF for samples coming from other strategies:
             if(freeT + raySegment.t > equiAngularT && !stopEquiangular) {
                 stopEquiangular = true;

@@ -86,6 +86,8 @@ public:
         const auto geomL = PointGeometry::make_degenerated(position_);
         const auto pL = pdf_direct(geom, geomL, {}, wo, {});
 
+//                    LM_INFO("light pdf {} ", pdfLight);
+
         stats::set<stats::LastSampledPDF,int,Float>(0,pL);
         
         if (pL == 0_f) {

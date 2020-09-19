@@ -27,6 +27,22 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 typedef std::vector<std::vector<lm::Float>&> stdvec2d;
     
+
+
+struct LightToCameraRaySegmentCDF {
+    Vec3 weight;
+    lm::Float cdfSoFar;
+    lm::Float localcdf;
+    lm::Float t;
+    lm::Float a;
+    lm::Float b;
+
+};
+void to_json(lm::Json& j, const LightToCameraRaySegmentCDF& p); 
+
+
+void from_json(const lm::Json& j, LightToCameraRaySegmentCDF& p);
+
 namespace stats {
     struct CachedSampleId {};
     struct SampleIdCacheHits {};
@@ -65,7 +81,15 @@ namespace stats {
 
     struct BoundaryVisitor{};
 
+    struct VRL{};
+    typedef int TetraIndex;
+
+
+
     
+
+
+
 
 }
 
@@ -75,6 +99,10 @@ struct RaySegmentCDF {
         lm::Float a;
         lm::Float b;
     };
+
+
+
+
     
 class ArepoLMMesh : public Mesh {
 
