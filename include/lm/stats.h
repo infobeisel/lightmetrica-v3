@@ -135,16 +135,23 @@ namespace internals {
                 });
             }
             ~SlotStats() {}
+
+
             
         public:
             std::vector<Value> data;
             static void accessMainInstance(std::function<void(SlotStats<Tag,Value>&)> accessor) {
                 static std::mutex access;
                 access.lock();
-                static SlotStats<Tag,Value> s(true);
-                accessor(s);
+                accessor(mainInstance());
                 access.unlock();
             } 
+
+            static SlotStats<Tag,Value> & mainInstance() {
+                static SlotStats<Tag,Value> s(true);
+                return s;
+            }
+            
             static SlotStats<Tag,Value> & threadInstance() {
                 thread_local  SlotStats<Tag,Value> s;
                 return s;
@@ -233,6 +240,10 @@ LM_PUBLIC_API std::unordered_map<Key,Value> & getGlobalRef() {
 }
 
 
+
+
+
+
 template <typename Tag, typename Key, typename Value>
 /*!
     \brief receives global statistics that have been accumulated so far, belonging to given key
@@ -244,6 +255,15 @@ LM_PUBLIC_API Value getGlobal( Key key) {
         ret = mainInstance.data[key];
     });
     return ret;
+}
+
+
+template <typename Tag, typename Key, typename Value>
+/*!
+    \brief receives global statistics that have been accumulated so far, accessed in a not threadsafe manner
+*/
+LM_PUBLIC_API std::unordered_map<Key,Value> & getGlobalRefUnsafe(Key key) {
+    return internals::Statistics<Tag, Key,Value>::mainInstance().data[key];
 }
 
 
