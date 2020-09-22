@@ -104,10 +104,17 @@ namespace internals {
             static void accessMainInstance(std::function<void(Statistics<Tag,Key,Value>&)> accessor) {
                 static std::mutex access;
                 access.lock();
-                static Statistics<Tag, Key,Value> s(true);
-                accessor(s);
+                
+                accessor(mainInstance());
                 access.unlock();
             } 
+
+
+            static Statistics<Tag,Key,Value> & mainInstance() {
+                static Statistics<Tag,Key,Value> s(true);
+                return s;
+            }
+
             static Statistics<Tag,Key,Value> & threadInstance() {
                 thread_local  Statistics<Tag,Key,Value> s;
                 return s;
@@ -262,8 +269,8 @@ template <typename Tag, typename Key, typename Value>
 /*!
     \brief receives global statistics that have been accumulated so far, accessed in a not threadsafe manner
 */
-LM_PUBLIC_API std::unordered_map<Key,Value> & getGlobalRefUnsafe(Key key) {
-    return internals::Statistics<Tag, Key,Value>::mainInstance().data[key];
+LM_PUBLIC_API std::unordered_map<Key,Value> & getGlobalRefUnsafe() {
+    return internals::Statistics<Tag, Key,Value>::mainInstance().data;
 }
 
 

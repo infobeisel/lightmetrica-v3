@@ -8,6 +8,12 @@
 #include "voronoi_3db.h" //shit didnt want to include any arepo code here
 
 
+
+#define INSIDE_TOLERANCE 100.0 * std::numeric_limits<lm::Float>::epsilon()
+
+lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b);
+lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b);
+
 namespace ArepoLoaderInternals {
     struct IArepoMeshMock {
         virtual tetra * getDT() = 0;
@@ -21,6 +27,9 @@ namespace ArepoLoaderInternals {
         virtual lm::Float max_density() = 0;
      };
 }
+
+
+
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 
@@ -28,14 +37,16 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 typedef std::vector<std::vector<lm::Float>&> stdvec2d;
     
 
-
 struct LightToCameraRaySegmentCDF {
     Vec3 weight;
+    Vec3 p,d;
     lm::Float cdfSoFar;
     lm::Float localcdf;
     lm::Float t;
+    lm::Float tSoFar;
     lm::Float a;
     lm::Float b;
+    
 
 };
 void to_json(lm::Json& j, const LightToCameraRaySegmentCDF& p); 
@@ -57,6 +68,9 @@ namespace stats {
     struct FreePathTransmittance {};
 
     struct RegularTrackingStrategyDistanceSample {};
+    struct RegularTrackingStrategyXi {};
+    struct RegularTrackingStrategyNormFac {};
+
     struct EquiangularStrategyDistanceSample {};
 
     struct ScatteringAlbedo {};
@@ -65,6 +79,9 @@ namespace stats {
     struct DistanceSampleRandomValues {};
     struct EquiDistanceSampleRandomValueVertexIndex {};
     struct RegularDistanceSampleRandomValueVertexIndex {};
+
+    struct EquiContribution;
+    struct EquiEquiPDF;
 
     struct DistanceSamplesPDFs{};
     //2 distance samples, first one from equiangular, second one from regular 
@@ -80,6 +97,7 @@ namespace stats {
     };
 
     struct BoundaryVisitor{};
+    struct LastBoundarySequence {};
 
     struct VRL{};
     typedef int TetraIndex;
@@ -98,6 +116,7 @@ struct RaySegmentCDF {
         lm::Float t;
         lm::Float a;
         lm::Float b;
+        int tetraI;
     };
 
 
