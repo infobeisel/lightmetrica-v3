@@ -123,7 +123,7 @@ public:
             //    - here: sample vrl buffer to choose vrl segments that will shine wonderfully on this the distance 
             //    - think of pdf that direct light splatting gives ? 0 probabliy because its a point light...
             //    - implement pybinding helper for parsing the stars (takes hours in python)
-            auto & tetraIToLightSegments = lm::stats::getGlobalRefUnsafe<lm::stats::VRL,lm::stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>(); 
+            auto & tetraIToLightSegments =  lm::stats::getGlobalRefUnsafe<lm::stats::VRL,lm::stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>(); 
 
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
@@ -172,29 +172,32 @@ public:
 
 
             std::vector<Vec3> EquiMeasurementContributions;
-            EquiMeasurementContributions.reserve(max_verts_);
+           // EquiMeasurementContributions.reserve(max_verts_);
             std::vector<Float> EquiPdfOfEquiSmpls;
-            EquiPdfOfEquiSmpls.reserve(max_verts_);
+            //EquiPdfOfEquiSmpls.reserve(max_verts_);
             std::vector<Float> EquiPdfOfRegularSmpls;
-            EquiPdfOfRegularSmpls.reserve(max_verts_);
+            //EquiPdfOfRegularSmpls.reserve(max_verts_);
             
             std::vector<Vec3> RegularMeasurementContributions;
-            RegularMeasurementContributions.reserve(max_verts_);
+            //RegularMeasurementContributions.reserve(max_verts_);
             std::vector<Float> RegularPdfOfEquiSmpls;
-            RegularPdfOfEquiSmpls.reserve(max_verts_);
+            //RegularPdfOfEquiSmpls.reserve(max_verts_);
             std::vector<Float> RegularPdfOfRegularSmpls;
-            RegularPdfOfRegularSmpls.reserve(max_verts_);
+            //RegularPdfOfRegularSmpls.reserve(max_verts_);
             
+            
+            //how many contributions are there, per path length?
+            std::vector<int> contributionIndex = {};
             
             
             Vec2 raster_pos{};
+            
             //prepare sample path routine as a lambda, then call it 2 times, once for each strategy
             std::function<Vec3(std::string)> samplePath = [&] (std::string usestrategy) {
 
-
-                for(int i = 0; i < max_verts_;i++) { //we have two strategies therefore twice the amount
-                    stats::set<stats::EquiContribution,int,std::vector<Vec3>>(i,{});
-                    stats::set<stats::EquiEquiPDF,int,std::vector<Float>>(i,{});
+                contributionIndex.resize(max_verts_);
+                for(int i = 0; i < max_verts_;i++) { 
+                    contributionIndex[i] = 0;
                 }
 
                 int vertexIndexStatsKey = 0;
@@ -216,6 +219,7 @@ public:
 
                 // Perform random walk
                 Vec3 wi{};
+
 
 
                 for (int num_verts = 1; num_verts < max_verts_; num_verts++) {
@@ -444,7 +448,7 @@ public:
                     std::optional<path::DistanceSample> sd = path::sample_distance(rng, scene_, sp, s->wo);
 
                     int k = 0;
-                    std::vector<RaySegmentCDF> * boundaries = stats::get<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(k);
+                    std::vector<RaySegmentCDF> * boundaries =  stats::get<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(k);
 
 
                     auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(k);  
@@ -736,15 +740,23 @@ public:
 
 
                                 if(! std::isnan(segment_pdf) && !std::isinf(segment_pdf) && segment_pdf > std::numeric_limits<Float>::epsilon()) {
-
-                                    stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(num_verts).
-                                    push_back(segment_contribution );
-                                    stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(num_verts).
-                                    push_back( segment_pdf  );
+                                    
+                                    if(contributionIndex[num_verts] >= stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(num_verts).size()) {
+                                        stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(num_verts).
+                                        push_back(segment_contribution );
+                                        stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(num_verts).
+                                        push_back( segment_pdf  );
+                                    } else {
+                                        stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(num_verts)[contributionIndex[num_verts]] = segment_contribution;
+                                        stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(num_verts)[contributionIndex[num_verts]] = segment_pdf ;
+                                    }
+                                    
 
 
                                     currentContribution += segment_contribution;
                                     currentPdf *= segment_pdf;  
+
+                                    contributionIndex[num_verts]++;
                                     //contribCount++;
 
                                     //EquiMeasurementContributions.push_back(segment_contribution);
@@ -937,11 +949,13 @@ public:
                     auto & cs = stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(i);
                     auto & pdfs = stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(i);
                     //Float segments = stats::get<stats::EquiContribution,int,int>(i);
-                    
+                    auto pathsWithLengtI = contributionIndex[i];
+                    //cs.size() can be anything from previous samples on this thread...
 
                     Vec3 ci = Vec3(0);
                     Float js = 0.0;
-                    for(int j = 0; j < cs.size(); j++) { //for pahts with length i
+                    //for(int j = 0; j < cs.size(); j++) { //for pahts with length i
+                    for(int j = 0; j < pathsWithLengtI; j++) { //for pahts with length i
                         auto boolvec3 =  glm::isinf(cs[j]);
                         if(boolvec3.x || boolvec3.y || boolvec3.z || pdfs[j] < std::numeric_limits<Float>::epsilon()) {
                             //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
