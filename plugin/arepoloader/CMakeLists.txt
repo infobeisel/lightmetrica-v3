@@ -32,7 +32,7 @@ if(MOCK_AREPO)
     target_compile_definitions(arepoloader PUBLIC MOCK_AREPO)
 endif()
 
-
+target_compile_features(arepoloader PUBLIC cxx_thread_local)
 target_include_directories(arepoloader PUBLIC 
 "${PNG_INCLUDE_DIRS}"
 "${MPI_CXX_INCLUDE_DIRS}"

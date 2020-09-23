@@ -11,8 +11,42 @@
 
 #define INSIDE_TOLERANCE 100.0 * std::numeric_limits<lm::Float>::epsilon()
 
-lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b);
-lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b);
+inline lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b){
+    
+
+    //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
+    //auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
+    auto y = logxi - out_cdf;
+    lm::Float freeT;
+
+    if (abs(a) < INSIDE_TOLERANCE
+    && abs(b) < INSIDE_TOLERANCE) {
+        freeT = std::numeric_limits<lm::Float>::max();
+    } else if(abs(a) < INSIDE_TOLERANCE) {
+        //freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
+        freeT = y / b;
+    }
+    else if(abs(b) < INSIDE_TOLERANCE) {
+        //freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+        freeT = glm::sqrt(2.0 * y * a) / a;
+    } else if (abs(a) < abs(b)) {
+        freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
+    } else if (abs(b) < abs(a)) {
+        freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+    }
+  
+    freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
+    //for evaluating tau, limit free path to tmax
+    lm::Float t = glm::min(freeT , tmax);
+    lm::Float acc_cdf = t  * b  +  a  * 0.5 * t * t;
+    
+    out_cdf += glm::max(0.0,
+        acc_cdf) ; //cdf within tmin and  min of (t , tmax) 
+    return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
+}
+inline lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b) {
+    return ( b * toT  +  a * 0.5 *toT * toT   );
+}
 
 namespace ArepoLoaderInternals {
     struct IArepoMeshMock {
@@ -112,12 +146,12 @@ namespace stats {
 }
 
 struct RaySegmentCDF {
-        lm::Float localcdf;
-        lm::Float t;
-        lm::Float a;
-        lm::Float b;
-        int tetraI;
-    };
+    lm::Float localcdf;
+    lm::Float t;
+    lm::Float a;
+    lm::Float b;
+    int tetraI;
+};
 
 
 

@@ -154,7 +154,7 @@ public:
             segment.a = 0.0;
             segment.b = 0.0;
             
-            std::function<void(Vec3,RaySegmentCDF const &, int,Float,Float)> raysegmentVisitor = [&] (lm::Vec3 boundarypos,lm::RaySegmentCDF const & tetrasegment, int tetraI,Float,Float) -> void {
+            std::function<void(Vec3,RaySegmentCDF const &, int)> raysegmentVisitor = [&] (lm::Vec3 boundarypos,lm::RaySegmentCDF const & tetrasegment, int tetraI) -> void {
                 //add an entry for the current tetrahedron
                 segment.localcdf = tetrasegment.localcdf;
                 segment.t = tetrasegment.t;
@@ -166,7 +166,7 @@ public:
                 segment.tSoFar += tetrasegment.t;
                 segment.cdfSoFar += tetrasegment.localcdf;
             };
-            stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int,Float,Float)>>(0,raysegmentVisitor);
+            stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int)>>(0,raysegmentVisitor);
             //std::function<void(Vec3,RaySegmentCDF const &)> donothing = [](auto,auto) {}; 
             //stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &)>>(0,&donothing);
 
@@ -181,6 +181,9 @@ public:
 
             //importance sample distance following volume 
             std::optional<path::DistanceSample> sd = path::sample_distance(rng, scene_, sp, -cam_light_connection->wo);
+
+            //this is very important, to unregister the function in subsequent render passes(!)
+            stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int)>>(0,{});
 
             //splat result to pixel (test)
             const auto rp_ = path::raster_position(scene_, cam_light_connection->wo);
@@ -254,6 +257,15 @@ public:
         auto accelsmpls = stats::getGlobal<lm::stats::ResampleAccel,int,long long>( 0);
         auto totaltetratests = stats::getGlobal<lm::stats::TotalTetraTests,int,long long>(0 );
 
+        auto vrls = stats::getGlobalRef<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>( );
+        int numvrls = 0;
+        for(auto & p : vrls) {
+            numvrls += p.second.size();
+           // LM_INFO("vrls in tetra {} : {}",p.first,p.second.size());
+
+            
+        }
+         LM_INFO("vrl count: {}",numvrls);
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,
          smplmisses,

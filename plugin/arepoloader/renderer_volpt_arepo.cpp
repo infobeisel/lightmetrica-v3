@@ -117,13 +117,19 @@ public:
 
         const auto processed = sched_->run([&](long long pixel_index, long long sample_index, int threadid) {
             LM_KEEP_UNUSED(sample_index);
-
+        
             //TODO implement :
             //    - over in vrls render: adding vrls to an accel knn structure (yes not optimal but ok)
             //    - here: sample vrl buffer to choose vrl segments that will shine wonderfully on this the distance 
             //    - think of pdf that direct light splatting gives ? 0 probabliy because its a point light...
             //    - implement pybinding helper for parsing the stars (takes hours in python)
             auto & tetraIToLightSegments =  lm::stats::getGlobalRefUnsafe<lm::stats::VRL,lm::stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>(); 
+
+            auto & equiContributions = 
+            stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>();
+            auto & equipdfs = 
+            stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>();
+
 
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
@@ -452,6 +458,7 @@ public:
 
 
                     auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(k);  
+                    auto regularXi = stats::get<stats::RegularTrackingStrategyXi,int,Float>(k);//sample that was used for regular distance sample
                     auto segmentCount = stats::get<stats::LastBoundarySequence,int,int>(k);  
                     auto lowDensityNormalizationFactor = stats::get<stats::RegularTrackingStrategyNormFac,int,Float>(k);  
 
@@ -470,6 +477,7 @@ public:
                         // nee = true;
 
                     if(boundaries != nullptr) { //the chance to have in-scattering                        
+                        auto & cameraSegments = *boundaries;
                             //auto a = sp.geom.p + a_d * currentTransmittanceDistanceSample; //dont use camera ray but camera point
                             auto maxAllowedT = regularT;//tetrasegment.t;//glm::min(
                                     //  currentTransmittanceDistanceSample - travelT,
@@ -477,10 +485,7 @@ public:
                         for(auto & vrls : tetraIToLightSegments){
                             Float vrlCount = vrls.second.size();
                             for( auto & vrl : vrls.second) {
-                            //for( auto & vrl : tetraIToLightSegments[tetraI]) {
-                                //auto costheta = glm::dot(vrl.d,a_d);
-                                //auto vrlstart = vrl.p;
-                                //auto vrlend = vrl.p + vrl.d * vrl.t;
+                            
                                 auto b_d = vrl.d;
                                 auto b = vrl.p;
                                 
@@ -488,18 +493,14 @@ public:
                                 auto n2 = glm::cross(b_d,n);
                                 auto a_t = glm::dot((b - a) , n2) / glm::dot(a_d,n2);
 
-                                //if(a_t < 0.0 || a_t > maxAllowedT)
-                                //    continue;
-
                                 a_t = glm::max(0.0,glm::min(a_t,maxAllowedT));
 
                                 auto c1 = a + a_d *  a_t  ;                           
-                                auto b_t =     glm::dot((a - b) , n) / glm::dot(b_d,n);
+                                auto b_t = glm::dot((a - b) , n) / glm::dot(b_d,n);
 
                                 b_t = glm::max(0.0,glm::min(b_t,vrl.t));
 
-
-                                auto c2 = b + b_d *    b_t;
+                                auto c2 = b + b_d * b_t;
 
                                 auto h = glm::distance(c1,c2);
                                 auto costheta = glm::dot(a_d,b_d);
@@ -542,7 +543,7 @@ public:
                                 vrl_scatter_pdf *= vrl_area_measure_conv;
 
                                 auto regularPDF_of_equiSample_vrl = 0.0;
-                                {
+                                /*{
                                     auto t = vrl_vlp_t;
                                     auto cdf = vrl.cdfSoFar + 0.5 * vrl.a * t * t + vrl.b * t;
                                     auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
@@ -553,9 +554,7 @@ public:
                                     auto mu_t = mu_a + mu_s;
                                     //auto scattering_albedo = mu_s / mu_t; 
                                     regularPDF_of_equiSample_vrl = mu_t * glm::exp(-cdf) ;/// normFac; 
-                                }
-
-                                
+                                }*/
 
                                 //have sampled virtual ray light, now sample point on camera ray
                                 auto th = glm::dot((vrl_vlp - a), a_d); 
@@ -573,7 +572,6 @@ public:
 
                                //auto xi = rng.u();
 
-                                auto regularXi = stats::get<stats::RegularTrackingStrategyXi,int,Float>(k);//sample that was used for regular distance sample
                                 auto zeta = rng.u() * regularXi; //a new sample WITHIN the current distance sample
                                 lm::Float logzeta = -gsl_log1p(-zeta);
                                 auto zetaRegularPDF = 0.0;
@@ -585,7 +583,7 @@ public:
                                     auto accCdf = 0.0;
                                     auto segmentThroughput = 1.0;
                                     for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
-                                        auto & tetrasegment =  (*boundaries)[segmentI];
+                                        auto & tetrasegment =  cameraSegments[segmentI];
                                         if (accCdf  + tetrasegment.localcdf  > logzeta) {
                                             auto normcdf =  accCdf ;
                                             lm::Float t = sampleCachedICDF_andCDF( logzeta,zeta , tetrasegment.t ,
@@ -618,31 +616,13 @@ public:
                                 //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
                                 auto equiT = equih * glm::tan((1.0 - zeta) * theta_a + zeta * theta_b);
                                 auto t = th +  equiT ;
-                                //if(t < 0.0 || t > maxAllowedT)
-                                //    continue;
-                                //if(vrl_vlp_t < 0.0 || vrl_vlp_t > vrl.t)
-                                //    continue;
+                                
                                 //auto cam_area_measure_conv = 1.0 / (travelT + t) / (travelT + t) ;
                                 auto cam_area_measure_conv = 1.0 / t / t;
                                 auto cam_scatter_pdf = equih / (equih*equih+glm::pow(equiT,2.0) *(theta_b-theta_a));
                                 cam_scatter_pdf *= cam_area_measure_conv;
-                                cam_scatter_pdf *= zetaRegularPDF;
-                                /*auto regularPDF_of_equiSample_cam = 0.0;
-                                {
-                                    auto cdf = accCdf + 0.5 * tetrasegment.a * t * t + tetrasegment.b * t;
-                                    auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
-                                    auto particle_density = tetrasegment.b + tetrasegment.a * t;
-                                    auto mu_a = crosssection * particle_density;
-                                    auto phase_integrated = 1.0;//isotrope
-                                    auto mu_s = phase_integrated* particle_density;
-                                    auto mu_t = mu_a + mu_s;
-                                    //auto scattering_albedo = mu_s / mu_t; 
-                                    regularPDF_of_equiSample_cam = mu_t * glm::exp(-cdf) ;/// normFac; 
-                                }*/
+                                cam_scatter_pdf *= zetaRegularPDF; //conditional pdf
                                 
-
-
-
                                 auto camera_sample_point = a + a_d * t;
 
 
@@ -672,7 +652,7 @@ public:
                                 auto accCdf = 0.0;
                                 auto segmentThroughput = 1.0;
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
-                                    auto & tetrasegment =  (*boundaries)[segmentI];
+                                    auto & tetrasegment =  cameraSegments[segmentI];
                                     if(t < travelT + tetrasegment.t) { //found sample point
                                         auto lastBit = t - travelT;
                                         segmentThroughput = 
@@ -709,16 +689,6 @@ public:
                                 solidangledirectionpdf2 *= vrl_area_measure_conv; //convert pdf to vertex area
                                 
                                 
-
-                                //const auto& primitive = scene_->node_at(sp.primitive).primitive;
-                                //todo directions correct ?
-                                //auto solidangledirectionpdf = primitive.medium->phase()->pdf_direction(sp.geom, wi, wo);
-                                //eliminate pdf from phase again:
-                                //fs *= solidangledirectionpdf;
-                                //LM_INFO("phase pdf {} ", solidangledirectionpdf);
-                                //fs *= area_measure_conversion; //convert contribution to vertex area
-                                //solidangledirectionpdf *= area_measure_conversion; //convert pdf to vertex area
-
                                 auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                 auto segment_pdf = 
                                 pathPdfEquiStrategyEquiSamples 
@@ -741,14 +711,14 @@ public:
 
                                 if(! std::isnan(segment_pdf) && !std::isinf(segment_pdf) && segment_pdf > std::numeric_limits<Float>::epsilon()) {
                                     
-                                    if(contributionIndex[num_verts] >= stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(num_verts).size()) {
-                                        stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(num_verts).
+                                    if(contributionIndex[num_verts] >= equiContributions[num_verts].size()) {
+                                        equiContributions[num_verts].
                                         push_back(segment_contribution );
-                                        stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(num_verts).
+                                        equipdfs[num_verts].
                                         push_back( segment_pdf  );
                                     } else {
-                                        stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(num_verts)[contributionIndex[num_verts]] = segment_contribution;
-                                        stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(num_verts)[contributionIndex[num_verts]] = segment_pdf ;
+                                        equiContributions[num_verts][contributionIndex[num_verts]] = segment_contribution;
+                                        equipdfs[num_verts][contributionIndex[num_verts]] = segment_pdf ;
                                     }
                                     
 
@@ -976,6 +946,7 @@ public:
                 
                 //contributionEquiStrategy /= static_cast<Float>(EquiMeasurementContributions.size()); //divided by how many paths
                 film_->splat(raster_pos, contributionEquiStrategy / static_cast<Float>(spp_));
+                
             }
             else if(strategy_ == "regular") {
                 samplePath("regular");
@@ -1032,6 +1003,28 @@ public:
                 auto c = samplePath("delta");
                 film_->splat(raster_pos, c/ static_cast<Float>(spp_));
             }
+
+
+            /*for(int i = 0; i < max_verts_; i++) { //for paths of all lengths
+                auto & cs = stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(i);
+                auto & pdfs = stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(i);
+                //Float segments = stats::get<stats::EquiContribution,int,int>(i);
+                cs.clear();
+                pdfs.clear();
+                cs.shrink_to_fit();
+                pdfs.shrink_to_fit();
+                
+            }
+            int k = 0;
+            std::vector<RaySegmentCDF> * boundaries =  stats::get<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(k);
+            if(boundaries != nullptr) {
+                boundaries->clear();
+                boundaries->shrink_to_fit();
+            }
+
+            lm::stats::set<int,int,std::vector<lm::RaySegmentCDF>>(0,{}); */
+
+
         
             
         },  

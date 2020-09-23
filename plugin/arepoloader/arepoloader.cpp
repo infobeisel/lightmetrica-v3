@@ -35,57 +35,6 @@ ConfigSet Config;
 
 
 
-lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b) {
-    
-
-    //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
-    //auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
-    auto y = logxi - out_cdf;
-    lm::Float freeT;
-
-    if (abs(a) < INSIDE_TOLERANCE
-    && abs(b) < INSIDE_TOLERANCE) {
-        freeT = std::numeric_limits<lm::Float>::max();
-    } else if(abs(a) < INSIDE_TOLERANCE) {
-        //freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
-        freeT = y / b;
-    }
-    else if(abs(b) < INSIDE_TOLERANCE) {
-        //freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
-        freeT = glm::sqrt(2.0 * y * a) / a;
-    } else if (abs(a) < abs(b)) {
-        freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
-    } else if (abs(b) < abs(a)) {
-        freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
-    }
-    //lm::Float k = glm::exp(-0.5*a);
-    //lm::Float logk_of_1_xi  = glm::log(1.0 - xi) / glm::log(k);
-    //freeT = glm::sqrt(logk_of_1_xi) - b/a;
-
-    //freeT = y / b;
-    
-
-    if(isnan(freeT)) {
-    //    LM_INFO("wtf freeT is nan, {},{}",a,b);
-    }
-
-    freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
-    //for evaluating tau, limit free path to tmax
-    lm::Float t = glm::min(freeT , tmax);
-    lm::Float acc_cdf = t  * b  +  a  * 0.5 * t * t;
-    if(acc_cdf < 0.0) {
-    //    LM_INFO("wtf cdf never has negative values");
-    //    LM_ERROR("wtf cdf never has negative values");
-    }
-        out_cdf += glm::max(0.0,
-        acc_cdf) ; //cdf within tmin and  min of (t , tmax) 
-    return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
-}
-
-
-lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b) {
-    return ( b * toT  +  a * 0.5 *toT * toT   );
-}
 namespace ArepoLoaderInternals {
 
     #define DENSITY_CRANKUP 1.0
@@ -417,18 +366,12 @@ namespace ArepoLoaderInternals {
 
     };
 
-    static std::vector<ArepoLoaderInternals::CachedSample> & cachedTraversal() {
-        thread_local std::vector<ArepoLoaderInternals::CachedSample> c;
-        c.reserve(10);
-        return c;
-    }
 
 
     
     static std::vector<lm::RaySegmentCDF> & raySegments() {
-        thread_local std::vector<lm::RaySegmentCDF> c;
-        if(c.size() < RAY_SEGMENT_ALLOC)
-            c.resize(RAY_SEGMENT_ALLOC);
+        int i = 0;
+        auto & c =  lm::stats::getRef<int,int,std::vector<lm::RaySegmentCDF>>(i); 
         return c;
     }
 
@@ -449,17 +392,6 @@ namespace ArepoLoaderInternals {
         }
 
     };
-
-    static ArepoLoaderInternals::UniformSampleCache & uniformSamples() {
-        thread_local ArepoLoaderInternals::UniformSampleCache c;
-        if(c.urs.size() < REJECTION_SAMPLES_COUNT) {
-            c.urs.resize(REJECTION_SAMPLES_COUNT);
-            c.acccdf.resize(REJECTION_SAMPLES_COUNT);
-            c.freet.resize(REJECTION_SAMPLES_COUNT);
-        }
-
-        return c;
-    }
 
     inline double det3x3(lm::Vec3 b,lm::Vec3 c,lm::Vec3 d) {
         //glm::determinant(lm::Mat3(b0,b1,b2));
@@ -1440,6 +1372,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //receive current random sample
         auto rng_u_regular = lm::stats::get<lm::stats::DistanceSampleRandomValues,int,lm::Float>(currentRegularRngU_I);
         
+        auto totalRayVisitor = lm::stats::get<lm::stats::BoundaryVisitor,int,std::function<void(lm::Vec3,lm::RaySegmentCDF const &, int tetraindex)>>(key);
 
         auto visitor = lm::stats::get<lm::stats::BoundaryVisitor,int,std::function<void(lm::Vec3,lm::RaySegmentCDF const &)>>(key);
 
@@ -1448,13 +1381,17 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         int segmentCount = 0;
         std::vector<lm::RaySegmentCDF> & segments = raySegments();
         lm::stats::set<lm::stats::LastBoundarySequence,int,std::vector<lm::RaySegmentCDF>*>(0,&segments);
-
+        if(segments.size() == 0)
+            segments.resize(RAY_SEGMENT_ALLOC);
         segments[0].localcdf = 0.0;//TODO VALID!?
         segments[0].t = tmin;
         segments[0].a = 0.0;
         segments[0].b = 0.0;
         segments[0].tetraI = -1;
         segmentCount++;
+
+        if(totalRayVisitor)
+            totalRayVisitor(originalRay.o , segments[0],segments[0].tetraI );
 
 
         lm::Float totalacc = 0.0;
@@ -1464,48 +1401,51 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             auto travelray = originalRay;
             travelray.o = travelray.o + travelray.d * tmin; 
             lm::Float traveledT;
+
+            
             
             travel(travelray, cached,0.0,//rng.u(),
             [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
-                
+                lm::RaySegmentCDF toFill;
                 if(segments.size() <= segmentCount)
                     segments.resize(segments.size() * 2);
 
                 bool ret = false;
                 if(!inside) {
                     if(std::isinf(t)) { // we wont hit any tetra again
-                        segments[segmentCount].localcdf = 0.0;
-                        segments[segmentCount].t = tmax;
-                        segments[segmentCount].a = 0;
-                        segments[segmentCount].b = 0;
-                        segments[segmentCount].tetraI = -1;
+                        toFill.localcdf = 0.0;
+                        toFill.t = tmax;
+                        toFill.a = 0;
+                        toFill.b = 0;
+                        toFill.tetraI = -1;
                     } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
-                        segments[segmentCount].localcdf = 0.0;
-                        segments[segmentCount].t = t;
-                        segments[segmentCount].a = 0;
-                        segments[segmentCount].b = 0;
-                        segments[segmentCount].tetraI = -1;
+                        toFill.localcdf = 0.0;
+                        toFill.t = t;
+                        toFill.a = 0;
+                        toFill.b = 0;
+                        toFill.tetraI = -1;
                         ret = true;
                     }
                 } else {
                     lm::Float a,b;
                     sampleCachedScalarCoefficients(currentRay,  a, b, info);
-                    segments[segmentCount].localcdf = sampleCDF( t, a, b);
-                    segments[segmentCount].t = t;
-                    segments[segmentCount].a = a;
-                    segments[segmentCount].b = b;
-                    segments[segmentCount].tetraI = info.tetraI;
-                    totalacc += segments[segmentCount].localcdf;
+                    toFill.localcdf = sampleCDF( t, a, b);
+                    toFill.t = t;
+                    toFill.a = a;
+                    toFill.b = b;
+                    toFill.tetraI = info.tetraI;
+                    totalacc += toFill.localcdf;
                     ret = true;
                 }
+                if(totalRayVisitor)
+                    totalRayVisitor(currentRay.o , toFill,toFill.tetraI );
 
-                totalT += segments[segmentCount].t;
-               
+                totalT += toFill.t;
+                segments[segmentCount] = std::move(toFill);
                 segmentCount++;
                 return ret;
             });
         }
-
 
        // LM_INFO("total {},",totalacc);
         lm::Float normFac =  1.0 - glm::exp(-totalacc);
@@ -1539,20 +1479,15 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         bool stopZeta = false;
         bool stopEquiangular = false;
 
-        //if(equiAngularT < 0.0 || normFac < std::numeric_limits<lm::Float>::epsilon()) {
-        //    stopEquiangular = true;
-        //    lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
-        //            lm::stats::IJ::_1_0,0.0);
-       // }
-
         lm::stats::set<lm::stats::LastBoundarySequence,int,int>(key,segmentCount);
         
-        for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
+        for(int segmentI = 0; segmentI < segmentCount && !stopAccumulating; segmentI++) {
             auto & raySegment = segments[segmentI];
 
 
             if(visitor) visitor(originalRay.o + originalRay.d * freeT, raySegment);
             //by the way, calculate PDF for samples coming from other strategies:
+            /*TODO works only if iterating over the complete ray, taken out for optimization 
             if(freeT + raySegment.t > equiAngularT && !stopEquiangular) {
                 stopEquiangular = true;
                 auto t = (equiAngularT - freeT);
@@ -1567,40 +1502,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 regularPF_of_equiSample = mu_t * glm::exp(-cdf) ;/// normFac; 
                 
 
-            }
-
-            if ( !stopZeta &&  (acc  + raySegment.localcdf ) > logzeta) {
-                auto normcdf =  acc ;
-                lm::Float t = sampleCachedICDF_andCDF( logzeta,zeta , raySegment.t ,
-                normcdf ,  raySegment.a ,   raySegment.b );
-               // retFreeT = tmin + freeT + t; //fixed this problem by starting at 0 not at tmin:
-                //retFreeT =  ; 
-                normcdf = sampleCDF(t,raySegment.a,raySegment.b );
-                transmittance *= glm::exp(-  normcdf );
-                //accumulate non normalized!
-                retAcc = acc + normcdf;
-                integratedNormFac *= (1.0 - glm::exp(- (totalacc-retAcc)));
-                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
-                auto particle_density = raySegment.b + raySegment.a * t;
-                auto mu_a = crosssection * particle_density;
-                auto phase_integrated = 1.0;//isotrope
-                auto mu_s = phase_integrated* particle_density;
-                auto mu_t = mu_a + mu_s;
-                auto scattering_albedo = mu_s / mu_t; 
-                contribution = mu_s * transmittance;
-
-                pdf = mu_t * transmittance / normFac;     
-
-                lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(
-                    lm::stats::IJ::_1_0,pdf);
-                lm::stats::set<lm::stats::EquiangularStrategyDistanceSample,int,lm::Float>(0,freeT + t);
-
-                //pdf = (raySegment.b + raySegment.a * t) * glm::exp(-retAcc) ; //normfac already at scatter albedo
-
-                stopZeta = true;
-            }
-
-
+            }*/
             if ( !stopAccumulating &&  (acc  + raySegment.localcdf ) > logxi) {
                 auto normcdf =  acc ;
                 lm::Float t = sampleCachedICDF_andCDF( logxi,xi , raySegment.t ,
@@ -1611,7 +1513,6 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 transmittance *= glm::exp(-  normcdf );
                 //accumulate non normalized!
                 retAcc = acc + normcdf;
-                integratedNormFac *= (1.0 - glm::exp(- (totalacc-retAcc)));
                 auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
                 auto particle_density = raySegment.b + raySegment.a * t;
                 auto mu_a = crosssection * particle_density;
@@ -1637,13 +1538,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 visitor2(originalRay.o + originalRay.d * freeT, raySegment,raySegment.tetraI,
                 stopAccumulating ? retFreeT : freeT , totalT);
 
-
-            integratedNormFac *= (1.0 - glm::exp(- (totalacc - acc)));
-            
+           
             acc += raySegment.localcdf ;
             freeT += raySegment.t;
-            
-            
             
         }
         
@@ -1670,8 +1567,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     virtual lm::Float eval_transmittance(lm::Ray originalRay, lm::Float tmin, lm::Float tmax) const override {
          
-        auto cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
-        
+        //auto cached = cachedDistanceSample(); //work directly on cached, as the next request will start from this request's result
+        auto cached = cachedTransmittanceSample();
         //check if we have information from sample_distance available
         int h = 0;        
         auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
