@@ -511,6 +511,9 @@ public:
                             auto vrl_normFac = 1.0 - glm::exp(-num_vrls);
                             auto logu = -glm::log(1 - rng.u() * vrl_normFac);
                             vrl_knn_res.k = static_cast<unsigned int>(logu);
+
+                            vrl_knn_res.k = num_vrls; //TESST
+
                             vrl_knn_res.k = vrl_knn_res.k >= num_vrls ? num_vrls : vrl_knn_res.k;
                             vrl_knn_res.k = vrl_knn_res.k < 1 ? 1 : vrl_knn_res.k;
                             auto pdf_vrl_selection = static_cast<Float>(vrl_knn_res.k) /  static_cast<Float>(num_vrls);
@@ -536,7 +539,7 @@ public:
                         //for(auto & vrls : tetraIToLightSegments){
                             //Float vrlCount = vrls.second.size();
                             //for( auto & vrl : vrls.second) {
-                            while(false && num_vrls > 0 && !vrl_knn_res.knn.empty() ) {
+                            while(true && num_vrls > 0 && !vrl_knn_res.knn.empty() ) {
 
                                 auto & neighbor = vrl_knn_res.knn.top();
                                 //d_total += neighbor.d;
@@ -554,7 +557,7 @@ public:
                                 auto n2 = glm::cross(b_d,n);
                                 auto a_t = glm::dot((b - a) , n2) / glm::dot(a_d,n2);
 
-                                a_t = glm::max(0.0,glm::min(a_t,maxAllowedT));
+                                a_t = glm::max(minT,glm::min(a_t,totalT));
 
                                 auto c1 = a + a_d *  a_t  ;                           
                                 auto b_t = glm::dot((a - b) , n) / glm::dot(b_d,n);
@@ -623,8 +626,8 @@ public:
                                 auto shortest = a + a_d * th - vrl_vlp;
                                 auto equih = glm::length(shortest);
                                 //what if it the shortest d is not within the line segment? TODO
-                                Float a_ = -th;//- th;//ray.o - lightPos;
-                                Float b_ = maxAllowedT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
+                                Float a_ = minT-th;//- th;//ray.o - lightPos;
+                                Float b_ = totalT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                 //Float b_ = maxT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                 auto theta_a = glm::atan(a_,equih);
                                 auto theta_b = glm::atan(b_,equih);
@@ -633,7 +636,9 @@ public:
 
                                //auto xi = rng.u();
 
-                                auto zeta = rng.u() * regularXi; //a new sample WITHIN the current distance sample
+
+
+                                /*auto zeta = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
                                 lm::Float logzeta = -gsl_log1p(-zeta);
                                 auto zetaRegularPDF = 0.0;
                                 auto zetaTransmittance = 1.0;
@@ -669,9 +674,50 @@ public:
                                         accCdf += tetrasegment.localcdf;
                                         zetaTransmittance *= glm::exp(-  accCdf );
                                     }
+                                }*/
+
+
+                                auto zeta = rng.u() * totalTau; //a new sample within total 
+                                auto zetaRegularPDF = 0.0;
+                                auto zetaTransmittance = 1.0;
+                                auto zetaT = 0.0;
+                                auto zetaAccCdf = 0.0;
+                                //warp Zeta according transmittance
+                                {
+                                    auto travelT = 0.0;
+                                    auto segmentThroughput = 1.0;
+                                    for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
+                                        auto & tetrasegment =  cameraSegments[segmentI];
+                                        if (zetaAccCdf  + tetrasegment.localcdf  > zeta) {
+                                            auto normcdf =  zetaAccCdf ;
+                                            lm::Float t = sampleCachedICDF_andCDF( zeta,zeta , tetrasegment.t ,
+                                            normcdf ,  tetrasegment.a ,   tetrasegment.b );
+                                            normcdf = sampleCDF(t,tetrasegment.a,tetrasegment.b );
+                                            zetaTransmittance *= glm::exp(-  normcdf );
+                                            //accumulate non normalized!
+                                            //retAcc = accCdf + normcdf;
+                                            auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                                            auto particle_density = tetrasegment.b + tetrasegment.a * t;
+                                            auto mu_a = crosssection * particle_density;
+                                            auto phase_integrated = 1.0;//isotrope
+                                            auto mu_s = phase_integrated* particle_density;
+                                            auto mu_t = mu_a + mu_s;
+                                            //auto scattering_albedo = mu_s / mu_t; 
+                                            //contribution = mu_s * transmittance;
+                                            //zetaRegularPDF = mu_t / tauUntilRegularT;  
+                                            zetaRegularPDF = mu_t / totalTau;  
+                                            //zetaRegularPDF = 1.0;  
+                                            zetaT = travelT + t;   
+                                            zetaAccCdf += normcdf;
+                                            break;
+                                        }
+                                        travelT += tetrasegment.t;
+                                        zetaAccCdf += tetrasegment.localcdf;
+                                        zetaTransmittance *= glm::exp(-  zetaAccCdf );
+                                    }
                                 }
                                 //warp zeta
-                                zeta = zetaT / regularT; //now is between 0 and 1, transmittance-distributed
+                                zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
 
 
                                 //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
