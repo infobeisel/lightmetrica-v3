@@ -216,21 +216,21 @@ namespace ArepoLoaderInternals {
             point p;
             p.x = -20;p.y = -10;p.z = -20;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             p.x = 0;p.y = -10;p.z = 20;p.index=1;
             DP.push_back(p);
             
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             p.x = 10;p.y = -10;p.z = -20;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             p.x = 0;p.y = 20;p.z = -10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
 
             p.x = 20;p.y = 20;p.z = 10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.00000001);
+            densities.push_back(0.1);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
@@ -1396,6 +1396,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
         lm::Float totalacc = 0.0;
         lm::Float totalT = tmin;
+        lm::Float minT = tmin;
+        bool setMinT = false;
         {
             auto & cached = cachedDistanceSample(); 
             auto travelray = originalRay;
@@ -1425,6 +1427,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                         toFill.b = 0;
                         toFill.tetraI = -1;
                         ret = true;
+                        totalT += toFill.t;
+                        if(!setMinT) {
+                            setMinT = true;
+                            minT = totalT;
+                        }
                     }
                 } else {
                     lm::Float a,b;
@@ -1436,20 +1443,25 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     toFill.tetraI = info.tetraI;
                     totalacc += toFill.localcdf;
                     ret = true;
+                    totalT += toFill.t;
                 }
                 if(totalRayVisitor)
                     totalRayVisitor(currentRay.o , toFill,toFill.tetraI );
 
-                totalT += toFill.t;
                 segments[segmentCount] = std::move(toFill);
                 segmentCount++;
                 return ret;
             });
         }
+        lm::stats::set<lm::stats::RegularTrackingStrategyTotalT,int,lm::Float>(0,totalT);
+        lm::stats::set<lm::stats::RegularTrackingStrategyMinT,int,lm::Float>(0,minT);
 
        // LM_INFO("total {},",totalacc);
         lm::Float normFac =  1.0 - glm::exp(-totalacc);
         lm::stats::set<lm::stats::RegularTrackingStrategyNormFac,int,lm::Float>(0,normFac);
+
+
+
 
 
         lm::Float integratedNormFac = 1.0;//1.0 - glm::exp(- (totalacc));
@@ -1459,6 +1471,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         lm::Float xi =  rng.u() * normFac;
 
         lm::stats::set<lm::stats::RegularTrackingStrategyXi,int,lm::Float>(0,xi);
+        lm::stats::set<lm::stats::RegularTrackingStrategyTotalTau,int,lm::Float>(0,totalacc);
 
         lm::Float zeta = xi * rng.u();//within the interval, 
         //warp a random uniform variable across the transmittance cdf
@@ -1555,6 +1568,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //acccdf contains NON-normalized cdf which is exactly what we want
         //acccdf *= cdfNorm;
         lm::stats::set<lm::stats::FreePathTransmittance,int,lm::Float>(0,transmittance );
+
+        lm::stats::set<lm::stats::RegularTrackingStrategyTauUntilScatter,int,lm::Float>(0,retAcc);
 
         //TODO multiply with normFAC?!?!
         lm::stats::set<lm::stats::DistanceSamplesPDFs,lm::stats::IJ,lm::Float>(lm::stats::IJ::_1_1, pdf);

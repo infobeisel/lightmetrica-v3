@@ -102,8 +102,14 @@ namespace stats {
     struct FreePathTransmittance {};
 
     struct RegularTrackingStrategyDistanceSample {};
+
+    struct RegularTrackingStrategyTotalT{};//the distance until the last volume boundary
+    struct RegularTrackingStrategyMinT{}; //the distance until the first volume boundary
+
     struct RegularTrackingStrategyXi {};
-    struct RegularTrackingStrategyNormFac {};
+    struct RegularTrackingStrategyTotalTau{}; //the optical thickness for the whole current ray
+    struct RegularTrackingStrategyTauUntilScatter{}; //the optical thickness accumulated until the regular distance sample scattered
+    struct RegularTrackingStrategyNormFac {};//the normalization factor to make all uniform samples scatter 
 
     struct EquiangularStrategyDistanceSample {};
 
