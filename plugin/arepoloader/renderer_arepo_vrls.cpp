@@ -12,12 +12,13 @@
 #include <lm/timer.h>
 #include <lm/stats.h>
 #include <lm/light.h>
+#include <lm/accel.h>
 #include "statstags.h"
 #include "arepoloader.h"
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
-
+#define USE_KNN
 
 
 class Renderer_Arepo_VRL final : public Renderer {
@@ -26,7 +27,7 @@ protected:
     std::string strategy_;
     Float mis_power_;
     Scene* scene_;
-    Scene* vrl_scene_;
+    AccelKnn* vrl_accel_;
     Volume* volume_;
     Film* film_;
     int max_verts_;
@@ -42,7 +43,7 @@ public:
         strategy_ = json::value<std::string>(prop, "strategy");
         mis_power_ = json::value<Float>(prop, "mis_power",2.0);
         scene_ = json::comp_ref<Scene>(prop, "scene");
-        vrl_scene_ = json::comp_ref<Scene>(prop, "vrl_scene");
+        vrl_accel_ = json::comp_ref<AccelKnn>(prop, "vrl_accel");
         volume_= json::comp_ref<Volume>(prop, "volume");
         film_ = json::comp_ref<Film>(prop, "output");
         max_verts_ = json::value<int>(prop, "max_verts");
@@ -50,6 +51,7 @@ public:
         rr_prob_ = json::value<Float>(prop, "rr_prob", .2_f);
         const auto sched_name = json::value<std::string>(prop, "scheduler");
         spp_ = json::value<long long>(prop, "spp");
+
 
         
         
@@ -66,14 +68,13 @@ public:
     }
 
     LM_SERIALIZE_IMPL(ar) {
-        ar(scene_, film_, max_verts_, rr_prob_, sched_,vrl_scene_);
+        ar(scene_, film_, max_verts_, rr_prob_, sched_);
     }
 
     virtual void foreach_underlying(const ComponentVisitor& visit) override {
         comp::visit(visit, scene_);
         comp::visit(visit, film_);
         comp::visit(visit, sched_);
-        comp::visit(visit, vrl_scene_);
         
     }
 
@@ -269,61 +270,52 @@ public:
 
 
         
-        const auto* light = lm::load<lm::Light>("ll", "light::point", {
-            {"Le", Vec3(0)},
-            {"position",Vec3(0)}
-        }); 
-       
-        //vrl_scene_->add_primitive({
-        //    {"light", light->loc()}
-        //});
-
-        //auto g = vrl_temp_scene->create_instance_group_node();
-        
-        /*vrl_temp_scene->add_child(g, vrl_temp_scene->create_primitive_node(
-            {
-                {"light", light->loc()}
-            }
-        ));*/
 
      
-        auto & vrls = stats::getGlobalRef<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>( );
-        int numvrls = 0;
+        auto & vrls = stats::getGlobalRef<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>( )
+            [0];
+
+
+        /*stats::getGlobalRef<stats::KNNLineComp,int,std::function<void(int,Vec3&,Vec3&)>>()[0]
+        = [&] (int vrlI,Vec3&vrlstart,Vec3&vrlend) {
+            auto & vrl = stats::getGlobalRef<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>( )[0]
+            [vrlI];
+            vrlstart = vrl.p;
+            vrlend = vrl.p + vrl.d * vrl.t;
+        };*/
+        
+        int numvrls = vrls.size();
         Json prop;
         Mat4 transform;
-        for(auto & p : vrls) {
-            numvrls += p.second.size();
-            for(auto & vrl : p.second) {
-                transform = glm::mat4(1.0);
-                transform[3] = glm::vec4(vrl.p + vrl.d * vrl.t * 0.5,1); //take the middle point of the vrl...
-                //auto t = vrl_temp_scene->create_group_node(transform);
-                //vrl_temp_scene->add_child(t, g);
-                auto g = vrl_scene_->create_group_node(transform);
-                auto t = vrl_scene_->create_primitive_node(
-                    {
-                        {"light",light->loc()}
-                    }
-                    /*{ "light","point",{
-                            {"Le", Vec3(1)},
-                            {"position",Vec3(0)}
-                        }
-                    }*/
-                );
-                vrl_scene_->add_child(g,t);
-                vrl_scene_->add_child(vrl_scene_->root_node(),g);
-                //vrl_scene_->add_child(vrl_scene_->root_node(),t);
-                
 
-            }
-            LM_INFO("vrls in tetra {} : {}",p.first,p.second.size());
-            
-        }
+        
         //vrl_temp_scene->add_child(vrl_temp_scene->root_node(), t);
         LM_INFO("vrl count: {}",numvrls);
-        LM_INFO("vrl scene count: {}",vrl_scene_->num_nodes());
-        LM_INFO("vrl light scene count: {}",vrl_scene_->num_lights());
+       
+        int currentIndex = 0;
+        //assume everything is stored in one vector
+#ifdef USE_KNN
 
-        vrl_scene_->build();
+        if(numvrls > 0) {
+            std::function<bool(Mat4&,int&)> nextObject = [&](Mat4 & out_global_transform,int & out_someindex) {
+                auto & vrl = vrls[currentIndex];
+                transform = glm::mat4(1.0);
+                transform[3] = glm::vec4(vrl.p + vrl.d * vrl.t * 0.5,1);
+                out_someindex = currentIndex;
+                currentIndex++;
+                //LM_INFO("vrl {}",currentIndex);
+                if(currentIndex <= numvrls)
+                    return true;
+                return false;
+            };
+
+            vrl_accel_->build(numvrls,nextObject);
+
+
+        }
+#endif
+        
+
 
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,

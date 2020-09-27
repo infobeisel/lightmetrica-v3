@@ -24,6 +24,34 @@ namespace {
         UNIFORM,
         KNN
     };
+
+
+    const Float bTable_0 = 1.4*glm::pow(10.0,-10.0);
+    const Float bTable_1 = 0.9*glm::pow(10.0,-10.0);
+    const Float bTable_2 = 1.2*glm::pow(10.0,-10.0);
+    const Float bTable_3 = 1.8*glm::pow(10.0,-10.0);
+    const Float bTable_4 = 7.4*glm::pow(10.0,-10.0);
+    
+    void ugriz_to_jy(Float & u, Float & g, Float & r, Float & i, Float & z) {
+        u = 3631.0 * 2.0 * bTable_0 * glm::sinh(-u*glm::log(10)/2.5 - glm::log(bTable_0));
+        g = 3631.0 * 2.0 * bTable_1 * glm::sinh(-g*glm::log(10)/2.5 - glm::log(bTable_1));
+        r = 3631.0 * 2.0 * bTable_2 * glm::sinh(-r*glm::log(10)/2.5 - glm::log(bTable_2));
+        i = 3631.0 * 2.0 * bTable_3 * glm::sinh(-i*glm::log(10)/2.5 - glm::log(bTable_3));
+        z = 3631.0 * 2.0 * bTable_4 * glm::sinh(-z*glm::log(10)/2.5 - glm::log(bTable_4));
+    }
+
+    Float poly10th(std::vector<Float> & coefs,Float x) {
+        auto ret = 0.0;
+        Float x_ = 1.0;
+        for(int i = 0; i < 10; i++) {
+            ret += x_ * coefs[i];
+            x_ *= x;
+        }
+        return ret;
+            
+    }
+        
+            
     
 }
 
@@ -37,9 +65,27 @@ private:
     std::optional<int> env_light_;                   // Environment light index
     std::optional<int> medium_;                      // Medium index
     LightSamplingMode lightsamplingmode;
+    std::vector<Float> star_coords_;
+    std::vector<Float> star_ugriz_;
+    std::vector<Float> f_coefs_g_to_temp_;
+    std::vector<Float> f_coefs_temp_to_x_;
+    std::vector<Float> f_coefs_temp_to_y_;
+    std::vector<Float> f_coefs_temp_to_z_;
+    std::vector<Ptr<Light>> createdLights_;
 public:
     LM_SERIALIZE_IMPL(ar) {
-        ar(accel_, nodes_, camera_, lights_, light_indices_map_, env_light_);
+        ar(accel_, nodes_, camera_, lights_, light_indices_map_, env_light_,createdLights_);
+    }
+
+
+    virtual Component* underlying(const std::string& name) const override {
+        for(auto & l : createdLights_) {
+            if(l->name() == name)
+                return l.get();
+        }
+        return nullptr;
+                // Underlying component must be accessible with the same name specified in create function
+       // return name == comp->name() ? comp.get() : nullptr;
     }
 
     virtual void foreach_underlying(const ComponentVisitor& visit) override {
@@ -52,6 +98,10 @@ public:
                 comp::visit(visit, node.primitive.camera);
             }
         }
+        for(auto & light : createdLights_) {
+            auto * p =  light.get();
+            comp::visit(visit,p);
+        }
     }
 
 public:
@@ -59,6 +109,95 @@ public:
         accel_ = json::comp_ref_or_nullptr<AccelKnn>(prop, "accel");
         lightsamplingmode = lm::json::value<std::string>(prop,"lightsampling","knn") == "knn" ? 
         LightSamplingMode::KNN : LightSamplingMode::UNIFORM;
+        star_coords_ = lm::json::value<std::vector<Float>>(prop,"star_coords");
+        star_ugriz_ = lm::json::value<std::vector<Float>>(prop,"star_ugriz");
+        f_coefs_g_to_temp_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_g_to_temp");
+        f_coefs_temp_to_x_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_x");
+        f_coefs_temp_to_y_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_y");
+        f_coefs_temp_to_z_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_z");
+
+        
+
+        //to sRGB
+        auto m0 = Vec3(3.2404542,-0.9692660,0.0556434);     
+        auto m1 = Vec3( -1.5371385, 1.8760108,-0.2040259);  
+        auto m2 = Vec3(  -0.4985314, 0.0415560, 1.0572252);
+        auto M = Mat3(m0,m1,m2);
+
+        LM_INFO("star coords: {}, star photos {}",star_coords_.size()/3,star_ugriz_.size()/8);
+        createdLights_.reserve(star_coords_.size() / 3);
+
+        Json lightprop;
+        for(int ind = 0; ind < star_coords_.size() / 3; ind++) {
+            auto ugriz_i = ind * 8;
+            auto coord_i = ind * 3;
+            auto u = star_ugriz_[ugriz_i + 0];
+            auto g = star_ugriz_[ugriz_i + 4];
+            auto r = star_ugriz_[ugriz_i + 5];
+            auto i = star_ugriz_[ugriz_i + 6];
+            auto z = star_ugriz_[ugriz_i + 7];
+            ugriz_to_jy(u,g,r,i,z);
+            auto sum = g + r + i + z; //do not use u as it disturbs the fit
+            auto temperature = poly10th(f_coefs_g_to_temp_,g / sum);
+            auto x_ = poly10th(f_coefs_temp_to_x_,temperature);
+            auto y_ = poly10th(f_coefs_temp_to_y_,temperature);
+            auto z_ = poly10th(f_coefs_temp_to_z_,temperature);
+            auto rgb = M * Vec3(x_,y_,z_);
+
+            lightprop["Le"] = Vec3(rgb.r,rgb.g,rgb.b);
+            lightprop["position"] = Vec3(star_coords_[coord_i],star_coords_[coord_i+1],star_coords_[coord_i+2]);
+            std::string name = "light" + std::to_string(ind);
+            createdLights_.push_back(
+                std::move(
+                    comp::create<Light>(
+                        "light::point", make_loc(name), lightprop)
+                )
+            );
+            /*LM_INFO("star with jansky {},{},{},{},  with temp {}, rgb {},{},{}, at pos {},{},{}",
+            g,r,i,z,
+            temperature,
+            rgb.r,
+            rgb.g,
+            rgb.b,
+            star_coords_[coord_i],
+            star_coords_[coord_i+1],star_coords_[coord_i+2]
+            );*/
+
+        }
+        
+        /*
+        for (int i = 0; i < star_coords_.size(); i+=3) {
+            LM_INFO("coord {},{},{}",star_coords_[i],star_coords_[i+1],star_coords_[i+2]);
+            //ps_.push_back(Vec3(ps[i],ps[i+1],ps[i+2]));
+        }
+        for (int i = 0; i < star_ugriz_.size(); i+=5) {
+            LM_INFO("ugriz {},{},{},{},{}",
+            star_ugriz_[i],star_ugriz_[i+1],star_ugriz_[i+2],star_ugriz_[i+3],star_ugriz_[i+4]);
+            //ps_.push_back(Vec3(ps[i],ps[i+1],ps[i+2]));
+        }
+        for (int i = 0; i < f_coefs_g_to_temp_.size(); i+=1) {
+            LM_INFO("f_coefs_g_to_temp_ {}",f_coefs_g_to_temp_[i]);
+            //ps_.push_back(Vec3(ps[i],ps[i+1],ps[i+2]));
+        }
+
+
+        for (int i = 0; i < f_coefs_temp_to_x_.size(); i+=1) {
+            LM_INFO("f_coefs_temp_to_x_ {}",f_coefs_temp_to_x_[i]);
+            //ps_.push_back(Vec3(ps[i],ps[i+1],ps[i+2]));
+        }
+
+        for (int i = 0; i < f_coefs_temp_to_y_.size(); i+=1) {
+            LM_INFO("f_coefs_temp_to_y_ {}",f_coefs_temp_to_y_[i]);
+            //ps_.push_back(Vec3(ps[i],ps[i+1],ps[i+2]));
+        }
+        for (int i = 0; i < f_coefs_temp_to_z_.size(); i+=1) {
+            LM_INFO("f_coefs_temp_to_z_ {}",f_coefs_temp_to_z_[i]);
+            //ps_.push_back(Vec3(ps[i],ps[i+1],ps[i+2]));
+        }*/
+        
+
+
+
         reset();
     }
 
@@ -294,12 +433,20 @@ public:
         // because the global tranformation can only be obtained by traversing the nodes.
         light_indices_map_.clear();
         lights_.clear();
+
+        for(auto & l : createdLights_)
+            add_primitive({
+                {"light",l->loc()}
+            });
+
         traverse_primitive_nodes([&](const SceneNode& node, Mat4 global_transform) {
             if (node.type == SceneNodeType::Primitive && node.primitive.light) {
                 light_indices_map_[node.index] = int(lights_.size());
                 lights_.push_back({ Transform(global_transform), node.index });
             }
         });
+
+        
 
         // Compute scene bound
         Bound bound;
@@ -407,10 +554,10 @@ unsigned int primID;
             bool stopUpdating = false;
             for(auto & neighbor : sorted) {
                 Float d = neighbor.d / d_total;
-                visitor(neighbor.primID,d);
+                visitor(neighbor.nodeIndex,d);
                 cdf += d;
                 if(u < cdf && !stopUpdating) {
-                    finalSelectedNodeIndex = neighbor.primID;
+                    finalSelectedNodeIndex = neighbor.nodeIndex;
                     pL = d / d_total;
                     stopUpdating = true;
                 }

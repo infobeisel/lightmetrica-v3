@@ -18,7 +18,7 @@
 #define VOLPT_IMAGE_SAMPLING 0
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
-
+#define USE_KNN
 
 
 
@@ -48,15 +48,23 @@ protected:
     std::string strategy_;
     Float mis_power_;
     Scene* scene_;
+    
     Volume_Arepo* volume_;
     Film* film_;
     int max_verts_;
+    int knn_min_k_;
     Float rr_prob_;
     std::optional<unsigned int> seed_;
     Component::Ptr<scheduler::Scheduler> sched_;
     AccelKnn* vrlStorage_;
     AccelKnn* pointLightAccel_;
     long long spp_;
+    int num_knn_queries_;
+    bool sample_lights_;
+    bool sample_vrls_;
+    Float knn_min_percent_vrls_;
+    Float knn_max_percent_vrls_;
+    Float knn_min_percent_points_;
 
 
 public:
@@ -73,6 +81,16 @@ public:
 
 public:
     virtual void construct(const Json& prop) override {
+        
+        knn_min_k_ = json::value<int>(prop, "knn_min_k",10);
+        knn_min_percent_vrls_ = json::value<Float>(prop, "knn_min_percent_vrls",0.01);
+        knn_max_percent_vrls_ = json::value<Float>(prop, "knn_max_percent_vrls",0.1);
+        knn_min_percent_points_ = json::value<Float>(prop, "knn_min_percent_points",0.1);
+        
+        sample_lights_ = json::value<bool>(prop, "sample_lights",true);
+        sample_vrls_= json::value<bool>(prop, "sample_vrls",true);
+        num_knn_queries_ = json::value<int>(prop, "num_knn_queries",10);
+
         strategy_ = json::value<std::string>(prop, "strategy");
         mis_power_ = json::value<Float>(prop, "mis_power",2.0);
         scene_ = json::comp_ref<Scene>(prop, "scene");
@@ -115,7 +133,7 @@ public:
         stats::clearGlobal<lm::stats::TotalTetraTests,int,long long>( );
 
 
-        film_->clear();
+        //film_->clear();
         const auto size = film_->size();
         timer::ScopedTimer st;
 
@@ -238,8 +256,20 @@ public:
                 thread_local KNNResult vrl_knn_res;
                 thread_local KNNResult point_knn_res;
 
+                thread_local auto vrl_knns = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+                thread_local auto point_knns = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+
+                thread_local auto point_knns_wo_duplicates =
+                std::unordered_map<int,Neighbour>();
+                thread_local auto vrl_knns_wo_duplicates = 
+                std::unordered_map<int,Neighbour>();
+
 
                 for (int num_verts = 1; num_verts < max_verts_; num_verts++) {
+                    vrl_knns = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+                    point_knns = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+
+                    
                     
                     
                     //update current random sample index
@@ -444,6 +474,7 @@ public:
                     
                     //stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &)>>(0,raysegmentVisitor);
 
+
                     //ask nearest light to current vertex
                     scene_->sample_light_selection_from_pos(0.0,sp.geom.p);
 
@@ -462,12 +493,63 @@ public:
                     volumeTMax = glm::max(10000.0, glm::distance(volume_->bound().min,volume_->bound().max));
                     
                     
+
+                    //prepare queries
+                    auto pdf_vrl_selection = 1.0;
+                    auto pdf_light_selection = 1.0;
+
+#ifdef USE_KNN
+
+                    if(num_vrls > 0) {
+                        auto min_percent = glm::min(
+                            static_cast<Float>(num_vrls) * knn_min_percent_vrls_,static_cast<Float>(num_vrls));
+                        auto max_percent = glm::min(
+                            static_cast<Float>(num_vrls) * knn_max_percent_vrls_,static_cast<Float>(num_vrls));
+                        min_percent = glm::max(min_percent,static_cast<Float>(knn_min_k_));
+                        auto vrl_normFac = 1.0 - glm::exp(-(max_percent-min_percent));
+                        auto logu = min_percent - glm::log(1 - rng.u() * vrl_normFac);
+                        vrl_knn_res.k = static_cast<unsigned int>(logu);
+                        point_knn_res.k++;
+
+                        //vrl_knn_res.k = num_vrls; //TESST
+
+                        vrl_knn_res.k = vrl_knn_res.k >= num_vrls ? num_vrls : vrl_knn_res.k;
+                        vrl_knn_res.k = vrl_knn_res.k < 1 ? 1 : vrl_knn_res.k;
+                        //auto pdf_vrl_selection = static_cast<Float>(vrl_knn_res.k) /  static_cast<Float>(num_vrls);
+                        auto pdf_vrl_selection = glm::exp(min_percent - vrl_knn_res.k) / vrl_normFac;
+  
+                    }
+
+
+                    if(num_pointlights > 0) {
+                        auto min_percent = glm::min(static_cast<Float>(num_pointlights) * knn_min_percent_points_,
+                            static_cast<Float>(num_pointlights));
+                        min_percent = glm::max(min_percent,static_cast<Float>(knn_min_k_));
+                        
+                        auto point_normFac = 1.0 - glm::exp(-(num_pointlights-min_percent));
+                        auto logu = min_percent - glm::log(1 - rng.u() * point_normFac);
+                        point_knn_res.k = static_cast<unsigned int>(logu);
+                        point_knn_res.k++;
+                        point_knn_res.k = point_knn_res.k >= num_pointlights ? num_pointlights : point_knn_res.k;
+                        point_knn_res.k = point_knn_res.k < 1 ? 1 : point_knn_res.k;
+
+                        //TEST
+                        //point_knn_res.k = num_pointlights;
+
+                        auto pdf_light_selection = glm::exp(min_percent - point_knn_res.k) / point_normFac;
+                        // static_cast<Float>(point_knn_res.k) /  static_cast<Float>(num_pointlights);
+
+                        
+                    }
+#endif
+                                       
                     //make sure it is nullptr before, so i can test later if we hit sth at all
                     stats::set<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(0,nullptr);
 
-                    
                     //importance sample distance following volume 
                     std::optional<path::DistanceSample> sd = path::sample_distance(rng, scene_, sp, s->wo);
+
+                    //now the knn res contain up to date information
 
                     int k = 0;
                     std::vector<RaySegmentCDF> * boundaries =  stats::get<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(k);
@@ -482,8 +564,7 @@ public:
                     auto segmentCount = stats::get<stats::LastBoundarySequence,int,int>(k);  
                     auto lowDensityNormalizationFactor = stats::get<stats::RegularTrackingStrategyNormFac,int,Float>(k);  
 
-                    
-                    
+
                     Vec3 currentContribution = Vec3(0); 
                     int contribCount = 0;
                     Float currentPdf = 1.0;
@@ -499,55 +580,150 @@ public:
 
                     if(boundaries != nullptr) { //the chance to have in-scattering                        
                         auto & cameraSegments = *boundaries;
-                            //auto a = sp.geom.p + a_d * currentTransmittanceDistanceSample; //dont use camera ray but camera point
-                            auto maxAllowedT = regularT;//tetrasegment.t;//glm::min(
-                                    //  currentTransmittanceDistanceSample - travelT,
+
+#ifdef USE_KNN
+                        {
+                            //CHOOSE POINTS FOR KNN QUERIES ALONG RAY
+                            int found_sample = 0;
+                            std::vector<Float> zetas;
+
+                            for(int i = 0; i < num_knn_queries_; i++)
+                                zetas.push_back(rng.u() * totalTau);
+                            std::vector<Float> queryTs;
+                            for(int i = 0; i < num_knn_queries_; i++)
+                                queryTs.push_back(0.0);
+                            //TODO PDFS ?!
+                            
+                            //auto zeta = rng.u() * totalTau; //a new sample within total 
+                            auto zetaRegularPDF = 0.0;
+                            auto zetaAccCdf = 0.0;
+                            //warp Zeta according optical thickness
+                            {
+                                auto travelT = 0.0;
+                                auto segmentThroughput = 1.0;
+                                for(int segmentI = 0; segmentI < segmentCount && found_sample < num_knn_queries_; segmentI++) {
+                                    auto & tetrasegment =  cameraSegments[segmentI];
+                                    for(int i = 0; i < num_knn_queries_; i++) {
+                                        if (zetaAccCdf  + tetrasegment.localcdf  > zetas[i]) {
+                                            auto normcdf =  zetaAccCdf ;
+                                            lm::Float t = sampleCachedICDF_andCDF( zetas[i],zetas[i] , tetrasegment.t ,
+                                            normcdf ,  tetrasegment.a ,   tetrasegment.b );
+                                            //normcdf = sampleCDF(t,tetrasegment.a,tetrasegment.b );
+                                            //accumulate non normalized!
+                                            //retAcc = accCdf + normcdf;
+                                            //auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                                            //auto particle_density = tetrasegment.b + tetrasegment.a * t;
+                                            //auto mu_a = crosssection * particle_density;
+                                            //auto phase_integrated = 1.0;//isotrope
+                                            //auto mu_s = phase_integrated* particle_density;
+                                            //auto mu_t = mu_a + mu_s;
+                                            //auto scattering_albedo = mu_s / mu_t; 
+                                            //contribution = mu_s * transmittance;
+                                            //zetaRegularPDF = mu_t / tauUntilRegularT;  
+                                            //zetaRegularPDF = mu_t / totalTau;  
+                                            //zetaRegularPDF = 1.0;  
+                                            queryTs[i] = travelT + t;   
+                                            //zetaAccCdf += normcdf;
+                                            //break;
+                                            found_sample++;
+                                        }
+                                    }
+                                    travelT += tetrasegment.t;
+                                    zetaAccCdf += tetrasegment.localcdf;
+                                }
+                            }
+
+                            for(int i = 0; i < num_knn_queries_; i++) {
+                                auto queryPos = a + a_d * queryTs[i]; // point based knn is potentially wrong, need ray based knn!!!
+
+                                vrl_knn_res.knn = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+                                //vrl_knn_res.visited.clear();
+
+                                point_knn_res.knn = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+                                //point_knn_res.visited.clear();
+
+                                stats::set<stats::KNNLineComp,int,std::pair<Vec3,Vec3>>(0, 
+                                    std::make_pair(sp.geom.p, sp.geom.p + s->wo * totalT ));
+                                
+                                if(num_vrls > 0 && sample_vrls_)
+                                    vrlStorage_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
+                                        std::numeric_limits<Float>::max(), vrl_knn_res );
+                                //LM_INFO("found {} vrls", vrl_knn_res.knn.size());
+                                while (!vrl_knn_res.knn.empty())
+                                {
+                                    vrl_knns.push(vrl_knn_res.knn.top());
+                                    vrl_knn_res.knn.pop();
+                                    if(vrl_knns.size() > vrl_knn_res.k) {
+                                        vrl_knns.pop();
+                                    }
+                                }
+                                if(sample_lights_)
+                                    pointLightAccel_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
+                                        std::numeric_limits<Float>::max(), point_knn_res );
+
+                                while (!point_knn_res.knn.empty())
+                                {
+                                    point_knns.push(point_knn_res.knn.top());
+                                    point_knn_res.knn.pop();
+                                    if(point_knns.size() > point_knn_res.k) {
+                                        point_knns.pop();
+                                    }
+                                }
+                            }
+
+                            //remove doubles
+                            point_knns_wo_duplicates.clear();
+                            while(!point_knns.empty()) {
+                                auto & n = point_knns.top();
+                                point_knns_wo_duplicates[n.nodeIndex] = n;
+                                point_knns.pop();
+                            }
+                            vrl_knns_wo_duplicates.clear();
+                            while(!vrl_knns.empty()) {
+                                auto & n = vrl_knns.top();
+                                vrl_knns_wo_duplicates[n.nodeIndex] = n;
+                                vrl_knns.pop();
+                            }
+
+
+                            //now have w nearest neighbours at hand!
+                            //pdf_light_selection = static_cast<Float>(point_knns_wo_duplicates.size()) /  static_cast<Float>(num_pointlights);
+                            
+
+
+                        }
+#endif
+
+
+                        //auto a = sp.geom.p + a_d * currentTransmittanceDistanceSample; //dont use camera ray but camera point
+                        auto maxAllowedT = regularT;//tetrasegment.t;//glm::min(
+                                //  currentTransmittanceDistanceSample - travelT,
                                     //  tetrasegment.t);
-                        auto queryPos = a + a_d * regularT;
 
-                        auto pdf_vrl_selection = 1.0;
-
-                        if(num_vrls > 0) {
-                            auto vrl_normFac = 1.0 - glm::exp(-num_vrls);
-                            auto logu = -glm::log(1 - rng.u() * vrl_normFac);
-                            vrl_knn_res.k = static_cast<unsigned int>(logu);
-
-                            vrl_knn_res.k = num_vrls; //TESST
-
-                            vrl_knn_res.k = vrl_knn_res.k >= num_vrls ? num_vrls : vrl_knn_res.k;
-                            vrl_knn_res.k = vrl_knn_res.k < 1 ? 1 : vrl_knn_res.k;
-                            auto pdf_vrl_selection = static_cast<Float>(vrl_knn_res.k) /  static_cast<Float>(num_vrls);
-                            vrlStorage_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
-                                std::numeric_limits<Float>::max(), vrl_knn_res );
-                        }
-
-                        auto pdf_light_selection = 1.0;
-
-                        if(num_pointlights > 0) {
-                            auto point_normFac = 1.0 - glm::exp(-num_pointlights);
-                            auto logu = -glm::log(1 - rng.u() * point_normFac);
-                            point_knn_res.k = static_cast<unsigned int>(logu);
-                            point_knn_res.k = point_knn_res.k >= num_pointlights ? num_pointlights : point_knn_res.k;
-                            point_knn_res.k = point_knn_res.k < 1 ? 1 : point_knn_res.k;
-                            auto pdf_light_selection = static_cast<Float>(point_knn_res.k) /  static_cast<Float>(num_pointlights);
-
-                            pointLightAccel_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
-                            std::numeric_limits<Float>::max(), point_knn_res );
-                        }
+                        
                         
                                // LM_IlseNFO("accel k {}",res.knn.size());
                         //for(auto & vrls : tetraIToLightSegments){
                             //Float vrlCount = vrls.second.size();
                             //for( auto & vrl : vrls.second) {
-                            while(true && num_vrls > 0 && !vrl_knn_res.knn.empty() ) {
+                            //LM_INFO("have found {} vrls ", vrl_knns.size());
+                            //LM_INFO("there are {} vrls ", vrl_knns_wo_duplicates.size() );
+                            if(sample_vrls_)
+#ifdef USE_KNN
+                            for(auto & p : vrl_knns_wo_duplicates) {
+                                auto & neighbor = p.second;//point_knns.top();
+                            //while(false && num_vrls > 0 && !vrl_knns.empty() ) {
 
-                                auto & neighbor = vrl_knn_res.knn.top();
+                                //auto & neighbor = vrl_knns.top();
                                 //d_total += neighbor.d;
                                 //sorted.push_back(neighbor);
-                                int vrl_index = neighbor.primID;
-                                vrl_knn_res.knn.pop();
                                 //LM_INFO("visit primid {}",vrl_index);
-                                auto & vrl = tetraIToLightSegments[vrl_index];
+                                auto & vrl = tetraIToLightSegments[neighbor.nodeIndex];
+                                //vrl_knns.pop();
+#else 
+                            for( auto & vrl : tetraIToLightSegments) {
+
+#endif
 
 
                                 auto b_d = vrl.d;
@@ -638,9 +814,11 @@ public:
 
 
 
+                                auto zetaRegularPDF = 1.0;
+                                //auto zeta = rng.u();
+
                                 /*auto zeta = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
                                 lm::Float logzeta = -gsl_log1p(-zeta);
-                                auto zetaRegularPDF = 0.0;
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = 0.0;
                                 //warp Zeta according transmittance
@@ -678,11 +856,10 @@ public:
 
 
                                 auto zeta = rng.u() * totalTau; //a new sample within total 
-                                auto zetaRegularPDF = 0.0;
                                 auto zetaTransmittance = 1.0;
-                                auto zetaT = 0.0;
+                                auto zetaT = totalT * zeta / totalTau; //will get replaced in loop
                                 auto zetaAccCdf = 0.0;
-                                //warp Zeta according transmittance
+                                //warp Zeta according optical thickness
                                 {
                                     auto travelT = 0.0;
                                     auto segmentThroughput = 1.0;
@@ -718,7 +895,7 @@ public:
                                 }
                                 //warp zeta
                                 zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
-
+                                
 
                                 //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
                                 auto equiT = equih * glm::tan((1.0 - zeta) * theta_a + zeta * theta_b);
@@ -850,16 +1027,22 @@ public:
 
                             }
 
-                            while(true && num_pointlights > 0 && !point_knn_res.knn.empty()) {
-
-                                auto & neighbor = point_knn_res.knn.top();
+                            //while(true && num_pointlights > 0 && !point_knns.empty()) {
+                            if(sample_lights_)
+#ifdef USE_KNN
+                            for(auto & p : point_knns_wo_duplicates) {
+                                auto & neighbor = p.second;//point_knns.top();
                                 //d_total += neighbor.d;
                                 //sorted.push_back(neighbor);
-                                int point_index = neighbor.primID; //this is the "light index"
-                                point_knn_res.knn.pop();
-                                //LM_INFO("visit primid {}",vrl_index);
-                                auto lightprim = scene_->light_primitive_index_at(point_index); //need to ask for "light primitive", given "light index"
-                                auto & pointNode = scene_->node_at(lightprim.index); //"light primitve" then contains the actual node index
+                                int point_scene_nodeIndex = neighbor.nodeIndex; 
+                                
+                                //point_knns.pop();
+
+                                //LM_INFO("visit node index {}",point_scene_nodeIndex);
+                                auto & pointNode = scene_->node_at(point_scene_nodeIndex);
+                                //LM_INFO("{}, {}, {}",scene_->num_lights(),scene_->num_nodes(),point_scene_nodeIndex);
+                                auto point_light_index = scene_->light_index_at(point_scene_nodeIndex);
+                                auto lightprim = scene_->light_primitive_index_at(point_light_index); //need to ask for "light primitive", given "light index"
                                 assert(pointNode.primitive.light != nullptr);
 
                                 Mat4 global_transform = lightprim.global_transform.M;
@@ -867,6 +1050,21 @@ public:
                                 auto possample = rng.next<Light::PositionSampleU>();
                                 auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;    
 
+#else 
+                            scene_->traverse_primitive_nodes([&](const SceneNode& node, Mat4 global_transform) {
+                                if (node.type != SceneNodeType::Primitive) {
+                                    return;
+                                }
+                                if (!node.primitive.light) {
+                                    return;
+                                }
+                                auto & light = *node.primitive.light;
+                                auto lightPos = light.sample_position({{0.0,0.0},0.0}, Transform(global_transform)).value().geom.p;  
+#endif
+
+
+
+                                
                                
 
                                 auto b = lightPos;
@@ -896,10 +1094,10 @@ public:
 
                                
 
-                                //auto zeta = rng.u() * regularXi; //a new sample WITHIN the current distance sample
+                                auto zetaRegularPDF = 1.0;
+                                //auto zeta = rng.u(); //a new sample WITHIN the current distance sample
                                 /*auto zeta = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
                                 lm::Float logzeta = -gsl_log1p(-zeta);
-                                auto zetaRegularPDF = 0.0;
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = 0.0;
                                 //warp Zeta according transmittance
@@ -934,14 +1132,13 @@ public:
                                         zetaTransmittance *= glm::exp(-  accCdf );
                                     }
                                 }*/
+                                
 
                                 //auto zeta = rng.u() * tauUntilRegularT; //a new sample WITHIN the current distance sample
                                 auto zeta = rng.u() * totalTau; //a new sample within total 
-                                auto zetaRegularPDF = 0.0;
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = 0.0;
                                 auto zetaAccCdf = 0.0;
-                                //warp Zeta according transmittance
                                 {
                                     auto travelT = 0.0;
                                     auto segmentThroughput = 1.0;
@@ -1119,8 +1316,12 @@ public:
                                 }
                             
 
+#ifdef USE_KNN
                             
                             }
+#else
+                            });
+#endif
 
                        // }
 

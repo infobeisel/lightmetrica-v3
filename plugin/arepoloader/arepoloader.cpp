@@ -216,21 +216,21 @@ namespace ArepoLoaderInternals {
             point p;
             p.x = -20;p.y = -10;p.z = -20;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.01);
+            densities.push_back(0.0000001);
             p.x = 0;p.y = -10;p.z = 20;p.index=1;
             DP.push_back(p);
             
-            densities.push_back(0.01);
+            densities.push_back(0.0000001);
             p.x = 10;p.y = -10;p.z = -20;p.index=2;
             DP.push_back(p);
-            densities.push_back(1.0);
+            densities.push_back(0.0000001);
             p.x = 0;p.y = 20;p.z = -10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.01);
+            densities.push_back(0.0000001);
 
             p.x = 20;p.y = 20;p.z = 10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.01);
+            densities.push_back(0.0000001);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);

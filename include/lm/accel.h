@@ -77,27 +77,36 @@ public:
 
 struct Neighbour
 {
-  unsigned int primID;
+    unsigned int primID;
+  unsigned int nodeIndex;
   float d;
 
   bool operator<(Neighbour const& n1) const { return d < n1.d; }
 };
 
+struct KNNNode;
+
+namespace stats {
+    struct KNNLineComp;
+}
+
 struct KNNResult
 {
   KNNResult() 
   {
-    visited.reserve(2 * KNN_K);
+    //visited.reserve(2 * KNN_K);
   }
+  KNNNode * nodes;
 
   unsigned int k;
   std::priority_queue<Neighbour, std::vector<Neighbour>> knn;
-  std::vector<unsigned int> visited; // primIDs of all visited points
+  //std::vector<unsigned int> visited; // primIDs of all visited points
 };
 
 class AccelKnn : public Accel {
 public:
     virtual void build(const Scene& scene) = 0;
+    virtual void build(size_t numObjects, std::function<bool(Mat4&,int&)> nextObject) = 0;
     virtual std::optional<Hit> intersect(Ray ray, Float tmin, Float tmax) const = 0;
     virtual void queryKnn(lm::Float x,lm::Float y,lm::Float z, lm::Float radius, KNNResult & out_result) const = 0;
 };
