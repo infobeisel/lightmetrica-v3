@@ -18,7 +18,7 @@
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
-#define USE_KNN
+//#define USE_KNN
 
 
 class Renderer_Arepo_VRL final : public Renderer {

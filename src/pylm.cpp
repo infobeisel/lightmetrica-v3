@@ -474,6 +474,7 @@ static void bind_film(pybind11::module& m) {
         .def("save", &Film::save)
         .def("aspect", &Film::aspect)
         .def("buffer", &Film::buffer)
+        .def("clear", &Film::clear)
         .PYLM_DEF_COMP_BIND(Film);
 }
 

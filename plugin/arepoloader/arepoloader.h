@@ -8,8 +8,17 @@
 #include "voronoi_3db.h" //shit didnt want to include any arepo code here
 
 
+//scaling factors for optical thickness
+#define A_B_A_V_T 1.324
+#define A_R_A_V_T 0.748
 
-#define INSIDE_TOLERANCE 100.0 * std::numeric_limits<lm::Float>::epsilon()
+
+//scalling factors for scattering coefficient
+#define A_B_A_V_S 3.0343721 
+#define A_R_A_V_S 0.49774692
+
+
+#define INSIDE_TOLERANCE 10000.0 * std::numeric_limits<lm::Float>::epsilon()
 
 inline lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b){
     
@@ -100,6 +109,7 @@ namespace stats {
 
     struct MaxTransmittance {};
     struct FreePathTransmittance {};
+    struct OpticalThickness {};
 
     struct RegularTrackingStrategyDistanceSample {};
 

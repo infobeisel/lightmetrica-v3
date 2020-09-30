@@ -18,7 +18,7 @@
 #define VOLPT_IMAGE_SAMPLING 0
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
-#define USE_KNN
+//#define USE_KNN
 
 
 
@@ -925,24 +925,36 @@ public:
 
                                 
                                 //virtual point light emittance
+                                auto VRL_C = vrl.weight;
 
-                                auto tau = vrl.cdfSoFar + 0.5 * vrl.a *  vrl_vlp_t * vrl_vlp_t + vrl.b * vrl_vlp_t;
-                                auto VRL_C = glm::exp(-tau) * (vrl.b + vrl.a * vrl_vlp_t) * vrl_area_measure_conv * vrl.weight ;
-
+                                {
+                                    auto sigma_t = (vrl.b + vrl.a * vrl_vlp_t);
+                                    auto tau = vrl.cdfSoFar + 0.5 * vrl.a *  vrl_vlp_t * vrl_vlp_t + vrl.b * vrl_vlp_t;
+                                    VRL_C *= Vec3(
+                                    A_R_A_V_S * sigma_t * glm::exp(-A_R_A_V_T*tau),
+                                    sigma_t * glm::exp(-tau),
+                                    A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
+                                    );
+                                }
+                                
 
                                 //camera throughput until sample point: 
                                 //transmittance!
                                 auto travelT = 0.0;
                                 auto accCdf = 0.0;
-                                auto segmentThroughput = 1.0;
+                                auto segmentThroughput = Vec3(1.0);
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                     auto & tetrasegment =  cameraSegments[segmentI];
                                     if(t < travelT + tetrasegment.t) { //found sample point
                                         auto lastBit = t - travelT;
-                                        segmentThroughput = 
-                                            (tetrasegment.b + tetrasegment.a * lastBit) 
-                                            * glm::exp(-(accCdf 
-                                                + 0.5 * tetrasegment.a * lastBit * lastBit + tetrasegment.b * lastBit));
+                                        auto sigma_t = (tetrasegment.b + tetrasegment.a * lastBit);
+                                        auto tau = (accCdf 
+                                                + 0.5 * tetrasegment.a * lastBit * lastBit + tetrasegment.b * lastBit);
+                                        segmentThroughput = Vec3(
+                                        A_R_A_V_S * sigma_t * glm::exp(-A_R_A_V_T*tau),
+                                        sigma_t * glm::exp(-tau),
+                                        A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
+                                        );
                                         break;
                                     }
                                     travelT += tetrasegment.t;
@@ -954,7 +966,19 @@ public:
 
 
                                 //now evaluate transmittance
-                                const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
+                                //const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
+                                path::eval_transmittance(rng, scene_, sp1,sp2);
+
+                                //channelwise, receive result
+                                auto accCDF = 0.0;
+                                int k = 0;
+                                accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
+
+                                throughputCam.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                throughputCam.g *= glm::exp(-accCDF * 1.0);
+                                throughputCam.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+
+
                                 // Evaluate BSDF
                                 const auto wo = connectiondir;
                                 
@@ -973,7 +997,7 @@ public:
                                 solidangledirectionpdf2 *= vrl_area_measure_conv; //convert pdf to vertex area
                                 
                                 
-                                auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
+                                auto segment_contribution = throughputCam  * connection_area_measure * fs1 * fs2 * VRL_C;
                                 auto segment_pdf = 
                                 pathPdfEquiStrategyEquiSamples 
                                 * vrl_scatter_pdf
@@ -1211,7 +1235,6 @@ public:
                                 
                                 //virtual point light emittance
 
-                                auto tau = 0.0;
 
                                 //auto pdf = light->pdf_direct()
 
@@ -1222,15 +1245,19 @@ public:
                                 //transmittance!
                                 auto travelT = 0.0;
                                 auto accCdf = 0.0;
-                                auto segmentThroughput = 1.0;
+                                auto segmentThroughput = Vec3(1.0);
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                     auto & tetrasegment =  cameraSegments[segmentI];
                                     if(t < travelT + tetrasegment.t) { //found sample point
                                         auto lastBit = t - travelT;
-                                        segmentThroughput = 
-                                            (tetrasegment.b + tetrasegment.a * lastBit) //this is the scattering
-                                            * glm::exp(-(accCdf 
-                                                + 0.5 * tetrasegment.a * lastBit * lastBit + tetrasegment.b * lastBit));
+                                        auto sigma_t = (tetrasegment.b + tetrasegment.a * lastBit);
+                                        auto tau = (accCdf 
+                                                + 0.5 * tetrasegment.a * lastBit * lastBit + tetrasegment.b * lastBit);
+                                        segmentThroughput = Vec3(
+                                        A_R_A_V_S * sigma_t * glm::exp(-A_R_A_V_T*tau),
+                                        sigma_t * glm::exp(-tau),
+                                        A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
+                                        );
                                         break;
                                     }
                                     travelT += tetrasegment.t;
@@ -1242,7 +1269,18 @@ public:
 
 
                                 //now evaluate transmittance
-                                const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
+                                //const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
+                                path::eval_transmittance(rng, scene_, sp1,sp2);
+
+                                //channelwise, receive result
+                                auto accCDF = 0.0;
+                                int k = 0;
+                                accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
+
+                                throughputCam.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                throughputCam.g *= glm::exp(-accCDF * 1.0);
+                                throughputCam.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+
                                 // Evaluate BSDF
                                 const auto wo = glm::normalize(b - camera_sample_point);
 
@@ -1266,7 +1304,7 @@ public:
 
                                 
                                 //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
-                                auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * C;
+                                auto segment_contribution = throughputCam  * connection_area_measure * fs1 * C;
                                 auto segment_pdf = 
                                 pathPdfEquiStrategyEquiSamples 
                                 //* vrl_scatter_pdf

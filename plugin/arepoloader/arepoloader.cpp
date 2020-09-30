@@ -214,23 +214,26 @@ namespace ArepoLoaderInternals {
        
 
             point p;
+
             p.x = -20;p.y = -10;p.z = -20;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.0000001);
+            densities.push_back(0.0000000000003);
+
             p.x = 0;p.y = -10;p.z = 20;p.index=1;
             DP.push_back(p);
-            
-            densities.push_back(0.0000001);
+            densities.push_back(0.0000000000003);
+
             p.x = 10;p.y = -10;p.z = -20;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.0000001);
+            densities.push_back(0.6);
+
             p.x = 0;p.y = 20;p.z = -10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.0000001);
+            densities.push_back(0.0000000000003);
 
             p.x = 20;p.y = 20;p.z = 10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.0000001);
+            densities.push_back(0.00000000003);
             //p.x = 1;p.y = 2;p.z = 0;p.index=5;
             //DP.push_back(p);
             //densities.push_back(0.0);
@@ -1282,12 +1285,12 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
 
 
-    void travel(lm::Ray ray,  CachedSample & useCache, lm::Float tPerturbation, std::function<bool(bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info)> processor) const {
+    void travel(lm::Ray ray,  CachedSample & useCache,  std::function<bool(bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info)> processor) const {
         bool inside = false;
         lm::Float t = 0.0;
         auto & info = useCache; 
         auto correctedRay = ray;
-        ray.o += ray.d *  tetraTestMargin * tPerturbation; //perturbate a bit 
+        ray.o += ray.d *  tetraTestMargin; //perturbate a bit 
         do {
             //step
             correctedRay.o = ray.o;
@@ -1406,7 +1409,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
             
             
-            travel(travelray, cached,0.0,//rng.u(),
+            travel(travelray, cached,
             [&] (bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info) -> bool {
                 lm::RaySegmentCDF toFill;
                 if(segments.size() <= segmentCount)
@@ -1482,7 +1485,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         lm::Float logxi = -gsl_log1p(-xi);
         lm::Float logzeta = -gsl_log1p(-zeta);
         lm::Float acc = 0.0;
-        lm::Float contribution = 0.0;
+        lm::Vec3 contribution = lm::Vec3(0.0);
         lm::Float pdf = 0.0;
         lm::Float regularPF_of_equiSample= 0.0;
         auto freeT = 0.0;
@@ -1525,15 +1528,26 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 normcdf = sampleCDF(t,raySegment.a,raySegment.b );
                 transmittance *= glm::exp(-  normcdf );
                 //accumulate non normalized!
+
+              
+
+
                 retAcc = acc + normcdf;
+                
                 auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
                 auto particle_density = raySegment.b + raySegment.a * t;
                 auto mu_a = crosssection * particle_density;
-                auto phase_integrated = 1.0;//isotrope
+                auto phase_integrated = 1.0;//isotropic
                 auto mu_s = phase_integrated* particle_density;
-                auto mu_t = mu_a + mu_s;
-                auto scattering_albedo = mu_s / mu_t; 
-                contribution = mu_s * transmittance;
+                auto mu_t =  mu_a + mu_s;
+                contribution = lm::Vec3(
+                    A_R_A_V_S * mu_t * glm::exp(-A_R_A_V_T*retAcc),
+                    mu_t * glm::exp(-retAcc),
+                    A_B_A_V_S * mu_t * glm::exp(-A_B_A_V_T*retAcc)
+                );
+
+                //auto scattering_albedo = mu_s / mu_t; 
+                //contribution = mu_s * transmittance;
 
                 pdf = mu_t * transmittance / normFac;             
                 //pdf = (raySegment.b + raySegment.a * t) * glm::exp(-retAcc) ; //normfac already at scatter albedo
@@ -1562,7 +1576,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //            lm::stats::IJ::_1_0,regularPF_of_equiSample);
                 
                 
-        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Float>(0, contribution);
+        lm::stats::set<lm::stats::ScatteringAlbedo,int,lm::Vec3>(0, contribution);
 
 
         //acccdf contains NON-normalized cdf which is exactly what we want
@@ -1595,33 +1609,35 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
         auto transmittance = 1.0;
         auto accT = tmin;
+        auto accCDF = 0.0;
         originalRay.o = originalRay.o + originalRay.d * tmin; 
         lm::Float negligibleTransmittance = +0.0;
-        travel(originalRay, cached,0.0,
+        travel(originalRay, cached,
         [&] (bool inside,lm::Ray currentRay, lm::Float nextT, CachedSample & info) -> bool {
             bool ret = false;
+            lm::Float a,b;
+            sampleCachedScalarCoefficients(currentRay,  a, b, info);
+
             if(!inside) {
                 if(std::isinf(nextT)) { // we wont hit any tetra again
                 } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
                     accT += nextT;
+                    accCDF += sampleCDF(nextT,a,b);
                     ret = true;
                 }
             } else { 
                 auto transmittanceT = glm::min(tmax - accT,  nextT);
-                lm::Float a,b;
-                sampleCachedScalarCoefficients(currentRay,  a, b, info);
-
+                accCDF += sampleCDF(transmittanceT,a,b);
                 transmittance *= sampleTransmittance(currentRay, 0.0,0.0 + transmittanceT  ,a,b, info);
                 if( nextT + accT < tmax && transmittance >= negligibleTransmittance)
                     ret = true;
-                accT += nextT;//TODO ist das richtig?! wird hier nicht zu wenig addiert, wenns in nächster iteration auf jeden fall vom boundary weitergeht?
+                accT += nextT;
             }
             return ret;
         });
-
+        lm::stats::set<lm::stats::OpticalThickness,int,lm::Float>(0,accCDF);
+      
         return transmittance;
-
-
 
     }
     
