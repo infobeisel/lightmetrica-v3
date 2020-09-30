@@ -50,6 +50,50 @@ namespace {
         return ret;
             
     }
+
+
+    Float const h = 6.62607004e-34;
+    Float const stb = 1.380649e-23;
+    Float const c = 299792458.0;
+    Float const hc = h * c;
+    inline Float blackbody(Float wavelengthNM,Float temperatureKelvin) {
+        Float lambd = wavelengthNM *  1e-9;//m
+        Float t = 2.0 * hc*c/(lambd*lambd*lambd*lambd*lambd);
+        Float t2 = 1.0 / (glm::exp(hc/(lambd * stb * temperatureKelvin))-1.0);
+        return t * t2;
+    }
+
+    inline Float xFit_1931( Float wave )
+    {
+        Float t1 = (wave-442.0f)*((wave<442.0f)?0.0624f:0.0374f);
+        Float t2 = (wave-599.8f)*((wave<599.8f)?0.0264f:0.0323f);
+        Float t3 = (wave-501.1f)*((wave<501.1f)?0.0490f:0.0382f);
+        return 0.362f*glm::exp(-0.5f*t1*t1) + 1.056f*glm::exp(-0.5f*t2*t2)
+        - 0.065f*glm::exp(-0.5f*t3*t3);
+    }
+    inline Float yFit_1931( Float wave )
+    {
+        Float t1 = (wave-568.8f)*((wave<568.8f)?0.0213f:0.0247f);
+        Float t2 = (wave-530.9f)*((wave<530.9f)?0.0613f:0.0322f);
+        return 0.821f*glm::exp(-0.5f*t1*t1) + 0.286f*glm::exp(-0.5f*t2*t2);
+    }
+    inline Float zFit_1931( Float wave )
+    {
+        Float t1 = (wave-437.0f)*((wave<437.0f)?0.0845f:0.0278f);
+        Float t2 = (wave-459.0f)*((wave<459.0f)?0.0385f:0.0725f);
+        return 1.217f*glm::exp(-0.5f*t1*t1) + 0.681f*glm::exp(-0.5f*t2*t2);
+    }
+
+    inline void tempToXYZ(Float temp, Float & X,Float & Y,Float & Z) {
+        X = Y = Z = 0.0;
+        for(int nmi = 340; nmi < 900; nmi++) {
+            Float nm = (Float)nmi;
+            X += xFit_1931(nm) * blackbody(nm,temp);
+            Y += yFit_1931(nm) * blackbody(nm,temp);
+            Z += zFit_1931(nm) * blackbody(nm,temp);
+        }
+    }
+
         
             
     
@@ -112,9 +156,9 @@ public:
         star_coords_ = lm::json::value<std::vector<Float>>(prop,"star_coords");
         star_ugriz_ = lm::json::value<std::vector<Float>>(prop,"star_ugriz");
         f_coefs_g_to_temp_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_g_to_temp");
-        f_coefs_temp_to_x_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_x");
-        f_coefs_temp_to_y_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_y");
-        f_coefs_temp_to_z_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_z");
+        //f_coefs_temp_to_x_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_x");
+        //f_coefs_temp_to_y_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_y");
+        //f_coefs_temp_to_z_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_z");
 
         
 
@@ -139,9 +183,14 @@ public:
             ugriz_to_jy(u,g,r,i,z);
             auto sum = g + r + i + z; //do not use u as it disturbs the fit
             auto temperature = poly10th(f_coefs_g_to_temp_,g / sum);
-            auto x_ = poly10th(f_coefs_temp_to_x_,temperature);
-            auto y_ = poly10th(f_coefs_temp_to_y_,temperature);
-            auto z_ = poly10th(f_coefs_temp_to_z_,temperature);
+
+
+
+            //auto x_ = poly10th(f_coefs_temp_to_x_,temperature);
+            //auto y_ = poly10th(f_coefs_temp_to_y_,temperature);
+            //auto z_ = poly10th(f_coefs_temp_to_z_,temperature);
+            Float x_,y_,z_;
+            tempToXYZ(temperature,x_,y_,z_);
             auto rgb = M * Vec3(x_,y_,z_);
 
             lightprop["Le"] = Vec3(rgb.r,rgb.g,rgb.b);

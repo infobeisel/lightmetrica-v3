@@ -188,19 +188,103 @@ namespace ArepoLoaderInternals {
             Ndp = 8;*/
 
 
-            {
+            {//ACDG
                 tetra t;
                
-                t.t[0] = 2;
-                t.t[1] = 2;
-                t.t[2] = 1;
-                t.t[3] = 2;
+                t.t[0] = 5;
+                t.t[1] = 4;
+                t.t[2] = 5;
+                t.t[3] = 5;
+
+
+                t.p[0] = 0;
+                t.p[1] = 2;
+                t.p[2] = 3;
+                t.p[3] = 6;
+                t.s[0] = -1;
+                t.s[1] = -1;
+                t.s[2] = -1;
+                t.s[3] = -1;
+
+                DT.push_back(t);
+            }
+
+            {//DFGH
+                tetra t;
+               
+                t.t[0] = 5;
+                t.t[1] = 5;
+                t.t[2] = 5;
+                t.t[3] = 4;
+
+
+                t.p[0] = 3;
+                t.p[1] = 5;
+                t.p[2] = 6;
+                t.p[3] = 7;
+                t.s[0] = -1;
+                t.s[1] = -1;
+                t.s[2] = -1;
+                t.s[3] = -1;
+
+                DT.push_back(t);
+            }
+
+            {//AEFG
+                tetra t;
+               
+                t.t[0] = 5;
+                t.t[1] = 4;
+                t.t[2] = 5;
+                t.t[3] = 5;
+
+
+                t.p[0] = 0;
+                t.p[1] = 4;
+                t.p[2] = 5;
+                t.p[3] = 6;
+                t.s[0] = -1;
+                t.s[1] = -1;
+                t.s[2] = -1;
+                t.s[3] = -1;
+
+                DT.push_back(t);
+            }
+
+            {//ABFG
+                tetra t;
+               
+                t.t[0] = 5;
+                t.t[1] = 4;
+                t.t[2] = 5;
+                t.t[3] = 5;
 
 
                 t.p[0] = 0;
                 t.p[1] = 1;
-                t.p[2] = 2;
+                t.p[2] = 5;
                 t.p[3] = 3;
+                t.s[0] = -1;
+                t.s[1] = -1;
+                t.s[2] = -1;
+                t.s[3] = -1;
+
+                DT.push_back(t);
+            }
+
+            {//AFDG
+                tetra t;
+               
+                t.t[0] = 1;
+                t.t[1] = 0;
+                t.t[2] = 2;
+                t.t[3] = 3;
+
+
+                t.p[0] = 0;
+                t.p[1] = 5;
+                t.p[2] = 3;
+                t.p[3] = 6;
                 t.s[0] = -1;
                 t.s[1] = -1;
                 t.s[2] = -1;
@@ -215,48 +299,40 @@ namespace ArepoLoaderInternals {
 
             point p;
 
-            p.x = -20;p.y = -10;p.z = -20;p.index = 0;
+            p.x = -10;p.y = 10;p.z = 10;p.index = 0;
             DP.push_back(p);
             densities.push_back(0.0000000000003);
 
-            p.x = 0;p.y = -10;p.z = 20;p.index=1;
+            p.x = 10;p.y = 10;p.z = 10;p.index=1;
             DP.push_back(p);
             densities.push_back(0.0000000000003);
 
-            p.x = 10;p.y = -10;p.z = -20;p.index=2;
-            DP.push_back(p);
-            densities.push_back(0.6);
-
-            p.x = 0;p.y = 20;p.z = -10;p.index=3;
+            p.x = -10;p.y = -10;p.z = 10;p.index=2;
             DP.push_back(p);
             densities.push_back(0.0000000000003);
 
-            p.x = 20;p.y = 20;p.z = 10;p.index=4;
+            p.x = 10;p.y = -10;p.z = 10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00000000003);
-            //p.x = 1;p.y = 2;p.z = 0;p.index=5;
-            //DP.push_back(p);
-            //densities.push_back(0.0);
+            densities.push_back(0.0000000000003);
+
+            p.x = -10;p.y = 10;p.z = -10;p.index=4;
+            DP.push_back(p);
+            densities.push_back(0.0000000000003);
+
+            p.x = 10;p.y = 10;p.z = -10;p.index = 5; //F
+            DP.push_back(p);
+            densities.push_back(0.0000000000003);
+
+            p.x = -10;p.y = -10;p.z = -10;p.index=6;
+            DP.push_back(p);
+            densities.push_back(0.0000000000003);
+
+            p.x = 10;p.y = -10;p.z = -10;p.index=7;
+            DP.push_back(p);
+            densities.push_back(0.0000000000003);
 
 
-           {
-                tetra t;
-                t.t[0] = 2;
-                t.t[1] = 2;
-                t.t[2] = 2;
-                t.t[3] = 0;
-
-                t.p[0] = 1;
-                t.p[1] = 2;
-                t.p[2] = 3;
-                t.p[3] = 4;
-                t.s[0] = -1;
-                t.s[1] = -1;
-                t.s[2] = -1;
-                t.s[3] = -1;
-
-                DT.push_back(t);
-            }
+           
 
             /*{
                 tetra t;
@@ -293,8 +369,8 @@ namespace ArepoLoaderInternals {
             tDel.s[3] = 0;
             DT.push_back(tDel);
 
-            Ndt = 3;
-            Ndp = 5;
+            Ndt = 6;
+            Ndp = 8;
 
 
         }
