@@ -8,6 +8,55 @@
 #include "voronoi_3db.h" //shit didnt want to include any arepo code here
 
 
+//scaling factors for optical thickness
+#define A_B_A_V_T 1.324
+#define A_R_A_V_T 0.748
+
+
+//scalling factors for scattering coefficient
+#define A_B_A_V_S 1.0//3.0343721 
+#define A_R_A_V_S 1.0//0.49774692
+
+
+#define INSIDE_TOLERANCE 10000.0 * std::numeric_limits<lm::Float>::epsilon()
+
+inline lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b){
+    
+
+    //use tau*_t1 (t) which is the integral from t1 to t minus the integral from 0 to t1
+    //auto y = logxi + a *  0.5 * tmin*tmin   + b * tmin  - out_cdf;
+    auto y = logxi - out_cdf;
+    lm::Float freeT;
+
+    if (abs(a) < INSIDE_TOLERANCE
+    && abs(b) < INSIDE_TOLERANCE) {
+        freeT = std::numeric_limits<lm::Float>::max();
+    } else if(abs(a) < INSIDE_TOLERANCE) {
+        //freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
+        freeT = y / b;
+    }
+    else if(abs(b) < INSIDE_TOLERANCE) {
+        //freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+        freeT = glm::sqrt(2.0 * y * a) / a;
+    } else if (abs(a) < abs(b)) {
+        freeT = 2.0 * y / (glm::sqrt( b*b +  2.0 * y * a  ) + b);
+    } else if (abs(b) < abs(a)) {
+        freeT = (glm::sqrt( b*b +  2.0 * y * a  ) - b) / a;
+    }
+  
+    freeT = isnan(freeT) ? std::numeric_limits<lm::Float>::max() : freeT;
+    //for evaluating tau, limit free path to tmax
+    lm::Float t = glm::min(freeT , tmax);
+    lm::Float acc_cdf = t  * b  +  a  * 0.5 * t * t;
+    
+    out_cdf += glm::max(0.0,
+        acc_cdf) ; //cdf within tmin and  min of (t , tmax) 
+    return freeT;//returns sth between tmin - tmin (so 0) and tmax - tmin 
+}
+inline lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b) {
+    return ( b * toT  +  a * 0.5 *toT * toT   );
+}
+
 namespace ArepoLoaderInternals {
     struct IArepoMeshMock {
         virtual tetra * getDT() = 0;
@@ -21,6 +70,9 @@ namespace ArepoLoaderInternals {
         virtual lm::Float max_density() = 0;
      };
 }
+
+
+
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 
@@ -28,14 +80,16 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 typedef std::vector<std::vector<lm::Float>&> stdvec2d;
     
 
-
 struct LightToCameraRaySegmentCDF {
     Vec3 weight;
+    Vec3 p,d;
     lm::Float cdfSoFar;
     lm::Float localcdf;
     lm::Float t;
+    lm::Float tSoFar;
     lm::Float a;
     lm::Float b;
+    
 
 };
 void to_json(lm::Json& j, const LightToCameraRaySegmentCDF& p); 
@@ -55,8 +109,18 @@ namespace stats {
 
     struct MaxTransmittance {};
     struct FreePathTransmittance {};
+    struct OpticalThickness {};
 
     struct RegularTrackingStrategyDistanceSample {};
+
+    struct RegularTrackingStrategyTotalT{};//the distance until the last volume boundary
+    struct RegularTrackingStrategyMinT{}; //the distance until the first volume boundary
+
+    struct RegularTrackingStrategyXi {};
+    struct RegularTrackingStrategyTotalTau{}; //the optical thickness for the whole current ray
+    struct RegularTrackingStrategyTauUntilScatter{}; //the optical thickness accumulated until the regular distance sample scattered
+    struct RegularTrackingStrategyNormFac {};//the normalization factor to make all uniform samples scatter 
+
     struct EquiangularStrategyDistanceSample {};
 
     struct ScatteringAlbedo {};
@@ -65,6 +129,9 @@ namespace stats {
     struct DistanceSampleRandomValues {};
     struct EquiDistanceSampleRandomValueVertexIndex {};
     struct RegularDistanceSampleRandomValueVertexIndex {};
+
+    struct EquiContribution;
+    struct EquiEquiPDF;
 
     struct DistanceSamplesPDFs{};
     //2 distance samples, first one from equiangular, second one from regular 
@@ -80,6 +147,7 @@ namespace stats {
     };
 
     struct BoundaryVisitor{};
+    struct LastBoundarySequence {};
 
     struct VRL{};
     typedef int TetraIndex;
@@ -94,11 +162,12 @@ namespace stats {
 }
 
 struct RaySegmentCDF {
-        lm::Float localcdf;
-        lm::Float t;
-        lm::Float a;
-        lm::Float b;
-    };
+    lm::Float localcdf;
+    lm::Float t;
+    lm::Float a;
+    lm::Float b;
+    int tetraI;
+};
 
 
 

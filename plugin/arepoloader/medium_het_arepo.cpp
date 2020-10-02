@@ -106,10 +106,13 @@ public:
             //t = glm::min(t, tmax);
 
             auto p = ray.o + ray.d*t;
-            const auto albedo = volme_albedo_->eval_color(p);
+            //const auto albedo = volme_albedo_->eval_color(p);
+            int k = 0;
+            auto contr = stats::get<stats::ScatteringAlbedo,int,Vec3>(k);
+
             return DistanceSample{
                 p,
-                albedo,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
+                contr,     // T_{\bar{\mu}}(t) / p_{\bar{\mu}}(t) * \mu_s(t)
                             // = 1/\mu_t(t) * \mu_s(t) = albedo(t)
                 true
             };

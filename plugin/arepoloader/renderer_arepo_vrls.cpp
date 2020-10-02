@@ -12,12 +12,13 @@
 #include <lm/timer.h>
 #include <lm/stats.h>
 #include <lm/light.h>
+#include <lm/accel.h>
 #include "statstags.h"
 #include "arepoloader.h"
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
-
+//#define USE_KNN
 
 
 class Renderer_Arepo_VRL final : public Renderer {
@@ -26,6 +27,7 @@ protected:
     std::string strategy_;
     Float mis_power_;
     Scene* scene_;
+    AccelKnn* vrl_accel_;
     Volume* volume_;
     Film* film_;
     int max_verts_;
@@ -33,12 +35,15 @@ protected:
     std::optional<unsigned int> seed_;
     Component::Ptr<scheduler::Scheduler> sched_;
     long long spp_;
+    Component::Ptr<lm::Light> reprlight_;
+
 
 public:
     virtual void construct(const Json& prop) override {
         strategy_ = json::value<std::string>(prop, "strategy");
         mis_power_ = json::value<Float>(prop, "mis_power",2.0);
         scene_ = json::comp_ref<Scene>(prop, "scene");
+        vrl_accel_ = json::comp_ref<AccelKnn>(prop, "vrl_accel");
         volume_= json::comp_ref<Volume>(prop, "volume");
         film_ = json::comp_ref<Film>(prop, "output");
         max_verts_ = json::value<int>(prop, "max_verts");
@@ -47,6 +52,8 @@ public:
         const auto sched_name = json::value<std::string>(prop, "scheduler");
         spp_ = json::value<long long>(prop, "spp");
 
+
+        
         
         //want to cast direct lighting on sensor, each sample treating one light
         
@@ -55,6 +62,8 @@ public:
         LM_INFO("num samples {}",scene_->num_lights());
         sched_ = comp::create<scheduler::Scheduler>(
             "scheduler::spi::" + sched_name, make_loc("scheduler"), copy);
+
+
 
     }
 
@@ -66,6 +75,7 @@ public:
         comp::visit(visit, scene_);
         comp::visit(visit, film_);
         comp::visit(visit, sched_);
+        
     }
 
 
@@ -160,7 +170,10 @@ public:
                 segment.t = tetrasegment.t;
                 segment.a = tetrasegment.a;
                 segment.b = tetrasegment.b;
+                segment.p = boundarypos;
+                segment.d = -cam_light_connection->wo;
                 stats::enqueue<stats::VRL,stats::TetraIndex,LightToCameraRaySegmentCDF>(std::move(tetraI),std::move(segment));
+                segment.tSoFar += tetrasegment.t;
                 segment.cdfSoFar += tetrasegment.localcdf;
             };
             stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int)>>(0,raysegmentVisitor);
@@ -178,6 +191,9 @@ public:
 
             //importance sample distance following volume 
             std::optional<path::DistanceSample> sd = path::sample_distance(rng, scene_, sp, -cam_light_connection->wo);
+
+            //this is very important, to unregister the function in subsequent render passes(!)
+            stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int)>>(0,{});
 
             //splat result to pixel (test)
             const auto rp_ = path::raster_position(scene_, cam_light_connection->wo);
@@ -215,7 +231,8 @@ public:
             stats::flushQueue<stats::VRL,stats::TetraIndex,LightToCameraRaySegmentCDF>(
                 [](auto & k, auto & v) {
                     stats::update<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>(
-                        k,
+//                        k,
+                        0, //dont use tetra index, just add to 0
                         [&](auto & vec) {
                             vec.push_back(v);
                         }
@@ -250,6 +267,55 @@ public:
         auto tetraneighborhits = stats::getGlobal<lm::stats::UsedNeighborTetra,int,long long>(0 );
         auto accelsmpls = stats::getGlobal<lm::stats::ResampleAccel,int,long long>( 0);
         auto totaltetratests = stats::getGlobal<lm::stats::TotalTetraTests,int,long long>(0 );
+
+
+        
+
+     
+        auto & vrls = stats::getGlobalRef<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>( )
+            [0];
+
+
+        /*stats::getGlobalRef<stats::KNNLineComp,int,std::function<void(int,Vec3&,Vec3&)>>()[0]
+        = [&] (int vrlI,Vec3&vrlstart,Vec3&vrlend) {
+            auto & vrl = stats::getGlobalRef<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>( )[0]
+            [vrlI];
+            vrlstart = vrl.p;
+            vrlend = vrl.p + vrl.d * vrl.t;
+        };*/
+        
+        int numvrls = vrls.size();
+        Json prop;
+        Mat4 transform;
+
+        
+        //vrl_temp_scene->add_child(vrl_temp_scene->root_node(), t);
+        LM_INFO("vrl count: {}",numvrls);
+       
+        int currentIndex = 0;
+        //assume everything is stored in one vector
+#ifdef USE_KNN
+
+        if(numvrls > 0) {
+            std::function<bool(Mat4&,int&)> nextObject = [&](Mat4 & out_global_transform,int & out_someindex) {
+                auto & vrl = vrls[currentIndex];
+                transform = glm::mat4(1.0);
+                transform[3] = glm::vec4(vrl.p + vrl.d * vrl.t * 0.5,1);
+                out_someindex = currentIndex;
+                currentIndex++;
+                //LM_INFO("vrl {}",currentIndex);
+                if(currentIndex <= numvrls)
+                    return true;
+                return false;
+            };
+
+            vrl_accel_->build(numvrls,nextObject);
+
+
+        }
+#endif
+        
+
 
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,
