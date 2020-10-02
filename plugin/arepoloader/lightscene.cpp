@@ -25,20 +25,100 @@ namespace {
         KNN
     };
 
+    static const Float g_band_wavelengths_nm[89] = 
+    {
+        3630.0,3655.0,3680.0,3705.0,3730.0,3755.0,3780.0,3805.0,3830.0,3855.0,3880.0,3905.0
+        ,3930.0,3955.0,3980.0,4005.0,4030.0,4055.0,4080.0,4105.0,4130.0,4155.0,4180.0,4205.0
+        ,4230.0,4255.0,4280.0,4305.0,4330.0,4355.0,4380.0,4405.0,4430.0,4455.0,4480.0,4505.0
+        ,4530.0,4555.0,4580.0,4605.0,4630.0,4655.0,4680.0,4705.0,4730.0,4755.0,4780.0,4805.0
+        ,4830.0,4855.0,4880.0,4905.0,4930.0,4955.0,4980.0,5005.0,5030.0,5055.0,5080.0,5105.0
+        ,5130.0,5155.0,5180.0,5205.0,5230.0,5255.0,5280.0,5305.0,5330.0,5355.0,5380.0,5405.0
+        ,5430.0,5455.0,5480.0,5505.0,5530.0,5555.0,5580.0,5605.0,5630.0,5655.0,5680.0,5705.0
+        ,5730.0,5755.0,5780.0,5805.0,5830.0
+    };
 
-    const Float bTable_0 = 1.4*glm::pow(10.0,-10.0);
-    const Float bTable_1 = 0.9*glm::pow(10.0,-10.0);
-    const Float bTable_2 = 1.2*glm::pow(10.0,-10.0);
-    const Float bTable_3 = 1.8*glm::pow(10.0,-10.0);
-    const Float bTable_4 = 7.4*glm::pow(10.0,-10.0);
-    
-    void ugriz_to_jy(Float & u, Float & g, Float & r, Float & i, Float & z) {
-        u = 3631.0 * 2.0 * bTable_0 * glm::sinh(-u*glm::log(10)/2.5 - glm::log(bTable_0));
-        g = 3631.0 * 2.0 * bTable_1 * glm::sinh(-g*glm::log(10)/2.5 - glm::log(bTable_1));
-        r = 3631.0 * 2.0 * bTable_2 * glm::sinh(-r*glm::log(10)/2.5 - glm::log(bTable_2));
-        i = 3631.0 * 2.0 * bTable_3 * glm::sinh(-i*glm::log(10)/2.5 - glm::log(bTable_3));
-        z = 3631.0 * 2.0 * bTable_4 * glm::sinh(-z*glm::log(10)/2.5 - glm::log(bTable_4));
+    static const Float g_band_response[89] = 
+    {
+        0.000e+00,3.000e-04,8.000e-04,1.300e-03,1.900e-03,2.400e-03,3.400e-03
+        ,5.500e-03,1.030e-02,1.940e-02,3.260e-02,4.920e-02,6.860e-02,9.000e-02
+        ,1.123e-01,1.342e-01,1.545e-01,1.722e-01,1.873e-01,2.003e-01,2.116e-01
+        ,2.214e-01,2.301e-01,2.378e-01,2.448e-01,2.513e-01,2.574e-01,2.633e-01
+        ,2.691e-01,2.747e-01,2.801e-01,2.852e-01,2.899e-01,2.940e-01,2.979e-01
+        ,3.016e-01,3.055e-01,3.097e-01,3.141e-01,3.184e-01,3.224e-01,3.257e-01
+        ,3.284e-01,3.307e-01,3.327e-01,3.346e-01,3.364e-01,3.383e-01,3.403e-01
+        ,3.425e-01,3.448e-01,3.472e-01,3.495e-01,3.519e-01,3.541e-01,3.562e-01
+        ,3.581e-01,3.597e-01,3.609e-01,3.613e-01,3.609e-01,3.595e-01,3.581e-01
+        ,3.558e-01,3.452e-01,3.194e-01,2.807e-01,2.339e-01,1.839e-01,1.352e-01
+        ,9.110e-02,5.480e-02,2.950e-02,1.660e-02,1.120e-02,7.700e-03,5.000e-03
+        ,3.200e-03,2.100e-03,1.500e-03,1.200e-03,1.000e-03,9.000e-04,8.000e-04
+        ,6.000e-04,5.000e-04,3.000e-04,1.000e-04,0.000e+00
+    };
+
+    static const Float g_band_weights_sum = 16.740800000000004;
+
+    static const Vec3 cie_color_match[81] = {
+        {0.0014,0.0000,0.0065}, {0.0022,0.0001,0.0105}, {0.0042,0.0001,0.0201},
+        {0.0076,0.0002,0.0362}, {0.0143,0.0004,0.0679}, {0.0232,0.0006,0.1102},
+        {0.0435,0.0012,0.2074}, {0.0776,0.0022,0.3713}, {0.1344,0.0040,0.6456},
+        {0.2148,0.0073,1.0391}, {0.2839,0.0116,1.3856}, {0.3285,0.0168,1.6230},
+        {0.3483,0.0230,1.7471}, {0.3481,0.0298,1.7826}, {0.3362,0.0380,1.7721},
+        {0.3187,0.0480,1.7441}, {0.2908,0.0600,1.6692}, {0.2511,0.0739,1.5281},
+        {0.1954,0.0910,1.2876}, {0.1421,0.1126,1.0419}, {0.0956,0.1390,0.8130},
+        {0.0580,0.1693,0.6162}, {0.0320,0.2080,0.4652}, {0.0147,0.2586,0.3533},
+        {0.0049,0.3230,0.2720}, {0.0024,0.4073,0.2123}, {0.0093,0.5030,0.1582},
+        {0.0291,0.6082,0.1117}, {0.0633,0.7100,0.0782}, {0.1096,0.7932,0.0573},
+        {0.1655,0.8620,0.0422}, {0.2257,0.9149,0.0298}, {0.2904,0.9540,0.0203},
+        {0.3597,0.9803,0.0134}, {0.4334,0.9950,0.0087}, {0.5121,1.0000,0.0057},
+        {0.5945,0.9950,0.0039}, {0.6784,0.9786,0.0027}, {0.7621,0.9520,0.0021},
+        {0.8425,0.9154,0.0018}, {0.9163,0.8700,0.0017}, {0.9786,0.8163,0.0014},
+        {1.0263,0.7570,0.0011}, {1.0567,0.6949,0.0010}, {1.0622,0.6310,0.0008},
+        {1.0456,0.5668,0.0006}, {1.0026,0.5030,0.0003}, {0.9384,0.4412,0.0002},
+        {0.8544,0.3810,0.0002}, {0.7514,0.3210,0.0001}, {0.6424,0.2650,0.0000},
+        {0.5419,0.2170,0.0000}, {0.4479,0.1750,0.0000}, {0.3608,0.1382,0.0000},
+        {0.2835,0.1070,0.0000}, {0.2187,0.0816,0.0000}, {0.1649,0.0610,0.0000},
+        {0.1212,0.0446,0.0000}, {0.0874,0.0320,0.0000}, {0.0636,0.0232,0.0000},
+        {0.0468,0.0170,0.0000}, {0.0329,0.0119,0.0000}, {0.0227,0.0082,0.0000},
+        {0.0158,0.0057,0.0000}, {0.0114,0.0041,0.0000}, {0.0081,0.0029,0.0000},
+        {0.0058,0.0021,0.0000}, {0.0041,0.0015,0.0000}, {0.0029,0.0010,0.0000},
+        {0.0020,0.0007,0.0000}, {0.0014,0.0005,0.0000}, {0.0010,0.0004,0.0000},
+        {0.0007,0.0002,0.0000}, {0.0005,0.0002,0.0000}, {0.0003,0.0001,0.0000},
+        {0.0002,0.0001,0.0000}, {0.0002,0.0001,0.0000}, {0.0001,0.0000,0.0000},
+        {0.0001,0.0000,0.0000}, {0.0001,0.0000,0.0000}, {0.0000,0.0000,0.0000}
+    };
+
+    static const Float sun_solid_angle = 6.793970367229902e-05;
+
+
+
+
+    void mag_to_flux(Float & u, Float & g, Float & r, Float & i, Float & z) {
+
+        u = glm::pow(10.0,-u/2.5) * (3631.0*1e-26);
+        g = glm::pow(10.0,-g/2.5) * (3631.0*1e-26);
+        r = glm::pow(10.0,-r/2.5) * (3631.0*1e-26);
+        i = glm::pow(10.0,-i/2.5) * (3631.0*1e-26);
+        z = glm::pow(10.0,-z/2.5) * (3631.0*1e-26);
+
     }
+
+
+    void flux_to_mag(Float & u, Float & g, Float & r, Float & i, Float & z) {
+
+        u = -2.5*log10(u/(3631.0*1e-26));
+        g = -2.5*log10(g/(3631.0*1e-26));
+        r = -2.5*log10(r/(3631.0*1e-26));
+        i = -2.5*log10(i/(3631.0*1e-26));
+        z = -2.5*log10(z/(3631.0*1e-26));
+
+    }
+
+    void flux_to_mag_g(Float & g) {
+
+        g = -2.5*log10(g/(3631.0*1e-26));
+       
+    }
+
+
 
     Float poly10th(std::vector<Float> & coefs,Float x) {
         auto ret = 0.0;
@@ -53,15 +133,28 @@ namespace {
 
 
     Float const h = 6.62607004e-34;
-    Float const stb = 1.380649e-23;
+    Float const kb = 1.380649e-23;
     Float const c = 299792458.0;
     Float const hc = h * c;
     inline Float blackbody(Float wavelengthNM,Float temperatureKelvin) {
-        Float lambd = wavelengthNM *  1e-9;//m
-        Float t = 2.0 * hc*c/(lambd*lambd*lambd*lambd*lambd);
-        Float t2 = 1.0 / (glm::exp(hc/(lambd * stb * temperatureKelvin))-1.0);
-        return t * t2;
+        auto fr = c / (wavelengthNM *  1e-9);
+        auto t1 = 2.0 * h *fr *fr*fr;
+        auto t2 = 1.0 / (c*c* (glm::exp(h*fr/(kb * temperatureKelvin))-1.0));
+        return  t1 * t2;
     }
+
+
+
+    Float applySdssGBand(Float blackBodyTemperature) {
+        Float ret = 0.0;
+        for(int i = 0; i < 89; i++) {
+            ret += blackbody(g_band_wavelengths_nm[i], blackBodyTemperature) * g_band_response[i];
+        }
+        ret /= g_band_weights_sum;
+        return ret;
+    }
+
+
 
     inline Float xFit_1931( Float wave )
     {
@@ -112,9 +205,7 @@ private:
     std::vector<Float> star_coords_;
     std::vector<Float> star_ugriz_;
     std::vector<Float> f_coefs_g_to_temp_;
-    std::vector<Float> f_coefs_temp_to_x_;
-    std::vector<Float> f_coefs_temp_to_y_;
-    std::vector<Float> f_coefs_temp_to_z_;
+
     std::vector<Ptr<Light>> createdLights_;
 public:
     LM_SERIALIZE_IMPL(ar) {
@@ -156,11 +247,6 @@ public:
         star_coords_ = lm::json::value<std::vector<Float>>(prop,"star_coords");
         star_ugriz_ = lm::json::value<std::vector<Float>>(prop,"star_ugriz");
         f_coefs_g_to_temp_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_g_to_temp");
-        //f_coefs_temp_to_x_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_x");
-        //f_coefs_temp_to_y_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_y");
-        //f_coefs_temp_to_z_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_temp_to_z");
-
-        
 
         //to sRGB
         auto m0 = Vec3(3.2404542,-0.9692660,0.0556434);     
@@ -175,25 +261,39 @@ public:
         for(int ind = 0; ind < star_coords_.size() / 3; ind++) {
             auto ugriz_i = ind * 8;
             auto coord_i = ind * 3;
-            auto u = star_ugriz_[ugriz_i + 0];
-            auto g = star_ugriz_[ugriz_i + 4];
-            auto r = star_ugriz_[ugriz_i + 5];
-            auto i = star_ugriz_[ugriz_i + 6];
-            auto z = star_ugriz_[ugriz_i + 7];
-            ugriz_to_jy(u,g,r,i,z);
-            auto sum = g + r + i + z; //do not use u as it disturbs the fit
-            auto temperature = poly10th(f_coefs_g_to_temp_,g / sum);
+            auto u_mag = star_ugriz_[ugriz_i + 0];
+            auto g_mag = star_ugriz_[ugriz_i + 4];
+            auto r_mag = star_ugriz_[ugriz_i + 5];
+            auto i_mag = star_ugriz_[ugriz_i + 6];
+            auto z_mag = star_ugriz_[ugriz_i + 7];
 
+            auto u_flux = u_mag;
+            auto g_flux = g_mag;
+            auto r_flux = r_mag;
+            auto i_flux = i_mag;
+            auto z_flux = z_mag;
 
+            mag_to_flux(u_flux,g_flux,r_flux,i_flux,z_flux);
 
-            //auto x_ = poly10th(f_coefs_temp_to_x_,temperature);
-            //auto y_ = poly10th(f_coefs_temp_to_y_,temperature);
-            //auto z_ = poly10th(f_coefs_temp_to_z_,temperature);
+            auto sum = g_flux +  r_flux +  i_flux +  z_flux;
+            auto g_ratio = g_flux / sum;
+            auto temperature = poly10th(f_coefs_g_to_temp_,g_ratio);
+
+            auto g_response_flux = sun_solid_angle*applySdssGBand(temperature);
+            auto scaling = g_flux / g_response_flux;
+
+            auto reproduced_mag = scaling * g_response_flux;
+            flux_to_mag_g(reproduced_mag);
+
+            LM_INFO("incoming mag : {},{},{},{}, reproduced g mag: {}",
+            g_mag,r_mag,i_mag,z_mag,
+            reproduced_mag);
+
             Float x_,y_,z_;
             tempToXYZ(temperature,x_,y_,z_);
             auto rgb = M * Vec3(x_,y_,z_);
 
-            lightprop["Le"] = Vec3(rgb.r,rgb.g,rgb.b);
+            lightprop["Le"] = scaling * Vec3(rgb.r,rgb.g,rgb.b);
             lightprop["position"] = Vec3(star_coords_[coord_i],star_coords_[coord_i+1],star_coords_[coord_i+2]);
             std::string name = "light" + std::to_string(ind);
             createdLights_.push_back(
