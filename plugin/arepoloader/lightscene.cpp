@@ -89,7 +89,11 @@ namespace {
     static const Float sun_solid_angle = 6.793970367229902e-05;
 
 
-
+    static const Float g_to_temp_params[10] = {
+         9.17721455e+02,  2.00722937e+05, -7.69752165e+06,  1.57132181e+08,
+        -1.76560740e+09,  1.17234417e+10, -4.71587498e+10,  1.12931504e+11,
+        -1.48156059e+11,  8.20461651e+10
+    };
 
     void mag_to_flux(Float & u, Float & g, Float & r, Float & i, Float & z) {
 
@@ -120,11 +124,11 @@ namespace {
 
 
 
-    Float poly10th(std::vector<Float> & coefs,Float x) {
+    Float poly10th(Float x) {
         auto ret = 0.0;
         Float x_ = 1.0;
         for(int i = 0; i < 10; i++) {
-            ret += x_ * coefs[i];
+            ret += x_ * g_to_temp_params[i];
             x_ *= x;
         }
         return ret;
@@ -204,8 +208,7 @@ private:
     LightSamplingMode lightsamplingmode;
     std::vector<Float> star_coords_;
     std::vector<Float> star_ugriz_;
-    std::vector<Float> f_coefs_g_to_temp_;
-
+    
     std::vector<Ptr<Light>> createdLights_;
 public:
     LM_SERIALIZE_IMPL(ar) {
@@ -246,7 +249,7 @@ public:
         LightSamplingMode::KNN : LightSamplingMode::UNIFORM;
         star_coords_ = lm::json::value<std::vector<Float>>(prop,"star_coords");
         star_ugriz_ = lm::json::value<std::vector<Float>>(prop,"star_ugriz");
-        f_coefs_g_to_temp_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_g_to_temp");
+        //f_coefs_g_to_temp_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_g_to_temp");
 
         //to sRGB
         auto m0 = Vec3(3.2404542,-0.9692660,0.0556434);     
@@ -277,7 +280,7 @@ public:
 
             auto sum = g_flux +  r_flux +  i_flux +  z_flux;
             auto g_ratio = g_flux / sum;
-            auto temperature = poly10th(f_coefs_g_to_temp_,g_ratio);
+            auto temperature = poly10th(g_ratio);
 
             auto g_response_flux = sun_solid_angle*applySdssGBand(temperature);
             auto scaling = g_flux / g_response_flux;
