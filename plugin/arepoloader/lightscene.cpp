@@ -286,8 +286,8 @@ public:
             flux_to_mag_g(reproduced_mag);
 
             //LM_INFO("incoming mag : {},{},{},{}, reproduced g mag: {}",
-            g_mag,r_mag,i_mag,z_mag,
-            reproduced_mag);
+            //g_mag,r_mag,i_mag,z_mag,
+           // reproduced_mag);
 
             Float x_,y_,z_;
             tempToXYZ(temperature,x_,y_,z_);
