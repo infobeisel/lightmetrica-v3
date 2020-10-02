@@ -285,7 +285,7 @@ public:
             auto reproduced_mag = scaling * g_response_flux;
             flux_to_mag_g(reproduced_mag);
 
-            LM_INFO("incoming mag : {},{},{},{}, reproduced g mag: {}",
+            //LM_INFO("incoming mag : {},{},{},{}, reproduced g mag: {}",
             g_mag,r_mag,i_mag,z_mag,
             reproduced_mag);
 
