@@ -991,7 +991,7 @@ namespace ArepoLoaderInternals {
 
         bool returnValue = false;
 
-        //if(cachedS.sampleIndex == currentSample) { //is cached
+        if(cachedS.sampleIndex == currentSample) { //is cached
             lm::stats::add<lm::stats::SampleIdCacheHits,int,long long>(h,1);
             if (insideCachedTetra(p,cachedS)) {
                 //evaluateDensityCached(toVals);
@@ -1030,11 +1030,22 @@ namespace ArepoLoaderInternals {
                     //we totally lost the tetrahedron, need to make request to acceleration structure
                 }
             }
-        //} else {
+        } else {
             cachedS.sampleIndex = std::numeric_limits<long long>::max();
+
+            if(guess >= 0) { //try guess
+                if(insideTetra(guess, p, cachedS)){
+                    updateCachedNeighbors(cachedS,toQueryTetraId);
+                    //need to invalidate some information
+                    cachedS.hydroI = -1;
+                    //also store density at corners
+                    cacheCornerValues(cachedS);
+                    return true;
+                }
+            }
             //empty cached traversal queue
             //cachedTraversal().clear();
-        //}
+        }
         
         lm::stats::add<lm::stats::ResampleAccel,int,long long>(h,1);
         //uncached, need to ray intersect with volume
