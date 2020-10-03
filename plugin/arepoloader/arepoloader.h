@@ -7,6 +7,7 @@
 //#include "../../../ArepoVTK/arepo/include/mesh/voronoi/voronoi.h"
 #include "voronoi_3db.h" //shit didnt want to include any arepo code here
 
+#define USE_KNN
 
 //scaling factors for optical thickness
 #define A_B_A_V_T 1.324
