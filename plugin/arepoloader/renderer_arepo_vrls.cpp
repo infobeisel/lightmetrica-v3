@@ -35,6 +35,8 @@ protected:
     Component::Ptr<scheduler::Scheduler> sched_;
     long long spp_;
     Component::Ptr<lm::Light> reprlight_;
+    bool save_vrls_;
+
 
 
 public:
@@ -50,7 +52,7 @@ public:
         rr_prob_ = json::value<Float>(prop, "rr_prob", .2_f);
         const auto sched_name = json::value<std::string>(prop, "scheduler");
         spp_ = json::value<long long>(prop, "spp");
-
+        save_vrls_ = json::value<bool>(prop, "save_vrls",true);
 
         
         
@@ -171,7 +173,8 @@ public:
                 segment.b = tetrasegment.b;
                 segment.p = boundarypos;
                 segment.d = -cam_light_connection->wo;
-                stats::enqueue<stats::VRL,stats::TetraIndex,LightToCameraRaySegmentCDF>(std::move(tetraI),std::move(segment));
+                if(save_vrls_)
+                    stats::enqueue<stats::VRL,stats::TetraIndex,LightToCameraRaySegmentCDF>(std::move(tetraI),std::move(segment));
                 segment.tSoFar += tetrasegment.t;
                 segment.cdfSoFar += tetrasegment.localcdf;
             };
