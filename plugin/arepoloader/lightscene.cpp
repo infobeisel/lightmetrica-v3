@@ -585,7 +585,9 @@ public:
         // because the global tranformation can only be obtained by traversing the nodes.
         light_indices_map_.clear();
         lights_.clear();
-
+        
+        nodes_.reserve(2 * createdLights_.size()); //transforms and primitives
+        nodes_[root_node()].group.children.reserve(createdLights_.size());
         for(auto & l : createdLights_)
             add_primitive({
                 {"light",l->loc()}
