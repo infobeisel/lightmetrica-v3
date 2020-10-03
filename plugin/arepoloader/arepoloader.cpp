@@ -1519,7 +1519,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         lm::stats::set<lm::stats::LastBoundarySequence,int,std::vector<lm::RaySegmentCDF>*>(0,&segments);
         
 
-
+        lm::Float totalEffectiveT = 0.0;
         lm::Float totalacc = 0.0;
         lm::Float totalT = tmin;
         lm::Float minT = tmin;
@@ -1566,6 +1566,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                         toFill.tetraI = info.tetraI; //upcoming valid tetra
                         ret = true;
                         totalT += toFill.t;
+                        
                         if(!setMinT) {
                             setMinT = true;
                             minT = totalT;
@@ -1579,6 +1580,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     toFill.a = a;
                     toFill.b = b;
                     toFill.tetraI = info.tetraI;
+                    //only count segments that will participate in scatter.
+                    if(toFill.localcdf > std::numeric_limits<lm::Float>::epsilon())
+                        totalEffectiveT += toFill.t;
+
                     totalacc += toFill.localcdf;
                     ret = true;
                     totalT += toFill.t;
@@ -1592,6 +1597,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             });
         }
         lm::stats::set<lm::stats::RegularTrackingStrategyTotalT,int,lm::Float>(0,totalT);
+        lm::stats::set<lm::stats::RegularTrackingStrategyTotalEffT,int,lm::Float>(0,totalEffectiveT);
         lm::stats::set<lm::stats::RegularTrackingStrategyMinT,int,lm::Float>(0,minT);
 
        // LM_INFO("total {},",totalacc);
