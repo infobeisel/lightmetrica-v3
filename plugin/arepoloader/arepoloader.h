@@ -117,6 +117,7 @@ namespace stats {
     struct RegularTrackingStrategyDistanceSample {};
 
     struct RegularTrackingStrategyTotalT{};//the distance until the last volume boundary
+    struct RegularTrackingStrategyTotalEffT{};//the distance as above but only path segments that will participate in scatter are included
     struct RegularTrackingStrategyMinT{}; //the distance until the first volume boundary
     
     struct RegularTrackingStrategyTetraIndex{};//the tetra index the sample "landed" in

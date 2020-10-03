@@ -570,6 +570,7 @@ public:
                     auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(k);  
                     auto regularXi = stats::get<stats::RegularTrackingStrategyXi,int,Float>(k);//sample that was used for regular distance sample
                     auto totalT = stats::get<stats::RegularTrackingStrategyTotalT,int,Float>(k);//sample that was used for regular distance sample
+                    auto totalEffT = stats::get<stats::RegularTrackingStrategyTotalEffT,int,Float>(k);
                     auto minT = stats::get<stats::RegularTrackingStrategyMinT,int,Float>(k);//sample that was used for regular distance sample
                     auto totalTau = stats::get<stats::RegularTrackingStrategyTotalTau,int,Float>(k);//sample that was used for regular distance sample
                     auto tauUntilRegularT = stats::get<stats::RegularTrackingStrategyTauUntilScatter,int,Float>(k);//sample that was used for regular distance sample
@@ -864,7 +865,7 @@ public:
                                         accCdf += tetrasegment.localcdf;
                                         zetaTransmittance *= glm::exp(-  accCdf );
                                     }
-                                }*/
+                                }
 
 
                                 auto zeta = rng.u() * totalTau; //a new sample within total 
@@ -904,7 +905,46 @@ public:
                                         zetaAccCdf += tetrasegment.localcdf;
                                         zetaTransmittance *= glm::exp(-  zetaAccCdf );
                                     }
+                                }*/
+
+                                auto zeta = rng.u() * totalEffT; //a new sample within total 
+                                auto zetaTransmittance = 1.0;
+                                auto zetaT = totalT * zeta / totalTau; //will get replaced in loop
+                                auto zetaAccCdf = 0.0;
+                                //warp Zeta according nonzero particle density
+                                {
+                                    auto travelT = 0.0;
+                                    auto effTravelT = 0.0;
+                                    auto segmentThroughput = 1.0;
+                                    for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
+                                        auto & tetrasegment =  cameraSegments[segmentI];
+                                        auto tToAdd = tetrasegment.localcdf > std::numeric_limits<Float>::epsilon() 
+                                        ? tetrasegment.t : 0.0;
+
+                                        if (effTravelT + tToAdd >  zeta) {
+                                            auto lastBit = zeta - effTravelT;
+                                            auto normcdf = sampleCDF(lastBit,tetrasegment.a,tetrasegment.b );
+                                            zetaTransmittance *= glm::exp(-  normcdf );
+                                            auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                                            auto particle_density = tetrasegment.b + tetrasegment.a * lastBit;
+                                            auto mu_a = crosssection * particle_density;
+                                            auto phase_integrated = 1.0;//isotrope
+                                            auto mu_s = phase_integrated* particle_density;
+                                            auto mu_t = mu_a + mu_s;
+                                            zetaRegularPDF = mu_t / totalEffT;  //debatable TODO
+                                            zetaT = travelT + lastBit;   //debatable TODO 
+                                            break;
+
+                                        }
+                                        effTravelT += tToAdd;
+                        
+                                        travelT += tetrasegment.t;
+
+                                        zetaAccCdf += tetrasegment.localcdf;
+                                        zetaTransmittance *= glm::exp(-  zetaAccCdf );
+                                    }
                                 }
+
                                 //warp zeta
                                 zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
                                 
@@ -1176,7 +1216,7 @@ public:
                                 
 
                                 //auto zeta = rng.u() * tauUntilRegularT; //a new sample WITHIN the current distance sample
-                                auto zeta = rng.u() * totalTau; //a new sample within total 
+                                /*auto zeta = rng.u() * totalTau; //a new sample within total 
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = 0.0;
                                 auto zetaAccCdf = 0.0;
@@ -1209,6 +1249,45 @@ public:
                                             break;
                                         }
                                         travelT += tetrasegment.t;
+                                        zetaAccCdf += tetrasegment.localcdf;
+                                        zetaTransmittance *= glm::exp(-  zetaAccCdf );
+                                    }
+                                }*/
+
+
+                                auto zeta = rng.u() * totalEffT; //a new sample within total 
+                                auto zetaTransmittance = 1.0;
+                                auto zetaT = totalT * zeta / totalEffT; //will get replaced in loop
+                                auto zetaAccCdf = 0.0;
+                                //warp Zeta according nonzero particle density
+                                {
+                                    auto travelT = 0.0;
+                                    auto effTravelT = 0.0;
+                                    auto segmentThroughput = 1.0;
+                                    for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
+                                        auto & tetrasegment =  cameraSegments[segmentI];
+                                        auto tToAdd = tetrasegment.localcdf > std::numeric_limits<Float>::epsilon() 
+                                        ? tetrasegment.t : 0.0;
+
+                                        if (effTravelT + tToAdd >  zeta) {
+                                            auto lastBit = zeta - effTravelT;
+                                            auto normcdf = sampleCDF(lastBit,tetrasegment.a,tetrasegment.b );
+                                            zetaTransmittance *= glm::exp(-  normcdf );
+                                            auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                                            auto particle_density = tetrasegment.b + tetrasegment.a * lastBit;
+                                            auto mu_a = crosssection * particle_density;
+                                            auto phase_integrated = 1.0;//isotrope
+                                            auto mu_s = phase_integrated* particle_density;
+                                            auto mu_t = mu_a + mu_s;
+                                            zetaRegularPDF = mu_t / totalEffT;  //debatable TODO
+                                            zetaT = travelT + lastBit;   //debatable TODO 
+                                            break;
+
+                                        }
+                                        effTravelT += tToAdd;
+                        
+                                        travelT += tetrasegment.t;
+
                                         zetaAccCdf += tetrasegment.localcdf;
                                         zetaTransmittance *= glm::exp(-  zetaAccCdf );
                                     }
