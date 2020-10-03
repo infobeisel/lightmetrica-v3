@@ -477,7 +477,7 @@ namespace ArepoLoaderInternals {
         return b[0]*c[1]*d[2] + c[0]*d[1]*b[2] + d[0]*b[1]*c[2] - d[0]*c[1]*b[2] - c[0]*b[1]*d[2] - b[0]*d[1]*c[2];
     }
     
-    inline void connectP(glm::tmat4x3<lm::Float> & verts, lm::Vec3 & p, glm::tmat4x3<lm::Float> & pToVerts) {
+    inline void connectP(glm::tmat4x3<lm::Float> const  & verts, lm::Vec3 const & p, glm::tmat4x3<lm::Float> & pToVerts) {
 
         for(int i = 0; i < 4; i++)
             pToVerts[i] = verts[i] - p;
@@ -794,68 +794,81 @@ namespace ArepoLoaderInternals {
          
     }
 
+    inline bool insideTetra(int tetraIndex,lm::Vec3 const & loc, tetra const & tetra,
+        glm::tmat4x3<lm::Float> & verts, CachedSample & cachedS)  {
+
+            glm::tmat4x3<lm::Float> pVs;//point to vertex connections
+            //glm::tmat4x3<lm::Float> verts;
+            glm::ivec4 vertInds;
+            lm::Vec4 determinants;
+
+
+            for(int i = 0; i < 4; i++) {
+                vertInds[i] = tetra.p[i];
+                //auto av =  arepoMeshRef->getDP()[vertInds[i]];
+                //verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
+                pVs[i] = verts[i] - loc;
+            }
+
+            //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
+            lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
+            //if(mainDeterminant > 0.0)
+                //   LM_INFO( "cw");
+
+
+            //skip points 
+            //wtf see arepo vtk
+            DPinfinity = -1;
+            if  (
+            (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
+            || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
+            || tetra.t[0] == -1)
+            {
+                //LM_INFO("skip");
+                return false;
+            }
+
+
+
+            connectP(verts,loc,pVs);
+            computeDeterminants(pVs,determinants);
+            bool insideTet = inside(determinants,mainDeterminant);
+            if(insideTet) {
+                cachedS.tetraI = tetraIndex;
+                cachedS.tetraVs = verts;
+                cachedS.tetraInds = vertInds;
+                cachedS.tmpPVs = pVs;
+                cachedS.tmpDets = determinants;
+                cachedS.mainDeterminant = mainDeterminant;
+                updateCachedBaryInvT(cachedS);
+                cachedS.hydroI = -1;
+                cachedS.minDistI = -1;
+                cacheCornerValues(cachedS);
+            }
+
+            return insideTet;
+
+    }
+    
+
     //performs point in tetrahedron test, returns result. 
     //stores all relevant test data into cachedS if p is in the tetra
-    inline bool insideTetra(int tetraIndex, tetra tetra, lm::Vec3 p, CachedSample & cachedS)  {
-        glm::tmat4x3<lm::Float> pVs;//point to vertex connections
+    inline bool insideTetra(int tetraIndex, tetra const & tetra, lm::Vec3 const & p, CachedSample & cachedS)  {
         glm::tmat4x3<lm::Float> verts;
-        glm::ivec4 vertInds;
-        lm::Vec4 determinants;
-        
-        
         for(int i = 0; i < 4; i++) {
-            vertInds[i] = tetra.p[i];
-            auto av =  arepoMeshRef->getDP()[vertInds[i]];
+            auto av =  arepoMeshRef->getDP()[tetra.p[i]];
             verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
-            pVs[i] = verts[i] - p;
         }
-
-        //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
-        lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
-        //if(mainDeterminant > 0.0)
-         //   LM_INFO( "cw");
-        
-        
-        //skip points 
-        //wtf see arepo vtk
-        DPinfinity = -1;
-        if  (
-        (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
-        || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
-        || tetra.t[0] == -1)
-        {
-            //LM_INFO("skip");
-            return false;
-        }
-
-        
-
-        connectP(verts,p,pVs);
-        computeDeterminants(pVs,determinants);
-        bool insideTet = inside(determinants,mainDeterminant);
-        if(insideTet) {
-            cachedS.tetraI = tetraIndex;
-            cachedS.tetraVs = verts;
-            cachedS.tetraInds = vertInds;
-            cachedS.tmpPVs = pVs;
-            cachedS.tmpDets = determinants;
-            cachedS.mainDeterminant = mainDeterminant;
-            updateCachedBaryInvT(cachedS);
-            cachedS.hydroI = -1;
-            cachedS.minDistI = -1;
-            cacheCornerValues(cachedS);
-        }
-       
-        return insideTet;
+        return insideTetra(tetraIndex,p,tetra,verts,cachedS);
         
     }
 
     //overload
-    inline bool insideTetra(int tetra, lm::Vec3 p, CachedSample & cachedS)  {
+    inline bool insideTetra(int tetra, lm::Vec3 const & p, CachedSample & cachedS)  {
         return insideTetra(tetra, arepoMeshRef->getDT()[tetra], p, cachedS);
     }
 
-    inline void updateCachedNeighbors(CachedSample & cached) {
+    inline void updateCachedNeighbors(CachedSample & cached,  lm::ArepoLMMesh * toQueryTetraId) {
         auto ofTetra = cached.tetraI;
         bool foundNeighbor = false;
         bool foundBoundary = false;
@@ -863,6 +876,8 @@ namespace ArepoLoaderInternals {
         auto & neighborInds = cached.neighborInds; 
         neighbors.clear();
         neighborInds.clear();
+
+        
         
 
         auto alreadyContains = [&] (int tet) {
@@ -909,14 +924,27 @@ namespace ArepoLoaderInternals {
                 }
             }
         };
-        auto mostprobable = arepoMeshRef->getDT()[ofTetra].t[(cached.looksAtTriId - 1) % 4];
+        auto * ps = arepoMeshRef->getDT()[ofTetra].p;
+        auto * ts = arepoMeshRef->getDT();
+        //auto mostprobable = arepoMeshRef->getDT()[ofTetra].t[(cached.looksAtTriId - 1) % 4];
+
+        for(int p = 0; p < 4; p++) {
+            auto & adjacents = toQueryTetraId->adjacentTs(ps[p]);
+            for(auto & i : adjacents) {
+                neighborInds.push_back(i);
+                neighbors.push_back(ts[i]);
+            }
+        }
+
+        
+
         //neighbors.push_back(mostprobable);
         //neighborInds.push_back(mostprobable.t[(cached.looksAtTriId - 1) % 3]);
-        if(mostprobable >= 0 && mostprobable < arepoMeshRef->getNdt() && arepoMeshRef->getDT()[mostprobable].t[0] >= 0) {
+        /*if(mostprobable >= 0 && mostprobable < arepoMeshRef->getNdt() && arepoMeshRef->getDT()[mostprobable].t[0] >= 0) {
             neighbors.push_back(arepoMeshRef->getDT()[mostprobable]);
             neighborInds.push_back(mostprobable);
-            //addNeighbors(mostprobable,ofTetra);
-        }
+            addNeighbors(mostprobable,ofTetra);
+        }*/
             
         //else
         //    addNeighbors(ofTetra,ofTetra);
@@ -933,11 +961,11 @@ namespace ArepoLoaderInternals {
         bool foundBoundary = false;
         //double check if in original tetra
         auto & neighbors = cached.neighbors;     
-
         for(int i = 0; i < neighbors.size(); i ++) {
             foundNeighbor = insideTetra(cached.neighborInds[i], neighbors[i],p, cached);
-            if(foundNeighbor)
+            if(foundNeighbor) {
                 return cached.neighborInds[i];
+            }
         }
 
 
@@ -953,23 +981,41 @@ namespace ArepoLoaderInternals {
 
     inline bool findAndCacheTetra( CachedSample & cachedS, lm::Vec3 p, lm::Vec3 dir, lm::ArepoLMMesh * toQueryTetraId)  {
         int h = 0;
+
+        //gather a guess that might have been set before calling this method!
+        auto guess = lm::stats::get<lm::stats::TetraIdGuess,int,int>(h);
+
+
         auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
         lm::stats::add<lm::stats::TotalTetraTests,int,long long>(h,1);
 
         bool returnValue = false;
 
-        if(cachedS.sampleIndex == currentSample) { //is cached
+        //if(cachedS.sampleIndex == currentSample) { //is cached
             lm::stats::add<lm::stats::SampleIdCacheHits,int,long long>(h,1);
             if (insideCachedTetra(p,cachedS)) {
                 //evaluateDensityCached(toVals);
                 lm::stats::add<lm::stats::UsedCachedTetra,int,long long>(h,1);
                 return true; //most efficient case, still in cached tetra
             }
-            else { //check neighbors
-                updateCachedNeighbors(cachedS);
-                int tetraIndex = checkCachedNeighbors(p,cachedS);
-                bool inside = tetraIndex >= 0;
+            else {
+                //check guess
+                bool inside = false;
+                int tetraIndex = -1;
+                //guess serves for jumped query positions. 
+                if(guess >= 0) { 
+                    inside = insideTetra(guess, p, cachedS) ;//|| insideTetra(ni, p, cachedS);
+                    tetraIndex = guess;
+                }
+
+                //for continuous query positions, probably it changed to one of the neighbours!
+                if(!inside) {
+                    //check neighbors
+                    tetraIndex = checkCachedNeighbors(p,cachedS);
+                    inside = tetraIndex >= 0;
+                }
                 if(inside) { //sample changed to a neighbor
+                    updateCachedNeighbors(cachedS,toQueryTetraId);
                     lm::stats::add<lm::stats::UsedNeighborTetra,int,long long>(h,1);
                     //need to invalidate some information
                     cachedS.hydroI = -1;
@@ -984,11 +1030,11 @@ namespace ArepoLoaderInternals {
                     //we totally lost the tetrahedron, need to make request to acceleration structure
                 }
             }
-        } else {
+        //} else {
             cachedS.sampleIndex = std::numeric_limits<long long>::max();
             //empty cached traversal queue
             //cachedTraversal().clear();
-        }
+        //}
         
         lm::stats::add<lm::stats::ResampleAccel,int,long long>(h,1);
         //uncached, need to ray intersect with volume
@@ -1026,7 +1072,7 @@ namespace ArepoLoaderInternals {
             //}
             
             if(inside) { // we found a tetrahedron where we are inside
-                updateCachedNeighbors(cachedS);
+                updateCachedNeighbors(cachedS,toQueryTetraId);
                 //LM_INFO("found tetra inside");
                 cachedS.sampleIndex = currentSample;
                 //need to invalidate some information
@@ -1460,17 +1506,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         int segmentCount = 0;
         std::vector<lm::RaySegmentCDF> & segments = raySegments();
         lm::stats::set<lm::stats::LastBoundarySequence,int,std::vector<lm::RaySegmentCDF>*>(0,&segments);
-        if(segments.size() == 0)
-            segments.resize(RAY_SEGMENT_ALLOC);
-        segments[0].localcdf = 0.0;//TODO VALID!?
-        segments[0].t = tmin;
-        segments[0].a = 0.0;
-        segments[0].b = 0.0;
-        segments[0].tetraI = -1;
-        segmentCount++;
-
-        if(totalRayVisitor)
-            totalRayVisitor(originalRay.o , segments[0],segments[0].tetraI );
+        
 
 
         lm::Float totalacc = 0.0;
@@ -1482,6 +1518,18 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             auto travelray = originalRay;
             travelray.o = travelray.o + travelray.d * tmin; 
             lm::Float traveledT;
+
+            if(segments.size() == 0)
+                segments.resize(RAY_SEGMENT_ALLOC);
+                segments[0].localcdf = 0.0;//TODO VALID!?
+                segments[0].t = tmin;
+                segments[0].a = 0.0;
+                segments[0].b = 0.0;
+                segments[0].tetraI = cached.tetraI; //smells ugly, but is used for performance reasons only (see renderer_volpt_arepo, l. 1281), does not affect correctness
+                segmentCount++;
+
+                if(totalRayVisitor)
+                    totalRayVisitor(originalRay.o , segments[0],segments[0].tetraI );
 
             
             
@@ -1498,13 +1546,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                         toFill.t = tmax;
                         toFill.a = 0;
                         toFill.b = 0;
-                        toFill.tetraI = -1;
+                        toFill.tetraI = info.tetraI; //last valid tetra
                     } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
                         toFill.localcdf = 0.0;
                         toFill.t = t;
                         toFill.a = 0;
                         toFill.b = 0;
-                        toFill.tetraI = -1;
+                        toFill.tetraI = info.tetraI; //upcoming valid tetra
                         ret = true;
                         totalT += toFill.t;
                         if(!setMinT) {
@@ -1605,8 +1653,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 transmittance *= glm::exp(-  normcdf );
                 //accumulate non normalized!
 
-              
-
+        
 
                 retAcc = acc + normcdf;
                 
@@ -1628,6 +1675,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 pdf = mu_t * transmittance / normFac;             
                 //pdf = (raySegment.b + raySegment.a * t) * glm::exp(-retAcc) ; //normfac already at scatter albedo
 
+                
+                lm::stats::set<lm::stats::RegularTrackingStrategyTetraIndex,int,int>(0, raySegment.tetraI);
+        
                 stopAccumulating = true;
             }
 

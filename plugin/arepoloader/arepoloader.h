@@ -100,6 +100,8 @@ void from_json(const lm::Json& j, LightToCameraRaySegmentCDF& p);
 
 namespace stats {
     struct CachedSampleId {};
+    struct TetraIdGuess{};
+
     struct SampleIdCacheHits {};
     struct SampleIdCacheMisses {};
     struct UsedCachedTetra {};
@@ -116,6 +118,8 @@ namespace stats {
 
     struct RegularTrackingStrategyTotalT{};//the distance until the last volume boundary
     struct RegularTrackingStrategyMinT{}; //the distance until the first volume boundary
+    
+    struct RegularTrackingStrategyTetraIndex{};//the tetra index the sample "landed" in
 
     struct RegularTrackingStrategyXi {};
     struct RegularTrackingStrategyTotalTau{}; //the optical thickness for the whole current ray
@@ -182,6 +186,9 @@ public:
     virtual lm::Mesh::Tri triangle_at(int face) const = 0;
 
     virtual int correspondingTetra(int face) const = 0;
+
+    virtual const std::vector<int> & adjacentTs(int pointIndex) const = 0;
+
 
     virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const = 0;
 

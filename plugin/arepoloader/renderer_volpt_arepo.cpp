@@ -265,6 +265,7 @@ public:
                 thread_local auto vrl_knns_wo_duplicates = 
                 std::unordered_map<int,Neighbour>();
 
+                int lastDistanceSampleTetraI = -1; //a guess where the next distance sample search will start
 
                 for (int num_verts = 1; num_verts < max_verts_; num_verts++) {
                     vrl_knns = std::priority_queue<Neighbour, std::vector<Neighbour>>();
@@ -552,14 +553,19 @@ public:
                     //make sure it is nullptr before, so i can test later if we hit sth at all
                     stats::set<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(0,nullptr);
 
+                    stats::set<stats::TetraIdGuess,int,int>(0,lastDistanceSampleTetraI); //the next distance sampling will start where the last ended!
+                
                     //importance sample distance following volume 
                     std::optional<path::DistanceSample> sd = path::sample_distance(rng, scene_, sp, s->wo);
+
+                    
 
                     //now the knn res contain up to date information
 
                     int k = 0;
                     std::vector<RaySegmentCDF> * boundaries =  stats::get<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(k);
 
+                    lastDistanceSampleTetraI = stats::get<stats::RegularTrackingStrategyTetraIndex,int,int>(k);  
 
                     auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(k);  
                     auto regularXi = stats::get<stats::RegularTrackingStrategyXi,int,Float>(k);//sample that was used for regular distance sample
@@ -949,6 +955,7 @@ public:
                                 auto travelT = 0.0;
                                 auto accCdf = 0.0;
                                 auto segmentThroughput = Vec3(1.0);
+                                int tetraIndexLandedIn = -1;
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                     auto & tetrasegment =  cameraSegments[segmentI];
                                     if(t < travelT + tetrasegment.t) { //found sample point
@@ -961,6 +968,8 @@ public:
                                         sigma_t * glm::exp(-tau),
                                         A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
                                         );
+
+                                        tetraIndexLandedIn = tetrasegment.tetraI;
                                         break;
                                     }
                                     travelT += tetrasegment.t;
@@ -970,10 +979,12 @@ public:
                                 auto throughputCam = throughput * segmentThroughput *
                                 cam_area_measure_conv;
 
+                                
 
+                                stats::set<stats::TetraIdGuess,int,int>(0,tetraIndexLandedIn);
                                 //now evaluate transmittance
                                 //const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
-                                path::eval_transmittance(rng, scene_, sp1,sp2);
+                                //path::eval_transmittance(rng, scene_, sp1,sp2);
 
                                 //channelwise, receive result
                                 auto accCDF = 0.0;
@@ -1252,6 +1263,7 @@ public:
                                 auto travelT = 0.0;
                                 auto accCdf = 0.0;
                                 auto segmentThroughput = Vec3(1.0);
+                                int tetraILandedIn = -1;
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                     auto & tetrasegment =  cameraSegments[segmentI];
                                     if(t < travelT + tetrasegment.t) { //found sample point
@@ -1264,6 +1276,8 @@ public:
                                         sigma_t * glm::exp(-tau),
                                         A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
                                         );
+
+                                        tetraILandedIn = tetrasegment.tetraI;
                                         break;
                                     }
                                     travelT += tetrasegment.t;
@@ -1274,6 +1288,7 @@ public:
                                 cam_area_measure_conv;
 
 
+                                stats::set<stats::TetraIdGuess,int,int>(0,tetraILandedIn);
                                 //now evaluate transmittance
                                 //const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
                                 path::eval_transmittance(rng, scene_, sp1,sp2);
