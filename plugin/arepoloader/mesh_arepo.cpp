@@ -18,6 +18,7 @@ private:
     
     std::vector<lm::Mesh::Tri> triangles;
     std::vector<int> triangleIndexToTetraIndex;
+    std::vector<std::vector<int>> adjacentTetras;
   
 public:
     //TODO!
@@ -51,7 +52,7 @@ public:
         auto ndt = am->Ndt;
 #endif
         
-    
+        adjacentTetras.resize(ndp);
         
         auto scale = lm::json::value<lm::Float>(prop, "scale", 1.0);
 
@@ -111,6 +112,12 @@ public:
                         {v2,triangleNormal, lm::Vec2(0.0)},
                     });
                 };
+
+                adjacentTetras[dts[tetrai].p[0]].push_back(tetrai);
+                adjacentTetras[dts[tetrai].p[1]].push_back(tetrai);
+                adjacentTetras[dts[tetrai].p[2]].push_back(tetrai);
+                adjacentTetras[dts[tetrai].p[3]].push_back(tetrai);
+
 
             //if(dts[tetrai].t[0] > 0.0) {
                 //assume the following tetra:
@@ -180,6 +187,10 @@ public:
 
     int correspondingTetra(int face) const {
         return triangleIndexToTetraIndex[face];
+    }
+
+    const std::vector<int> & adjacentTs(int pointIndex) const {
+        return adjacentTetras[pointIndex];
     }
 
     //averages a 3
