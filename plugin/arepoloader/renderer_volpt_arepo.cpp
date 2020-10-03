@@ -931,7 +931,7 @@ public:
                                             auto phase_integrated = 1.0;//isotrope
                                             auto mu_s = phase_integrated* particle_density;
                                             auto mu_t = mu_a + mu_s;
-                                            zetaRegularPDF = mu_t / totalEffT;  //debatable TODO
+                                            zetaRegularPDF = 1.0 / totalEffT;  //debatable TODO
                                             zetaT = travelT + lastBit;   //debatable TODO 
                                             break;
 
@@ -1279,7 +1279,7 @@ public:
                                             auto phase_integrated = 1.0;//isotrope
                                             auto mu_s = phase_integrated* particle_density;
                                             auto mu_t = mu_a + mu_s;
-                                            zetaRegularPDF = mu_t / totalEffT;  //debatable TODO
+                                            zetaRegularPDF = 1.0 / totalEffT;  //debatable TODO
                                             zetaT = travelT + lastBit;   //debatable TODO 
                                             break;
 

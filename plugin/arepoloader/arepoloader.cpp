@@ -785,7 +785,7 @@ namespace ArepoLoaderInternals {
                 int hydroIndex = getCorrectedHydroInd(num);
                 
                 if(hydroIndex > -1 && num  < NumGas) {
-                    addValsContribution(cachedS.cornerVals[i],hydroIndex,1.0/MODEL_SCALE);//lengths[minDistIndex] / totalD );
+                    addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP/MODEL_SCALE);//lengths[minDistIndex] / totalD );
                 }  
             }
 #endif
