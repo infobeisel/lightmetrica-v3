@@ -18,7 +18,7 @@
 #define VOLPT_IMAGE_SAMPLING 0
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
-//#define USE_KNN
+#define USE_KNN
 
 
 
@@ -65,6 +65,7 @@ protected:
     Float knn_min_percent_vrls_;
     Float knn_max_percent_vrls_;
     Float knn_min_percent_points_;
+    Float knn_max_percent_points_;
 
 
 public:
@@ -86,6 +87,7 @@ public:
         knn_min_percent_vrls_ = json::value<Float>(prop, "knn_min_percent_vrls",0.01);
         knn_max_percent_vrls_ = json::value<Float>(prop, "knn_max_percent_vrls",0.1);
         knn_min_percent_points_ = json::value<Float>(prop, "knn_min_percent_points",0.1);
+        knn_max_percent_points_ = json::value<Float>(prop, "knn_max_percent_points",0.2);
         
         sample_lights_ = json::value<bool>(prop, "sample_lights",true);
         sample_vrls_= json::value<bool>(prop, "sample_vrls",true);
@@ -525,8 +527,13 @@ public:
                         auto min_percent = glm::min(static_cast<Float>(num_pointlights) * knn_min_percent_points_,
                             static_cast<Float>(num_pointlights));
                         min_percent = glm::max(min_percent,static_cast<Float>(knn_min_k_));
+
+                        auto max_percent = glm::min(
+                            static_cast<Float>(num_pointlights) * knn_max_percent_points_,static_cast<Float>(num_pointlights));
+
                         
-                        auto point_normFac = 1.0 - glm::exp(-(num_pointlights-min_percent));
+                        //auto point_normFac = 1.0 - glm::exp(-(num_pointlights-min_percent));
+                        auto point_normFac = 1.0 - glm::exp(-(max_percent-min_percent));
                         auto logu = min_percent - glm::log(1 - rng.u() * point_normFac);
                         point_knn_res.k = static_cast<unsigned int>(logu);
                         point_knn_res.k++;
