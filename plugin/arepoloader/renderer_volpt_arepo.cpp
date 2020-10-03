@@ -590,7 +590,7 @@ public:
                     //if( currentTransmittanceDistanceSample > travelT ) {
                         // nee = true;
 
-                    if(boundaries != nullptr) { //the chance to have in-scattering                        
+                    if(boundaries != nullptr && totalTau > 0.0) { //the chance to have in-scattering                        
                         auto & cameraSegments = *boundaries;
 
 #ifdef USE_KNN
