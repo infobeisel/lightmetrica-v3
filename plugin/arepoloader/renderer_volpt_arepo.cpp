@@ -988,7 +988,7 @@ public:
                                     auto tau = vrl.cdfSoFar + 0.5 * vrl.a *  vrl_vlp_t * vrl_vlp_t + vrl.b * vrl_vlp_t;
                                     VRL_C *= Vec3(
                                     A_R_A_V_S * sigma_t * glm::exp(-A_R_A_V_T*tau),
-                                    sigma_t * glm::exp(-tau),
+                                    A_G_A_V_S * sigma_t * glm::exp(-A_G_A_V_T*tau),
                                     A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
                                     );
                                 }
@@ -1009,7 +1009,7 @@ public:
                                                 + 0.5 * tetrasegment.a * lastBit * lastBit + tetrasegment.b * lastBit);
                                         segmentThroughput = Vec3(
                                         A_R_A_V_S * sigma_t * glm::exp(-A_R_A_V_T*tau),
-                                        sigma_t * glm::exp(-tau),
+                                        A_G_A_V_S * sigma_t * glm::exp(-A_G_A_V_T*tau),
                                         A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
                                         );
 
@@ -1036,7 +1036,7 @@ public:
                                 accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
 
                                 throughputCam.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
-                                throughputCam.g *= glm::exp(-accCDF * 1.0);
+                                throughputCam.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
                                 throughputCam.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
 
 
@@ -1361,7 +1361,7 @@ public:
                                                 + 0.5 * tetrasegment.a * lastBit * lastBit + tetrasegment.b * lastBit);
                                         segmentThroughput = Vec3(
                                         A_R_A_V_S * sigma_t * glm::exp(-A_R_A_V_T*tau),
-                                        sigma_t * glm::exp(-tau),
+                                        A_G_A_V_S * sigma_t * glm::exp(-A_G_A_V_T*tau),
                                         A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
                                         );
 
@@ -1387,7 +1387,7 @@ public:
                                 accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
 
                                 throughputCam.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
-                                throughputCam.g *= glm::exp(-accCDF * 1.0);
+                                throughputCam.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
                                 throughputCam.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
 
                                 // Evaluate BSDF

@@ -1682,7 +1682,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 auto mu_t =  mu_a + mu_s;
                 contribution = lm::Vec3(
                     A_R_A_V_S * mu_t * glm::exp(-A_R_A_V_T*retAcc),
-                    mu_t * glm::exp(-retAcc),
+                    A_G_A_V_S * mu_t * glm::exp(-A_G_A_V_T*retAcc),
                     A_B_A_V_S * mu_t * glm::exp(-A_B_A_V_T*retAcc)
                 );
 
