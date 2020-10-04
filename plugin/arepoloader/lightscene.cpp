@@ -210,6 +210,7 @@ private:
     std::vector<Float> star_ugriz_;
     
     std::vector<Ptr<Light>> createdLights_;
+    Float model_scale_;
 public:
     LM_SERIALIZE_IMPL(ar) {
         ar(accel_, nodes_, camera_, lights_, light_indices_map_, env_light_,createdLights_);
@@ -249,6 +250,7 @@ public:
         LightSamplingMode::KNN : LightSamplingMode::UNIFORM;
         star_coords_ = lm::json::value<std::vector<Float>>(prop,"star_coords");
         star_ugriz_ = lm::json::value<std::vector<Float>>(prop,"star_ugriz");
+        model_scale_ = lm::json::value<Float>(prop,"model_scale");
         //f_coefs_g_to_temp_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_g_to_temp");
 
         //to sRGB
@@ -294,10 +296,16 @@ public:
 
             Float x_,y_,z_;
             tempToXYZ(temperature,x_,y_,z_);
-            auto rgb = M * Vec3(x_,y_,z_);
+            auto rgb = M * Vec3(x_,y_,z_); //if it was the sun 
+            rgb *= scaling; //account for star/sun relative size
+            rgb *=  6.09e+18;//convert from area light source to point light source: sun's area in m^2 
 
-            lightprop["Le"] = scaling * Vec3(rgb.r,rgb.g,rgb.b);
-            lightprop["position"] = Vec3(star_coords_[coord_i],star_coords_[coord_i+1],star_coords_[coord_i+2]);
+
+           
+
+            lightprop["Le"] = rgb;
+
+            lightprop["position"] = model_scale_ * Vec3(star_coords_[coord_i],star_coords_[coord_i+1],star_coords_[coord_i+2]);
             std::string name = "light" + std::to_string(ind);
             createdLights_.push_back(
                 std::move(
