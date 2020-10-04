@@ -19,7 +19,7 @@
 #define A_R_A_V_S 1.0//0.49774692
 
 
-#define INSIDE_TOLERANCE 10000.0 * std::numeric_limits<lm::Float>::epsilon()
+#define INSIDE_TOLERANCE 1.0 * std::numeric_limits<lm::Float>::epsilon()
 
 inline lm::Float sampleCachedICDF_andCDF(lm::Float logxi,lm::Float xi, lm::Float tmax, lm::Float & out_cdf,lm::Float a, lm::Float b){
     
