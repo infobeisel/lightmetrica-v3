@@ -818,8 +818,7 @@ public:
                                 Float a_ = minT-th;//- th;//ray.o - lightPos;
                                 Float b_ = totalT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                 //Float b_ = maxT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
-                                auto theta_a = glm::atan(a_,equih);
-                                auto theta_b = glm::atan(b_,equih);
+                                
 
                                 // auto xi = rng_u_i_equi;
 
@@ -907,7 +906,7 @@ public:
                                     }
                                 }*/
 
-                                auto zeta = rng.u() * totalEffT; //a new sample within total 
+                                auto zeta = rng.u();// * totalEffT; //a new sample within total 
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = totalT * zeta / totalTau; //will get replaced in loop
                                 auto zetaAccCdf = 0.0;
@@ -931,8 +930,11 @@ public:
                                             auto phase_integrated = 1.0;//isotrope
                                             auto mu_s = phase_integrated* particle_density;
                                             auto mu_t = mu_a + mu_s;
-                                            zetaRegularPDF = 1.0 / totalEffT;  //debatable TODO
+                                            //zetaRegularPDF = (totalT-minT)/ totalEffT;  //debatable TODO
                                             zetaT = travelT + lastBit;   //debatable TODO 
+
+                                            //a_ = travelT -th; 
+                                            //b_ = travelT + tetrasegment.t - th;
                                             break;
 
                                         }
@@ -946,8 +948,10 @@ public:
                                 }
 
                                 //warp zeta
-                                zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
+                                //zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
                                 
+                                auto theta_a = glm::atan(a_,equih);
+                                auto theta_b = glm::atan(b_,equih);
 
                                 //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
                                 auto equiT = equih * glm::tan((1.0 - zeta) * theta_a + zeta * theta_b);
@@ -1158,16 +1162,15 @@ public:
                                
                                 //what if it the shortest d is not within the line segment? TODO
                                 //Float a_ = 4.0 - th;//- th;//ray.o - lightPos;
-                                Float a_ = minT - th;//- th;//ray.o - lightPos;
+                                Float a_ =  minT - th;//- th;//ray.o - lightPos;
                                 
                                 //Float b_ = maxAllowedT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                 //Float b_ = 10.0 - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
-                                Float b_ = totalT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
+                                Float b_ =  totalT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                 
                                 //Float b_ = totalT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                 //Float b_ = maxT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
-                                auto theta_a = glm::atan(a_,equih);
-                                auto theta_b = glm::atan(b_,equih);
+                                
 
                                 // auto xi = rng_u_i_equi;
 
@@ -1255,7 +1258,7 @@ public:
                                 }*/
 
 
-                                auto zeta = rng.u() * totalEffT; //a new sample within total 
+                                auto zeta = rng.u();// * totalEffT; //a new sample within total 
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = totalT * zeta / totalEffT; //will get replaced in loop
                                 auto zetaAccCdf = 0.0;
@@ -1279,8 +1282,10 @@ public:
                                             auto phase_integrated = 1.0;//isotrope
                                             auto mu_s = phase_integrated* particle_density;
                                             auto mu_t = mu_a + mu_s;
-                                            zetaRegularPDF = 1.0 / totalEffT;  //debatable TODO
+                                            zetaRegularPDF = 1.0;// (totalT-minT) / totalEffT;  //debatable TODO
                                             zetaT = travelT + lastBit;   //debatable TODO 
+                                            //a_ = travelT -th; 
+                                            //b_ = travelT + tetrasegment.t - th; 
                                             break;
 
                                         }
@@ -1294,12 +1299,16 @@ public:
                                 }
 
                                 //warp zeta
-                                zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
+                                //zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
                                 //only equiangular sampling
                                 //zeta = rng.u();
                                 //zetaRegularPDF = 1.0;
 
                                 //zetaRegularPDF *= totalT / (totalT - minT); //evaluate only fraction of path segment by equiangular sampling!
+
+                                auto theta_a = glm::atan(a_,equih);
+                                auto theta_b = glm::atan(b_,equih);
+
 
 
                                 //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
