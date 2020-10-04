@@ -301,35 +301,35 @@ namespace ArepoLoaderInternals {
 
             p.x = -10;p.y = 10;p.z = 10;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.00003);
 
             p.x = 10;p.y = 10;p.z = 10;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.03);
 
             p.x = -10;p.y = -10;p.z = 10;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.3);
 
             p.x = 10;p.y = -10;p.z = 10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.00003);
 
             p.x = -10;p.y = 10;p.z = -10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.00003);
 
             p.x = 10;p.y = 10;p.z = -10;p.index = 5; //F
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.0003);
 
             p.x = -10;p.y = -10;p.z = -10;p.index=6;
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.00003);
 
             p.x = 10;p.y = -10;p.z = -10;p.index=7;
             DP.push_back(p);
-            densities.push_back(0.0000000000003);
+            densities.push_back(0.0003);
 
 
            
