@@ -1178,44 +1178,57 @@ public:
 
                                
 
-                                auto zetaRegularPDF = 1.0;
+                                auto cam_scatter_pdf_regular = 1.0;
                                 //auto zeta = rng.u(); //a new sample WITHIN the current distance sample
-                                /*auto zeta = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
-                                lm::Float logzeta = -gsl_log1p(-zeta);
-                                auto zetaTransmittance = 1.0;
-                                auto zetaT = 0.0;
+                                auto zeta_regular = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
+                                lm::Float logzeta_regular = -gsl_log1p(-zeta_regular);
+                                auto zetaTransmittance_regular = 1.0;
+                                auto t_regular = 0.0;
+                                auto segmentThroughput_regular = Vec3(1.0);
+                                int tetraILandedIn_regular = -1;
                                 //warp Zeta according transmittance
                                 {
                                     auto travelT = 0.0;
                                     auto accCdf = 0.0;
-                                    auto segmentThroughput = 1.0;
                                     for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                         auto & tetrasegment =  cameraSegments[segmentI];
-                                        if (accCdf  + tetrasegment.localcdf  > logzeta) {
+                                        if (accCdf  + tetrasegment.localcdf  > logzeta_regular) {
                                             auto normcdf =  accCdf ;
-                                            lm::Float t = sampleCachedICDF_andCDF( logzeta,zeta , tetrasegment.t ,
+                                            lm::Float t = sampleCachedICDF_andCDF( logzeta_regular,zeta_regular , tetrasegment.t ,
                                             normcdf ,  tetrasegment.a ,   tetrasegment.b );
                                             normcdf = sampleCDF(t,tetrasegment.a,tetrasegment.b );
-                                            zetaTransmittance *= glm::exp(-  normcdf );
+                                            zetaTransmittance_regular *= glm::exp(-  normcdf );
                                             //accumulate non normalized!
                                             //retAcc = accCdf + normcdf;
-                                            auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                                            /*auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
                                             auto particle_density = tetrasegment.b + tetrasegment.a * t;
                                             auto mu_a = crosssection * particle_density;
                                             auto phase_integrated = 1.0;//isotrope
                                             auto mu_s = phase_integrated* particle_density;
-                                            auto mu_t = mu_a + mu_s;
+                                            auto mu_t = mu_a + mu_s;*/
+                                            //take the easy one for the moment
+                                            auto mu_t = tetrasegment.b + tetrasegment.a * t;
+
                                             //auto scattering_albedo = mu_s / mu_t; 
                                             //contribution = mu_s * transmittance;
-                                            zetaRegularPDF = mu_t * zetaTransmittance / lowDensityNormalizationFactor;  
-                                            zetaT = travelT + t;   
+                                            cam_scatter_pdf_regular = mu_t * zetaTransmittance_regular / lowDensityNormalizationFactor;  
+                                            t_regular = travelT + t;   
+
+                                            //also save per channel transmittance
+                                            segmentThroughput_regular = Vec3(
+                                            A_R_A_V_S * mu_t * glm::exp(-A_R_A_V_T*(normcdf+accCdf)),
+                                            A_G_A_V_S * mu_t * glm::exp(-A_G_A_V_T*(normcdf+accCdf)),
+                                            A_B_A_V_S * mu_t * glm::exp(-A_B_A_V_T*(normcdf+accCdf))
+                                            );
+
+                                            tetraILandedIn_regular = tetrasegment.tetraI;
                                             break;
                                         }
                                         travelT += tetrasegment.t;
                                         accCdf += tetrasegment.localcdf;
-                                        zetaTransmittance *= glm::exp(-  accCdf );
+                                        zetaTransmittance_regular *= glm::exp(-  accCdf );
                                     }
-                                }*/
+                                }
                                 
 
                                 //auto zeta = rng.u() * tauUntilRegularT; //a new sample WITHIN the current distance sample
@@ -1258,7 +1271,7 @@ public:
                                 }*/
 
 
-                                auto zeta = rng.u();// * totalEffT; //a new sample within total 
+                                /*auto zeta = rng.u();// * totalEffT; //a new sample within total 
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = totalT * zeta / totalEffT; //will get replaced in loop
                                 auto zetaAccCdf = 0.0;
@@ -1296,7 +1309,7 @@ public:
                                         zetaAccCdf += tetrasegment.localcdf;
                                         zetaTransmittance *= glm::exp(-  zetaAccCdf );
                                     }
-                                }
+                                }*/
 
                                 //warp zeta
                                 //zeta =  (zetaT)/totalT ; //zetaT / regularT; //now is between 0 and 1, transmittance-distributed
@@ -1305,37 +1318,43 @@ public:
                                 //zetaRegularPDF = 1.0;
 
                                 //zetaRegularPDF *= totalT / (totalT - minT); //evaluate only fraction of path segment by equiangular sampling!
-
+                                
                                 auto theta_a = glm::atan(a_,equih);
                                 auto theta_b = glm::atan(b_,equih);
-
-
-
+                                auto zeta_equi = rng.u();
                                 //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
-                                auto equiT = equih * glm::tan((1.0 - zeta) * theta_a + zeta * theta_b);
-                                auto t = th +  equiT ;
-                                
+                                auto equiT = equih * glm::tan((1.0 - zeta_equi) * theta_a + zeta_equi * theta_b);
+                                auto t_equi = th +  equiT ;
                                 //auto cam_area_measure_conv = 1.0 / (travelT + t) / (travelT + t) ;
-                                auto cam_area_measure_conv = 1.0 / t / t;
-                                auto cam_scatter_pdf = equih / (equih*equih+glm::pow(equiT,2.0) *(theta_b-theta_a));
-                                cam_scatter_pdf *= cam_area_measure_conv;
-                                cam_scatter_pdf *= zetaRegularPDF; //conditional pdf
-                                
-                                auto camera_sample_point = a + a_d * t;
-
-
-                                auto connectiondir =  glm::normalize(camera_sample_point-b);
-                                auto connection_area_measure = 1.0 / glm::abs(glm::dot(camera_sample_point-b,camera_sample_point-b));
-
-                                auto sp1 = SceneInteraction::make_medium_interaction(
+                                auto cam_area_measure_conv_equi = 1.0 / t_equi / t_equi;
+                                auto cam_scatter_pdf_equi = equih / (equih*equih+glm::pow(equiT,2.0) *(theta_b-theta_a));
+                                cam_scatter_pdf_equi *= cam_area_measure_conv_equi;
+                                auto camera_sample_point_equi = a + a_d * t_equi;
+                                auto connectiondir_equi =  glm::normalize(camera_sample_point_equi-b);
+                                auto connection_area_measure_equi = 1.0 / glm::abs(glm::dot(camera_sample_point_equi-b,camera_sample_point_equi-b));
+                                auto sp1_equi = SceneInteraction::make_medium_interaction(
                                             scene_->medium_node(),
-                                            PointGeometry::make_degenerated(camera_sample_point)
+                                            PointGeometry::make_degenerated(camera_sample_point_equi)
                                         );
 
                                 auto sp2 = SceneInteraction::make_medium_interaction(
                                             scene_->medium_node(),
                                             PointGeometry::make_degenerated(b)
                                         );
+
+                                //EQUI PDF OF REGULAR
+                                //auto cam_area_measure_conv = 1.0 / (travelT + t) / (travelT + t) ;
+                                auto cam_area_measure_conv_regular = 1.0 / t_regular / t_regular;
+                                auto cam_scatter_pdf_equi_of_regular = equih / (equih*equih+glm::pow(t_regular-th,2.0) *(theta_b-theta_a));
+                                cam_scatter_pdf_equi_of_regular *= cam_area_measure_conv_regular;
+                                auto camera_sample_point_regular = a + a_d * t_regular;
+                                auto connectiondir_regular =  glm::normalize(camera_sample_point_regular-b);
+                                auto connection_area_measure_regular = 1.0 / glm::abs(glm::dot(camera_sample_point_regular-b,camera_sample_point_regular-b));
+                                auto sp1_regular = SceneInteraction::make_medium_interaction(
+                                            scene_->medium_node(),
+                                            PointGeometry::make_degenerated(camera_sample_point_regular)
+                                        );
+
 
                                 
                                 //virtual point light emittance
@@ -1346,78 +1365,148 @@ public:
 
 
 
-                                //camera throughput until sample point: 
+                                //camera throughput until sample points: 
                                 //transmittance!
                                 auto travelT = 0.0;
                                 auto accCdf = 0.0;
-                                auto segmentThroughput = Vec3(1.0);
-                                int tetraILandedIn = -1;
+                                auto segmentThroughput_equi = Vec3(1.0);
+                                int tetraILandedIn_equi = -1;
+                                auto cam_scatter_pdf_regular_of_equi = 1.0;
+                                auto foundEqui = false;
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                     auto & tetrasegment =  cameraSegments[segmentI];
-                                    if(t < travelT + tetrasegment.t) { //found sample point
-                                        auto lastBit = t - travelT;
+                                    if(t_equi < travelT + tetrasegment.t) { //found sample point
+                                        auto lastBit = t_equi - travelT;
                                         auto sigma_t = (tetrasegment.b + tetrasegment.a * lastBit);
                                         auto tau = (accCdf 
                                                 + 0.5 * tetrasegment.a * lastBit * lastBit + tetrasegment.b * lastBit);
-                                        segmentThroughput = Vec3(
+                                        segmentThroughput_equi = Vec3(
                                         A_R_A_V_S * sigma_t * glm::exp(-A_R_A_V_T*tau),
                                         A_G_A_V_S * sigma_t * glm::exp(-A_G_A_V_T*tau),
                                         A_B_A_V_S * sigma_t * glm::exp(-A_B_A_V_T*tau)
                                         );
 
-                                        tetraILandedIn = tetrasegment.tetraI;
-                                        break;
+                                        //also, save regular pdf , but not with per channel
+                                        cam_scatter_pdf_regular_of_equi = sigma_t * glm::exp(-tau) / lowDensityNormalizationFactor;  
+                                        cam_scatter_pdf_regular_of_equi *= cam_area_measure_conv_equi;   
+
+                                        tetraILandedIn_equi = tetrasegment.tetraI;
+                                        foundEqui = true;
                                     }
+
+                                    
+
                                     travelT += tetrasegment.t;
                                     accCdf += tetrasegment.localcdf;
                                 }
                                 
-                                auto throughputCam = throughput * segmentThroughput *
-                                cam_area_measure_conv;
+                                auto throughputCam_equi = throughput * segmentThroughput_equi *
+                                cam_area_measure_conv_equi;
 
 
-                                stats::set<stats::TetraIdGuess,int,int>(0,tetraILandedIn);
+                                stats::set<stats::TetraIdGuess,int,int>(0,tetraILandedIn_equi);
                                 //now evaluate transmittance
                                 //const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
-                                path::eval_transmittance(rng, scene_, sp1,sp2);
+                                path::eval_transmittance(rng, scene_, sp1_equi,sp2);
 
                                 //channelwise, receive result
                                 auto accCDF = 0.0;
                                 int k = 0;
                                 accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
 
-                                throughputCam.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
-                                throughputCam.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
-                                throughputCam.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+                                throughputCam_equi.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                throughputCam_equi.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
+                                throughputCam_equi.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
 
                                 // Evaluate BSDF
-                                const auto wo = glm::normalize(b - camera_sample_point);
+                                const auto wo_equi = glm::normalize(b - camera_sample_point_equi);
 
                                 //TODO überprüfen: alle PDFs beim light sampling
                                 
                                 //TODO evaluate what is wo and what is wi, is it EL or LE ?! 
-                                auto fs1 = path::eval_contrb_direction(scene_, sp1, a_d, wo, comp, TransDir::EL, true);
+                                auto fs1_equi = path::eval_contrb_direction(scene_, sp1_equi, a_d, wo_equi, comp, TransDir::EL, true);
                                 //fs1 *= tetrasegment.b + tetrasegment.a * t; //phase times \mu_s
                                 //point light has no phase auto fs2 = path::eval_contrb_direction(scene_, sp2, b_d, -wo, comp, TransDir::LE, true);
                                 //fs2 *= vrl.b + vrl.a * vrl_vlp_t;//phase times \mu_s
                                 const auto& primitive = scene_->node_at(scene_->medium_node()).primitive;
                                 //todo directions correct ?
-                                auto solidangledirectionpdf1 = primitive.medium->phase()->pdf_direction(sp1.geom, a_d, wo);
+                                auto solidangledirectionpdf1_equi = primitive.medium->phase()->pdf_direction(sp1_equi.geom, a_d, wo_equi);
                                 //auto solidangledirectionpdf2 = primitive.medium->phase()->pdf_direction(sp2.geom, b_d, wo);
-                                fs1 *= solidangledirectionpdf1;
+                                fs1_equi *= solidangledirectionpdf1_equi;
                                 //fs2 *= solidangledirectionpdf2;
-                                solidangledirectionpdf1 *= cam_area_measure_conv; //convert pdf to vertex area
+                                //solidangledirectionpdf1_equi *= cam_area_measure_conv_equi; //convert pdf to vertex area
                                 //solidangledirectionpdf2 *= vrl_area_measure_conv; //convert pdf to vertex area
                                 
-                                auto C =  light.eval(sp2.geom,wo,false);
+                                auto C_equi =  light.eval(sp2.geom,wo_equi,false);
 
                                 
                                 //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
-                                auto segment_contribution = throughputCam  * connection_area_measure * fs1 * C;
-                                auto segment_pdf = 
+                                auto segment_contribution_equi = throughputCam_equi  * connection_area_measure_equi * fs1_equi * C_equi;
+                                auto segment_pdf_equi = 
                                 pathPdfEquiStrategyEquiSamples 
                                 //* vrl_scatter_pdf
-                                * cam_scatter_pdf
+                                * cam_scatter_pdf_equi
+                                * pdf_light_selection
+                                // / vrlCount
+                                //* solidangledirectionpdf1
+                                //* solidangledirectionpdf2
+                                // connection probability stated to be one * connection_area_measure
+                                ;
+                                
+                                //auto otherPdf = 
+                                //    pathPdfRegularStrategyEquiSamples
+                                //*   regularPDF_of_equiSample_cam
+                                //*   regularPDF_of_equiSample_vrl;
+
+
+
+
+                                auto throughputCam_regular = throughput * segmentThroughput_regular *
+                                cam_area_measure_conv_regular;
+
+
+                                stats::set<stats::TetraIdGuess,int,int>(0,tetraILandedIn_regular);
+                                //now evaluate transmittance
+                                //const auto Tr = path::eval_transmittance(rng, scene_, sp1,sp2);
+                                path::eval_transmittance(rng, scene_, sp1_regular,sp2);
+
+                                //channelwise, receive result
+                                accCDF = 0.0;
+                                k = 0;
+                                accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
+
+                                throughputCam_regular.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                throughputCam_regular.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
+                                throughputCam_regular.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+
+                                // Evaluate BSDF
+                                const auto wo_regular = glm::normalize(b - camera_sample_point_regular);
+
+                                //TODO überprüfen: alle PDFs beim light sampling
+                                
+                                //TODO evaluate what is wo and what is wi, is it EL or LE ?! 
+                                auto fs1_reqular = path::eval_contrb_direction(scene_, sp1_regular, a_d, wo_regular, comp, TransDir::EL, true);
+                                //fs1 *= tetrasegment.b + tetrasegment.a * t; //phase times \mu_s
+                                //point light has no phase auto fs2 = path::eval_contrb_direction(scene_, sp2, b_d, -wo, comp, TransDir::LE, true);
+                                //fs2 *= vrl.b + vrl.a * vrl_vlp_t;//phase times \mu_s
+                                //const auto& primitive = scene_->node_at(scene_->medium_node()).primitive;
+                                //todo directions correct ?
+                                auto solidangledirectionpdf1_regular = primitive.medium->phase()->pdf_direction(sp1_regular.geom, a_d, wo_regular);
+                                //auto solidangledirectionpdf2 = primitive.medium->phase()->pdf_direction(sp2.geom, b_d, wo);
+                                fs1_reqular *= solidangledirectionpdf1_regular;
+                                //fs2 *= solidangledirectionpdf2;
+                                solidangledirectionpdf1_regular *= cam_area_measure_conv_regular; //convert pdf to vertex area
+                                //solidangledirectionpdf2 *= vrl_area_measure_conv; //convert pdf to vertex area
+                                
+                                auto C_regular =  light.eval(sp2.geom,wo_regular,false);
+
+                                
+                                //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
+                                auto segment_contribution_regular = throughputCam_regular  * connection_area_measure_regular * fs1_reqular * C_regular;
+                                auto segment_pdf_regular = 
+                                pathPdfEquiStrategyEquiSamples  //yes it is the main path part
+                                //* vrl_scatter_pdf
+                                * cam_scatter_pdf_regular
                                 * pdf_light_selection
                                 // / vrlCount
                                 //* solidangledirectionpdf1
@@ -1434,33 +1523,41 @@ public:
                                 
 
 
-                                if(! std::isnan(segment_pdf) && !std::isinf(segment_pdf) && segment_pdf > std::numeric_limits<Float>::epsilon()) {
-                                    
+                                if(! std::isnan(segment_pdf_equi) && !std::isinf(segment_pdf_equi) && segment_pdf_equi > std::numeric_limits<Float>::epsilon()) {
                                     if(contributionIndex[num_verts] >= equiContributions[num_verts].size()) {
                                         equiContributions[num_verts].
-                                        push_back(segment_contribution );
+                                        push_back(segment_contribution_equi );
                                         equipdfs[num_verts].
-                                        push_back( segment_pdf  );
+                                        push_back( segment_pdf_equi  );
                                     } else {
-                                        equiContributions[num_verts][contributionIndex[num_verts]] = segment_contribution;
-                                        equipdfs[num_verts][contributionIndex[num_verts]] = segment_pdf ;
+                                        equiContributions[num_verts][contributionIndex[num_verts]] = segment_contribution_equi;
+                                        equipdfs[num_verts][contributionIndex[num_verts]] = segment_pdf_equi ;
                                     }
-                                    
-
-
-                                    currentContribution += segment_contribution;
-                                    currentPdf *= segment_pdf;  
-
+                                    currentContribution += segment_contribution_equi;
+                                    currentPdf *= segment_pdf_equi;  
                                     contributionIndex[num_verts]++;
-                                    //contribCount++;
-
-                                    //EquiMeasurementContributions.push_back(segment_contribution);
-                                    //EquiPdfOfEquiSmpls.push_back(segment_pdf);
-                                    //RegularPdfOfEquiSmpls.push_back(otherPdf);
-
-                                //EquiPdfOfRegularSmpls.push_back(1);
-                                //RegularPdfOfRegularSmpls.push_back(segment_pdf);
                                 }
+
+                                /*
+                                TODO: regular tracking contribuztion.
+                                AND THEN MIS
+
+                                if(! std::isnan(segment_pdf_regular) && !std::isinf(segment_pdf_regular) && segment_pdf_regular > std::numeric_limits<Float>::epsilon()) {
+                                    if(contributionIndex[num_verts] >= equiContributions[num_verts].size()) {
+                                        equiContributions[num_verts].
+                                        push_back(segment_contribution_equi );
+                                        equipdfs[num_verts].
+                                        push_back( segment_pdf_equi  );
+                                    } else {
+                                        equiContributions[num_verts][contributionIndex[num_verts]] = segment_contribution_equi;
+                                        equipdfs[num_verts][contributionIndex[num_verts]] = segment_pdf_equi ;
+                                    }
+                                    currentContribution += segment_contribution_equi;
+                                    currentPdf *= segment_pdf_equi;  
+                                    contributionIndex[num_verts]++;
+                                }*/
+
+
                             
 
 #ifdef USE_KNN
