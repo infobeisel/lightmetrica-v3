@@ -137,7 +137,6 @@ public:
             assert(positionsample);
             auto pos = positionsample->geom.p;
             auto sp = SceneInteraction::make_light_endpoint(lightPrimitiveIndex.index, positionsample->geom);
-
             auto cam_light_connection =
             path::sample_direct(rng,scene_, sp, TransDir::EL);
 
@@ -151,32 +150,25 @@ public:
             assert(lightSample);
 
 
-            //hash map to save nearest lights
-            //auto nearestLights = std::unordered_map<int,Float>();
-            //nearestLights.reserve(scene_->num_lights() * 0.1);
-
-            //save nearest lights along current ray 
-
-            LightToCameraRaySegmentCDF segment;
-            segment.weight = lightSample->weight;
-            segment.cdfSoFar = 0.0;
-            segment.localcdf = 0.0;
-            segment.t = 0.0;
-            segment.a = 0.0;
-            segment.b = 0.0;
+            auto cdfSoFar = 0.0;
+            auto tSoFar = 0.0;
             
             std::function<void(Vec3,RaySegmentCDF const &, int)> raysegmentVisitor = [&] (lm::Vec3 boundarypos,lm::RaySegmentCDF const & tetrasegment, int tetraI) -> void {
                 //add an entry for the current tetrahedron
+                LightToCameraRaySegmentCDF segment;
+                segment.weight = lightSample->weight;
                 segment.localcdf = tetrasegment.localcdf;
                 segment.t = tetrasegment.t;
                 segment.a = tetrasegment.a;
                 segment.b = tetrasegment.b;
                 segment.p = boundarypos;
                 segment.d = -cam_light_connection->wo;
+                segment.tSoFar = tSoFar;
+                segment.cdfSoFar = cdfSoFar;
                 if(save_vrls_)
                     stats::enqueue<stats::VRL,stats::TetraIndex,LightToCameraRaySegmentCDF>(std::move(tetraI),std::move(segment));
-                segment.tSoFar += tetrasegment.t;
-                segment.cdfSoFar += tetrasegment.localcdf;
+                cdfSoFar += tetrasegment.localcdf;
+                tSoFar += tetrasegment.t;
             };
             stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int)>>(0,raysegmentVisitor);
             //std::function<void(Vec3,RaySegmentCDF const &)> donothing = [](auto,auto) {}; 
@@ -199,12 +191,14 @@ public:
 
             //splat result to pixel (test)
             const auto rp_ = path::raster_position(scene_, cam_light_connection->wo);
-            auto Tr = glm::exp(- segment.cdfSoFar);
+            auto Tr = glm::exp(- cdfSoFar);
             if(rp_) { //it is part of the sensor?
-                auto tosplat = Tr * segment.weight;
+                auto tosplat = Tr * lightSample->weight;
                 //LM_INFO("splat  {},{},{} on sensor {},{}",tosplat[0],tosplat[1],tosplat[2],
                 //rp_->x,rp_->y);
-                film_->splat(*rp_,Tr * segment.weight);
+                //LM_INFO("{},{},{}",sp.geom.p.x,sp.geom.p.y,sp.geom.p.z);
+
+                film_->splat(*rp_,tosplat);
             }
             
 
@@ -332,7 +326,7 @@ public:
         #if VOLPT_IMAGE_SAMPLING
         film_->rescale(Float(size.w* size.h) / processed);
         #else
-        film_->rescale(1_f / processed);
+        //film_->rescale(1_f / processed);
         #endif
 
         return { {"processed", processed}, {"elapsed", st.now()} };
