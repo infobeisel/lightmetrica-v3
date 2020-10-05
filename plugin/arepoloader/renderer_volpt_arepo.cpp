@@ -1289,6 +1289,20 @@ public:
                                 }*/
 
 
+                                auto theta_a = glm::atan(a_,equih);
+                                auto theta_b = glm::atan(b_,equih);
+                                auto zeta_equi = rng.u();
+                                //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
+                                auto equiT = equih * glm::tan((1.0 - zeta_equi) * theta_a + zeta_equi * theta_b);
+                                auto t_equi = th +  equiT ;
+                                //auto cam_area_measure_conv = 1.0 / (travelT + t) / (travelT + t) ;
+                                auto cam_area_measure_conv_equi = 1.0 / t_equi / t_equi;
+                                auto cam_scatter_pdf_equi = equih / (equih*equih+glm::pow(equiT,2.0) *(theta_b-theta_a));
+                                cam_scatter_pdf_equi *= cam_area_measure_conv_equi;
+                                auto camera_sample_point_equi = a + a_d * t_equi;
+                                auto connectiondir_equi =  glm::normalize(camera_sample_point_equi-b);
+                                auto connection_area_measure_equi = 1.0 / glm::abs(glm::dot(camera_sample_point_equi-b,camera_sample_point_equi-b));
+                                
                                 /*auto zeta = rng.u();// * totalEffT; //a new sample within total 
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = totalT * zeta / totalEffT; //will get replaced in loop
@@ -1337,7 +1351,7 @@ public:
 
                                 //zetaRegularPDF *= totalT / (totalT - minT); //evaluate only fraction of path segment by equiangular sampling!
                                 
-                                auto theta_a = glm::atan(a_,equih);
+                                /*auto theta_a = glm::atan(a_,equih);
                                 auto theta_b = glm::atan(b_,equih);
                                 auto zeta_equi = rng.u();
                                 //auto equiT = th + h * glm::tan((1.0 - xi) * theta_a + xi * theta_b);
@@ -1349,7 +1363,10 @@ public:
                                 cam_scatter_pdf_equi *= cam_area_measure_conv_equi;
                                 auto camera_sample_point_equi = a + a_d * t_equi;
                                 auto connectiondir_equi =  glm::normalize(camera_sample_point_equi-b);
-                                auto connection_area_measure_equi = 1.0 / glm::abs(glm::dot(camera_sample_point_equi-b,camera_sample_point_equi-b));
+                                auto connection_area_measure_equi = 1.0 / glm::abs(glm::dot(camera_sample_point_equi-b,camera_sample_point_equi-b));*/
+
+
+
                                 auto sp1_equi = SceneInteraction::make_medium_interaction(
                                             scene_->medium_node(),
                                             PointGeometry::make_degenerated(camera_sample_point_equi)
@@ -1548,11 +1565,11 @@ public:
 
 
                                 //invalid, fill with appropriate values
-                                if( !std::isnan(segment_pdf_equi) && !std::isinf(segment_pdf_equi) && segment_pdf_equi > std::numeric_limits<Float>::epsilon()) {
-                                    //segment_contribution_equi = Vec3(0.0);
-                                    //segment_pdf_equi = 0.0;
-                                    //segment_pdf_equi_of_regular = 0.0;
-                                
+                                if( std::isnan(segment_pdf_equi) || std::isinf(segment_pdf_equi) || segment_pdf_equi < std::numeric_limits<Float>::epsilon()) {
+                                    segment_contribution_equi = Vec3(0.0);
+                                    segment_pdf_equi = 0.0;
+                                    segment_pdf_equi_of_regular = 0.0;
+                                }
                                     if(contributionIndex_equi[num_verts] >= equiContributions[num_verts].size()) {
                                         equiContributions[num_verts].
                                         push_back(segment_contribution_equi );
@@ -1569,16 +1586,16 @@ public:
                                     currentContribution += segment_contribution_equi;
                                     currentPdf *= segment_pdf_equi;  
                                     contributionIndex_equi[num_verts]++;
-                                }
-
-
-
-
-                                if(!std::isnan(segment_pdf_regular) && !std::isinf(segment_pdf_regular) && segment_pdf_regular > std::numeric_limits<Float>::epsilon()) {
-                                    //segment_contribution_regular = Vec3(0.0);
-                                    //segment_pdf_regular = 0.0;
-                                    //segment_pdf_regular_of_equi = 0.0;
                                 
+
+
+
+
+                                if(std::isnan(segment_pdf_regular) || std::isinf(segment_pdf_regular) || segment_pdf_regular < std::numeric_limits<Float>::epsilon()) {
+                                    segment_contribution_regular = Vec3(0.0);
+                                    segment_pdf_regular = 0.0;
+                                    segment_pdf_regular_of_equi = 0.0;
+                                }
                                 if(contributionIndex_regular[num_verts] >= regularContributions[num_verts].size()) {
                                     regularContributions[num_verts].
                                     push_back(segment_contribution_regular );
@@ -1594,7 +1611,7 @@ public:
                                 currentContribution += segment_contribution_regular;
                                 currentPdf *= segment_pdf_regular;  
                                 contributionIndex_regular[num_verts]++;
-                                }
+                                
 
 
                                 
@@ -1786,7 +1803,7 @@ public:
                     auto validSamplesRegular = 0;
                     for(int path_i = 0; path_i < pathsWithLengtI; path_i++) { //each sample i
                         if(reg_pdfs[path_i] > std::numeric_limits<Float>::epsilon()) { //a valid sample
-                            auto weight = reg_pdfs[path_i] / (reg_pdfs[path_i] + equ_regu_pdfs[path_i]);
+                            auto weight = glm::pow(reg_pdfs[path_i],mis_power_) / (glm::pow(reg_pdfs[path_i],mis_power_) + glm::pow(equ_regu_pdfs[path_i],mis_power_));
                             weightedContributionRegular += weight * reg_cs[path_i] / reg_pdfs[path_i];// 
                             validSamplesRegular += 1;
                             regular_weights.push_back(weight);                        
@@ -1800,12 +1817,19 @@ public:
                     auto validSamplesEqui = 0;
                     for(int path_i = 0; path_i < pathsWithLengtI; path_i++) { //each sample i
                         if(equ_pdfs[path_i] > std::numeric_limits<Float>::epsilon()) { //a valid sample
-                            auto weight = equ_pdfs[path_i] / (equ_pdfs[path_i] + reg_equi_pdfs[path_i]);
+                            auto weight = glm::pow(equ_pdfs[path_i],mis_power_) / (glm::pow(equ_pdfs[path_i],mis_power_) + glm::pow(reg_equi_pdfs[path_i],mis_power_));
                             weightedContributionEqui += weight * equ_cs[path_i] / equ_pdfs[path_i];// * ;
                             validSamplesEqui += 1;
                             equi_weights.push_back(weight);                        
                             weightSum += weight;
                         }
+                    }
+                    if(weightSum < 1.0 - 0.000001 && validSamplesEqui != 0) {
+                        //LM_ERROR("weights are not one: {}", weightSum);
+                        weightedContributionEqui = Vec3(0.0);
+                        weightedContributionRegular =  Vec3(0.0);
+                        
+
                     }
                     //LM_INFO("{} paths of length {}, weight sum equi {}, valid paths {} ",pathsWithLengtI,path_length, weightSum,validSamplesEqui);
 
