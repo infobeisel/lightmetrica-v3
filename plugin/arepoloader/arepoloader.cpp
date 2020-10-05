@@ -301,35 +301,35 @@ namespace ArepoLoaderInternals {
 
             p.x = -10;p.y = 10;p.z = 10;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.00003);
+            densities.push_back(0.00000003);
 
             p.x = 10;p.y = 10;p.z = 10;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.03);
+            densities.push_back(0.00000003);
 
             p.x = -10;p.y = -10;p.z = 10;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.3);
+            densities.push_back(0.00000003);
 
             p.x = 10;p.y = -10;p.z = 10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00003);
+            densities.push_back(0.00000003);
 
             p.x = -10;p.y = 10;p.z = -10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.00003);
+            densities.push_back(0.00000003);
 
             p.x = 10;p.y = 10;p.z = -10;p.index = 5; //F
             DP.push_back(p);
-            densities.push_back(0.0003);
+            densities.push_back(0.00000003);
 
             p.x = -10;p.y = -10;p.z = -10;p.index=6;
             DP.push_back(p);
-            densities.push_back(0.00003);
+            densities.push_back(0.00000003);
 
             p.x = 10;p.y = -10;p.z = -10;p.index=7;
             DP.push_back(p);
-            densities.push_back(0.0003);
+            densities.push_back(0.00003);
 
 
            
@@ -1674,17 +1674,21 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
                 retAcc = acc + normcdf;
                 
-                auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                /*auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
                 auto particle_density = raySegment.b + raySegment.a * t;
                 auto mu_a = crosssection * particle_density;
                 auto phase_integrated = 1.0;//isotropic
                 auto mu_s = phase_integrated* particle_density;
-                auto mu_t =  mu_a + mu_s;
+                auto mu_t =  mu_a + mu_s; take easy for the moment*/
+                auto mu_t = raySegment.b + raySegment.a * t;
                 contribution = lm::Vec3(
                     A_R_A_V_S * mu_t * glm::exp(-A_R_A_V_T*retAcc),
                     A_G_A_V_S * mu_t * glm::exp(-A_G_A_V_T*retAcc),
                     A_B_A_V_S * mu_t * glm::exp(-A_B_A_V_T*retAcc)
                 );
+
+
+                
 
                 //auto scattering_albedo = mu_s / mu_t; 
                 //contribution = mu_s * transmittance;
@@ -1693,6 +1697,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 //pdf = (raySegment.b + raySegment.a * t) * glm::exp(-retAcc) ; //normfac already at scatter albedo
 
                 
+                lm::stats::set<lm::stats::RegularTrackingStrategyMuT,int,lm::Float>(0, mu_t);
                 lm::stats::set<lm::stats::RegularTrackingStrategyTetraIndex,int,int>(0, raySegment.tetraI);
         
                 stopAccumulating = true;

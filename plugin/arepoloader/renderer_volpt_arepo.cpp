@@ -152,25 +152,25 @@ public:
             int num_vrls = tetraIToLightSegments.size();
             auto & equiContributions = 
             stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>();
-            equiContributions.clear();
+            //equiContributions.clear();
             auto & equipdfs = 
             stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>();
-            equipdfs.clear();
+            //equipdfs.clear();
 
             auto & regularContributions = 
             stats::getRef<stats::RegularContribution,int,std::vector<Vec3>>();
-            regularContributions.clear();
+            //regularContributions.clear();
             auto & regularpdfs = 
             stats::getRef<stats::RegularRegularPDF,int,std::vector<Float>>();
-            regularpdfs.clear();
+            //regularpdfs.clear();
 
             auto & regular_of_equi_pdfs = 
             stats::getRef<stats::RegularEquiPDF,int,std::vector<Float>>();
-            regular_of_equi_pdfs.clear();
+            //regular_of_equi_pdfs.clear();
 
             auto & equi_of_regular_pdfs = 
             stats::getRef<stats::EquiRegularPDF,int,std::vector<Float>>();
-            equi_of_regular_pdfs.clear();
+            //equi_of_regular_pdfs.clear();
 
 
 
@@ -208,17 +208,7 @@ public:
 
             
 
-            auto pathPdfEquiStrategyEquiSamples = 1.0;
-            auto pathPdfEquiStrategyRegularSamples = 1.0;
-            auto pathPdfRegularStrategyRegularSamples = 1.0;
-            auto pathPdfRegularStrategyEquiSamples = 1.0;
-
-
-            auto pathPdfDeltaStrategy = 1.0;
-
-            Vec3 contributionRegularStrategy = Vec3(0.0);
-            Vec3 contributionEquiStrategy = Vec3(0.0);
-
+            
 
                
 
@@ -242,24 +232,29 @@ public:
             //how many contributions are there, per path length?
             std::vector<int> contributionIndex_equi = {};
             std::vector<int> contributionIndex_regular = {};
+            contributionIndex_equi.resize(max_verts_);
+            contributionIndex_regular.resize(max_verts_);
             
             
             Vec2 raster_pos{};
             
             //prepare sample path routine as a lambda, then call it 2 times, once for each strategy
             std::function<Vec3(std::string)> samplePath = [&] (std::string usestrategy) {
+                //LM_INFO("good day good Sir, i am thread {} and i will handle sample {} of pixel {}",threadid,sample_index,pixel_index);
 
-                contributionIndex_equi.resize(max_verts_);
-                contributionIndex_regular.resize(max_verts_);
-                for(int i = 0; i < max_verts_*spp_;i++) { 
-                    contributionIndex_equi[i] = 0;
+                auto pathPDF = 1.0;
+             
+                Vec3 contributionRegularStrategy = Vec3(0.0);
+                Vec3 contributionEquiStrategy = Vec3(0.0);
+
+
+                
+                for(int i = 0; i < max_verts_;i++) { 
+                    contributionIndex_equi[i] = 0; // important : path of length 0. gets index, but is ignored later.
                     contributionIndex_regular[i] = 0;
                 }
 
-                int vertexIndexStatsKey = 0;
-                stats::set<stats::EquiDistanceSampleRandomValueVertexIndex,int,int>(vertexIndexStatsKey,0);
-                stats::set<stats::RegularDistanceSampleRandomValueVertexIndex,int,int>(vertexIndexStatsKey,max_verts_);
-
+              
                 Vec3 contribution = usestrategy == "delta" ? Vec3(0) : Vec3(1);
 
                 // ------------------------------------------------------------------------------------
@@ -295,18 +290,7 @@ public:
 
                     
                     
-                    
-                    //update current random sample index
-                    stats::set<stats::EquiDistanceSampleRandomValueVertexIndex,int,int>(vertexIndexStatsKey,num_verts);
-                    stats::set<stats::RegularDistanceSampleRandomValueVertexIndex,int,int>(vertexIndexStatsKey,num_verts+ max_verts_);
-
-                    //receive current random sample
-                                    
-
-                    //auto rng_u_i_equi = stats::get<stats::DistanceSampleRandomValues,int,Float>(num_verts);
-
-                    //auto rng_u_i_regular = stats::get<stats::DistanceSampleRandomValues,int,Float>(num_verts + max_verts_);
-                    
+                  
 
 
                     //store the sample id that this thread currently works on 
@@ -476,6 +460,8 @@ public:
                         raster_pos = *path::raster_position(scene_, s->wo);
                     }
 
+                    //if(num_verts > 1) { //not the camera vertex
+
                     // --------------------------------------------------------------------------------
 
                     //hash map to save nearest lights
@@ -589,7 +575,7 @@ public:
 
                     lastDistanceSampleTetraI = stats::get<stats::RegularTrackingStrategyTetraIndex,int,int>(k);  
 
-                    auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(k);  
+                    auto regularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,Float>(k);  
                     auto regularXi = stats::get<stats::RegularTrackingStrategyXi,int,Float>(k);//sample that was used for regular distance sample
                     auto totalT = stats::get<stats::RegularTrackingStrategyTotalT,int,Float>(k);//sample that was used for regular distance sample
                     auto totalEffT = stats::get<stats::RegularTrackingStrategyTotalEffT,int,Float>(k);
@@ -597,8 +583,11 @@ public:
                     auto totalTau = stats::get<stats::RegularTrackingStrategyTotalTau,int,Float>(k);//sample that was used for regular distance sample
                     auto tauUntilRegularT = stats::get<stats::RegularTrackingStrategyTauUntilScatter,int,Float>(k);//sample that was used for regular distance sample
                     auto segmentCount = stats::get<stats::LastBoundarySequence,int,int>(k);  
-                    auto lowDensityNormalizationFactor = stats::get<stats::RegularTrackingStrategyNormFac,int,Float>(k);  
+                    auto lowDensityNormalizationFactor = stats::get<stats::RegularTrackingStrategyNormFac,int,Float>(k); 
+                    auto regularMuT =  stats::get<stats::RegularTrackingStrategyMuT,int,Float>(k);  
 
+                    auto _strat_smpl_key = stats::IJ::_1_1;
+                    auto regularStratRegularSmplPDF = stats::get<stats::DistanceSamplesPDFs,stats::IJ,Float>(_strat_smpl_key);      
 
                     Vec3 currentContribution = Vec3(0); 
                     int contribCount = 0;
@@ -1082,7 +1071,7 @@ public:
                                 
                                 auto segment_contribution = throughputCam  * connection_area_measure * fs1 * fs2 * VRL_C;
                                 auto segment_pdf = 
-                                pathPdfEquiStrategyEquiSamples 
+                                pathPDF 
                                 * vrl_scatter_pdf
                                 * cam_scatter_pdf
                                 * pdf_vrl_selection
@@ -1200,14 +1189,19 @@ public:
 
                                
 
-                                auto cam_scatter_pdf_regular = 1.0;
+                                auto cam_scatter_pdf_regular = regularStratRegularSmplPDF;
+                                auto segmentThroughput_regular = Vec3(
+                                            A_R_A_V_S * regularMuT * glm::exp(-A_R_A_V_T*tauUntilRegularT),
+                                            A_G_A_V_S * regularMuT * glm::exp(-A_G_A_V_T*tauUntilRegularT),
+                                            A_B_A_V_S * regularMuT * glm::exp(-A_B_A_V_T*tauUntilRegularT)
+                                            );
+
+                                auto t_regular = regularT;
+                                int tetraILandedIn_regular = lastDistanceSampleTetraI;
                                 //auto zeta = rng.u(); //a new sample WITHIN the current distance sample
-                                auto zeta_regular = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
+                                /*auto zeta_regular = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
                                 lm::Float logzeta_regular = -gsl_log1p(-zeta_regular);
                                 auto zetaTransmittance_regular = 1.0;
-                                auto t_regular = 0.0;
-                                auto segmentThroughput_regular = Vec3(1.0);
-                                int tetraILandedIn_regular = -1;
                                 //warp Zeta according transmittance
                                 {
                                     auto travelT = 0.0;
@@ -1222,12 +1216,12 @@ public:
                                             zetaTransmittance_regular *= glm::exp(-  normcdf );
                                             //accumulate non normalized!
                                             //retAcc = accCdf + normcdf;
-                                            /*auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
-                                            auto particle_density = tetrasegment.b + tetrasegment.a * t;
-                                            auto mu_a = crosssection * particle_density;
-                                            auto phase_integrated = 1.0;//isotrope
-                                            auto mu_s = phase_integrated* particle_density;
-                                            auto mu_t = mu_a + mu_s;*/
+                                            //auto crosssection = 1.0;//327.0/1000.0; //barn ...? but has to be in transmittance as well ugh
+                                            //auto particle_density = tetrasegment.b + tetrasegment.a * t;
+                                            //auto mu_a = crosssection * particle_density;
+                                            //auto phase_integrated = 1.0;//isotrope
+                                            //auto mu_s = phase_integrated* particle_density;
+                                            //auto mu_t = mu_a + mu_s;
                                             //take the easy one for the moment
                                             auto mu_t = tetrasegment.b + tetrasegment.a * t;
 
@@ -1250,7 +1244,9 @@ public:
                                         accCdf += tetrasegment.localcdf;
                                         zetaTransmittance_regular *= glm::exp(-  accCdf );
                                     }
-                                }
+                                }*/
+
+
                                 
 
                                 //auto zeta = rng.u() * tauUntilRegularT; //a new sample WITHIN the current distance sample
@@ -1364,11 +1360,10 @@ public:
                                             PointGeometry::make_degenerated(b)
                                         );
 
-                                //EQUI PDF OF REGULAR
+                                //REGULAR PDF
                                 //auto cam_area_measure_conv = 1.0 / (travelT + t) / (travelT + t) ;
                                 auto cam_area_measure_conv_regular = 1.0 / t_regular / t_regular;
-                                auto cam_scatter_pdf_equi_of_regular = equih / (equih*equih+glm::pow(t_regular-th,2.0) *(theta_b-theta_a));
-                                cam_scatter_pdf_equi_of_regular *= cam_area_measure_conv_regular;
+                                cam_scatter_pdf_regular *= cam_area_measure_conv_regular;
                                 auto camera_sample_point_regular = a + a_d * t_regular;
                                 auto connectiondir_regular =  glm::normalize(camera_sample_point_regular-b);
                                 auto connection_area_measure_regular = 1.0 / glm::abs(glm::dot(camera_sample_point_regular-b,camera_sample_point_regular-b));
@@ -1376,6 +1371,10 @@ public:
                                             scene_->medium_node(),
                                             PointGeometry::make_degenerated(camera_sample_point_regular)
                                         );
+
+                                //EQUI PDF OF REGULAR
+                                auto cam_scatter_pdf_equi_of_regular = equih / (equih*equih+glm::pow(t_regular-th,2.0) *(theta_b-theta_a));
+                                cam_scatter_pdf_equi_of_regular *= cam_area_measure_conv_regular;
 
 
                                 
@@ -1394,10 +1393,10 @@ public:
                                 auto segmentThroughput_equi = Vec3(1.0);
                                 int tetraILandedIn_equi = -1;
                                 auto cam_scatter_pdf_regular_of_equi = 1.0;
-                                auto foundEqui = false;
+                                bool foundEqui = false;
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                     auto & tetrasegment =  cameraSegments[segmentI];
-                                    if(t_equi < travelT + tetrasegment.t) { //found sample point
+                                    if(!foundEqui && t_equi < travelT + tetrasegment.t) { //found sample point
                                         auto lastBit = t_equi - travelT;
                                         auto sigma_t = (tetrasegment.b + tetrasegment.a * lastBit);
                                         auto tau = (accCdf 
@@ -1414,9 +1413,9 @@ public:
 
                                         tetraILandedIn_equi = tetrasegment.tetraI;
                                         foundEqui = true;
+                                        break;
                                     }
-
-                                    
+                                  
 
                                     travelT += tetrasegment.t;
                                     accCdf += tetrasegment.localcdf;
@@ -1436,9 +1435,10 @@ public:
                                 int k = 0;
                                 accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
 
-                                throughputCam_equi.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
-                                throughputCam_equi.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
-                                throughputCam_equi.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+                                //doppelt
+                                //throughputCam_equi.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                //throughputCam_equi.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
+                                //throughputCam_equi.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
 
                                 // Evaluate BSDF
                                 const auto wo_equi = glm::normalize(b - camera_sample_point_equi);
@@ -1465,7 +1465,7 @@ public:
                                 //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                 auto segment_contribution_equi = throughputCam_equi  * connection_area_measure_equi * fs1_equi * C_equi;
                                 auto segment_pdf_equi = 
-                                pathPdfEquiStrategyEquiSamples 
+                                pathPDF 
                                 //* vrl_scatter_pdf
                                 * cam_scatter_pdf_equi
                                 * pdf_light_selection
@@ -1474,6 +1474,8 @@ public:
                                 //* solidangledirectionpdf2
                                 // connection probability stated to be one * connection_area_measure
                                 ;
+                                auto segment_pdf_equi_of_regular = 
+                                pathPDF * cam_scatter_pdf_equi_of_regular * pdf_light_selection;
                                 
                                 //auto otherPdf = 
                                 //    pathPdfRegularStrategyEquiSamples
@@ -1497,9 +1499,10 @@ public:
                                 k = 0;
                                 accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
 
-                                throughputCam_regular.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
-                                throughputCam_regular.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
-                                throughputCam_regular.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+                                //doppelt!
+                                //throughputCam_regular.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                //throughputCam_regular.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
+                                //throughputCam_regular.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
 
                                 // Evaluate BSDF
                                 const auto wo_regular = glm::normalize(b - camera_sample_point_regular);
@@ -1526,7 +1529,7 @@ public:
                                 //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                 auto segment_contribution_regular = throughputCam_regular  * connection_area_measure_regular * fs1_reqular * C_regular;
                                 auto segment_pdf_regular = 
-                                pathPdfEquiStrategyEquiSamples  //yes it is the main path part
+                                pathPDF //pathPdfEquiStrategyEquiSamples  //yes it is the main path part
                                 //* vrl_scatter_pdf
                                 * cam_scatter_pdf_regular
                                 * pdf_light_selection
@@ -1535,47 +1538,65 @@ public:
                                 //* solidangledirectionpdf2
                                 // connection probability stated to be one * connection_area_measure
                                 ;
-                                
+                                auto segment_pdf_regular_of_equi = 
+                                    pathPDF * cam_scatter_pdf_regular_of_equi * pdf_light_selection;
                                 //auto otherPdf = 
                                 //    pathPdfRegularStrategyEquiSamples
                                 //*   regularPDF_of_equiSample_cam
                                 //*   regularPDF_of_equiSample_vrl;
 
 
+                                //invalid, fill with appropriate values
+                                if( !std::isnan(segment_pdf_equi) && !std::isinf(segment_pdf_equi) && segment_pdf_equi > std::numeric_limits<Float>::epsilon()) {
+                                    //segment_contribution_equi = Vec3(0.0);
+                                    //segment_pdf_equi = 0.0;
+                                    //segment_pdf_equi_of_regular = 0.0;
                                 
-
-
-                                if(! std::isnan(segment_pdf_equi) && !std::isinf(segment_pdf_equi) && segment_pdf_equi > std::numeric_limits<Float>::epsilon()) {
                                     if(contributionIndex_equi[num_verts] >= equiContributions[num_verts].size()) {
                                         equiContributions[num_verts].
                                         push_back(segment_contribution_equi );
                                         equipdfs[num_verts].
                                         push_back( segment_pdf_equi  );
+                                        equi_of_regular_pdfs[num_verts].
+                                        push_back(segment_pdf_equi_of_regular);
+                                        
                                     } else {
                                         equiContributions[num_verts][contributionIndex_equi[num_verts]] = segment_contribution_equi;
                                         equipdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf_equi ;
+                                        equi_of_regular_pdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf_equi_of_regular;
                                     }
                                     currentContribution += segment_contribution_equi;
                                     currentPdf *= segment_pdf_equi;  
                                     contributionIndex_equi[num_verts]++;
                                 }
 
+
+
+
+                                if(!std::isnan(segment_pdf_regular) && !std::isinf(segment_pdf_regular) && segment_pdf_regular > std::numeric_limits<Float>::epsilon()) {
+                                    //segment_contribution_regular = Vec3(0.0);
+                                    //segment_pdf_regular = 0.0;
+                                    //segment_pdf_regular_of_equi = 0.0;
                                 
-                                
-                                if(! std::isnan(segment_pdf_regular) && !std::isinf(segment_pdf_regular) && segment_pdf_regular > std::numeric_limits<Float>::epsilon()) {
-                                    if(contributionIndex_regular[num_verts] >= regularContributions[num_verts].size()) {
-                                        regularContributions[num_verts].
-                                        push_back(segment_contribution_regular );
-                                        regularpdfs[num_verts].
-                                        push_back( segment_pdf_regular  );
-                                    } else {
-                                        regularContributions[num_verts][contributionIndex_regular[num_verts]] = segment_contribution_regular;
-                                        regularpdfs[num_verts][contributionIndex_regular[num_verts]] = segment_pdf_regular ;
-                                    }
-                                    currentContribution += segment_contribution_regular;
-                                    currentPdf *= segment_pdf_regular;  
-                                    contributionIndex_regular[num_verts]++;
+                                if(contributionIndex_regular[num_verts] >= regularContributions[num_verts].size()) {
+                                    regularContributions[num_verts].
+                                    push_back(segment_contribution_regular );
+                                    regularpdfs[num_verts].
+                                    push_back( segment_pdf_regular  );
+                                    regular_of_equi_pdfs[num_verts].
+                                    push_back(segment_pdf_regular_of_equi);
+                                } else {
+                                    regularContributions[num_verts][contributionIndex_regular[num_verts]] = segment_contribution_regular;
+                                    regularpdfs[num_verts][contributionIndex_regular[num_verts]] = segment_pdf_regular ;
+                                    regular_of_equi_pdfs[num_verts][contributionIndex_regular[num_verts]] = segment_pdf_regular_of_equi;
                                 }
+                                currentContribution += segment_contribution_regular;
+                                currentPdf *= segment_pdf_regular;  
+                                contributionIndex_regular[num_verts]++;
+                                }
+
+
+                                
 
 
                             
@@ -1590,122 +1611,15 @@ public:
                        // }
 
                     }
-                    
-
-                    //stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int,Float,Float)>>(0,raysegmentVisitor);
-                    
-                    //stats::set<stats::EquiContribution,int,int>(num_verts,segments);
-
-
-                    //compute equi pdf for the regular distance sample as well.
-                    //regularDistanceSample
-                    //find 
-
-
-
-                    //auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;
-                    //LM_INFO("light pos {},{},{}",lightPos.x,lightPos.y,lightPos.z);
-                    //auto th = glm::dot((lightPos - ray.o), ray.d); 
-                    //auto shortest = ray.o + ray.d * th - lightPos;
-                    //auto h = glm::length(shortest);
-                    
-                    
-                    //RegularMeasurementContributions.push_back(currentContribution / static_cast<Float>(contribCount));
-
-                    //EquiPdfOfRegularSmpls.push_back(1.0/ static_cast<Float>(contribCount));
-                    //  RegularPdfOfRegularSmpls.push_back(currentPdf/ static_cast<Float>(contribCount));
-
-
-
-
-                    if(!sd && usestrategy == "delta")
-                        return contribution ;
-
-                    
-                   
-                    auto _strat_smpl_key = stats::IJ::_0_0;
-                    auto equiStratEquiSmplPDF = stats::get<stats::DistanceSamplesPDFs,stats::IJ,Float>(_strat_smpl_key);                                
-                    _strat_smpl_key = stats::IJ::_0_1;
-                    auto equiStratRegularSmplPDF = stats::get<stats::DistanceSamplesPDFs,stats::IJ,Float>(_strat_smpl_key);                                                            
-                    _strat_smpl_key = stats::IJ::_1_0;
-                    auto regularStratEquiSmplPDF = stats::get<stats::DistanceSamplesPDFs,stats::IJ,Float>(_strat_smpl_key);                                                             
-                    _strat_smpl_key = stats::IJ::_1_1;
-                    auto regularStratRegularSmplPDF = stats::get<stats::DistanceSamplesPDFs,stats::IJ,Float>(_strat_smpl_key);                                                          
-                    auto w_Equi = glm::pow(1.0 * equiStratEquiSmplPDF,1.0) / (glm::pow(1.0 * equiStratEquiSmplPDF,1.0) + glm::pow(1.0 * regularStratEquiSmplPDF,1.0));
-                    auto w_Regular = glm::pow(1.0 * regularStratRegularSmplPDF,1.0) / (glm::pow(1.0 * equiStratRegularSmplPDF,1.0) + glm::pow(1.0 * regularStratRegularSmplPDF,1.0));
-
-                    auto key = 0;
-                    auto equiangularT = stats::get<stats::RegularTrackingStrategyDistanceSample,int,lm::Float>(key);  
-                    //auto regularT =   equiangularT;
-                
-                    if(usestrategy == "equiangular") {
-
-                        contribution = contribution / equiangularT / equiangularT; //convert measurement
-
-                        //convert directionpdf to vertex area measure
-                        pathPdfEquiStrategyEquiSamples *= equiStratEquiSmplPDF * directionpdf
-                        / equiangularT / equiangularT;
-                        pathPdfRegularStrategyEquiSamples *= regularStratEquiSmplPDF * directionpdf  
-                           / regularT / regularT;
-                    }
-                    if(usestrategy == "regular") {
-                        contribution = contribution / regularT / regularT; //convert measurement
-                        pathPdfRegularStrategyRegularSamples *= regularStratRegularSmplPDF* directionpdf
-                              / regularT / regularT;
-                        pathPdfEquiStrategyRegularSamples *= equiStratRegularSmplPDF * directionpdf  
-                             / equiangularT / equiangularT;
-
-                    }
-
-                    
-                    //first choice: leave sd as is
-
-                    //second choice: sample equiangular
-                    //sd = lightDistanceSample;
-
-
-                    
-
-                    if(usestrategy == "equiangular" ) {
-                      //  sd = lightDistanceSample;
-                        sd->weight = sd->weight;
-                    } else if(usestrategy == "regular") {
-                        sd->weight = sd->weight;
-                        //already done
-                    } else if(usestrategy == "onesample_mis") {
-                        auto chooseStrategy =  rng.u();
-                        if(chooseStrategy < 0.5) {
-                            sd->weight = w_Regular * sd->weight / regularStratRegularSmplPDF / 0.5;
-                        } else {
-                            //sd = lightDistanceSample;
-                            sd->weight = w_Equi * sd->weight / equiStratEquiSmplPDF / 0.5;
-                        }
-                    } else if(usestrategy == "delta") {
-                        //everythin is as it should be
-                    }
-                    //LM_INFO("weights sum {}" ,Vec3(sd->weight  + lightDistanceSample.weight )[0]);
-                    //lightDistanceSample.weight * lightDistanceSample.sp.geom.p 
-                    //+ sd.weight * sd->sp.geom.p 
-                    //linear combine points
-                    //sd->sp.geom.p = lightDistanceSample.sp.geom.p * lightDistanceSample.weight * 0.5 +
-                    //                sd->sp.geom.p * sd->weight * 0.5;
-                    //draw another uniform value and take one
-                    //sd->sp.geom.p = rng.u() > 0.5 ? sd->sp.geom.p : lightDistanceSample.sp.geom.p;
-
-                    //always combine all weights together (right now with 0.5 weight)
-                    //sd->weight = 0.5 * lightDistanceSample.weight + 0.5 * sd->weight;
-
-                    
-
-                    //sd->weight = sd->weight / regularStratRegularSmplPDF;
-                    //sd->weight = sd->weight / equiStratEquiSmplPDF;
-                    
+                    //TODO DEBATE!
+                    //throughput = throughput / regularT / regularT;
+                    //pathPDF = pathPDF / regularT / regularT;
                     
                     // --------------------------------------------------------------------------------
 
                     // Update throughput
                     throughput *= s->weight * sd->weight; //todo convert to vertex area measure!
-
+                    
                     // --------------------------------------------------------------------------------
 
                     // Accumulate contribution from emissive interaction
@@ -1740,12 +1654,16 @@ public:
                     const auto s_comp = path::sample_component(rng, scene_, sd->sp, -s->wo);
                     throughput *= s_comp.weight;
 
+                    
+
                     // --------------------------------------------------------------------------------
 
                     // Update information
                     wi = -s->wo;
                     sp = sd->sp;
                     comp = s_comp.comp;
+
+                    //} //endif num_vertex > 1 ()
                 }
 
                 return contribution;
@@ -1758,9 +1676,14 @@ public:
 
             if(strategy_ == "equiangular") {
                 samplePath("equiangular");
-                contributionEquiStrategy = Vec3(0.0);
+                auto contributionEquiStrategy = Vec3(0.0);
 
-                
+                /*auto & cis = stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>();
+                for(auto p : cis) {
+                    for(auto v : p.second)
+                        LM_INFO("contrib path length {}: {},{},{}",p.first,v.x,v.y,v.z );
+                }*/
+
 
                 for(int i = 0; i < max_verts_; i++) { //for paths of all lengths
                     auto & cs = stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(i);
@@ -1769,14 +1692,13 @@ public:
                     auto pathsWithLengtI = contributionIndex_equi[i];
                     //cs.size() can be anything from previous samples on this thread...
 
+
                     Vec3 ci = Vec3(0);
                     Float js = 0.0;
                     //for(int j = 0; j < cs.size(); j++) { //for pahts with length i
                     for(int j = 0; j < pathsWithLengtI; j++) { //for pahts with length i
-                        auto boolvec3 =  glm::isinf(cs[j]);
-                        if(boolvec3.x || boolvec3.y || boolvec3.z || pdfs[j] < std::numeric_limits<Float>::epsilon()) {
-                            //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
-                        } else {
+                        //LM_INFO("path length {}, sample {} , pdf {} ,  contr {},{},{}", pathsWithLengtI,j,pdfs[j],cs[j].x,cs[j].y,cs[j].z );
+                        if(pdfs[j] > std::numeric_limits<Float>::epsilon()) { //a valid sample
                             ci += cs[j] / pdfs[j];
                             js += 1.0;
                         }
@@ -1797,7 +1719,7 @@ public:
             }
             else if(strategy_ == "regular") {
                 samplePath("regular");
-                contributionRegularStrategy = Vec3(0.0);
+                auto contributionRegularStrategy = Vec3(0.0);
 
                 for(int i = 0; i < max_verts_; i++) { //for paths of all lengths
                     auto & cs = stats::getRef<stats::RegularContribution,int,std::vector<Vec3>>(i);
@@ -1810,10 +1732,7 @@ public:
                     Float js = 0.0;
                     //for(int j = 0; j < cs.size(); j++) { //for pahts with length i
                     for(int j = 0; j < pathsWithLengtI; j++) { //for pahts with length i
-                        auto boolvec3 =  glm::isinf(cs[j]);
-                        if(boolvec3.x || boolvec3.y || boolvec3.z || pdfs[j] < std::numeric_limits<Float>::epsilon()) {
-                            //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
-                        } else {
+                        if(pdfs[j] > std::numeric_limits<Float>::epsilon()) { //a valid sample
                             ci += cs[j] / pdfs[j];
                             js += 1.0;
                         }
@@ -1832,43 +1751,76 @@ public:
                 film_->splat(raster_pos, contributionRegularStrategy / static_cast<Float>(spp_));
             }
             else if(strategy_ == "mis") {
-                samplePath("equiangular");
-                samplePath("regular");
-                auto contribution = Vec3(0.0);
-                if(RegularMeasurementContributions.size() != EquiMeasurementContributions.size())
-                    LM_INFO("not the same path lengths");
+                samplePath("mis");
+                //samplePath("regular");
 
-                for(int i = 0; i < RegularMeasurementContributions.size(); i++) {
+                
+
+                auto totalContribution = Vec3(0.0);
+                
+
+                for(int path_length = 0; path_length < max_verts_; path_length++) { //for paths of all lengths
+
+                    auto & reg_cs = stats::getRef<stats::RegularContribution,int,std::vector<Vec3>>(path_length);
+                    auto & reg_pdfs = stats::getRef<stats::RegularRegularPDF,int,std::vector<Float>>(path_length);
+
+                    auto & equ_cs = stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(path_length);
+                    auto & equ_pdfs = stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(path_length);
 
                     
+                    auto & reg_equi_pdfs = stats::getRef<stats::RegularEquiPDF,int,std::vector<Float>>(path_length);
+                    auto & equ_regu_pdfs = stats::getRef<stats::EquiRegularPDF,int,std::vector<Float>>(path_length);
 
-                    Float weightRegularStrategy = 0.0;
-                    auto boolvec3 =  glm::isinf(RegularMeasurementContributions[i]) || glm::isnan(RegularMeasurementContributions[i]);
-                    if(boolvec3.x || boolvec3.y || boolvec3.z || RegularPdfOfRegularSmpls[i] < std::numeric_limits<Float>::epsilon()) {
-                        //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
-                    } else {
-                        weightRegularStrategy = glm::pow(1.0 * RegularPdfOfRegularSmpls[i],mis_power_) /
-                            (glm::pow(1.0 * RegularPdfOfRegularSmpls[i],mis_power_) + glm::pow(1.0 * EquiPdfOfRegularSmpls[i],mis_power_));
+                    std::vector<Float> regular_weights = {};
+                    std::vector<Float> equi_weights = {};
+
+                    Vec3 weightedContributionRegular = Vec3(0.0);
+                    Vec3 weightedContributionEqui =  Vec3(0.0);
+
+                    auto pathsWithLengtI = contributionIndex_regular[path_length];
+                    if(contributionIndex_regular[path_length] != contributionIndex_equi[path_length])
+                        LM_ERROR("must be same amount of samples");
+                    //regular strategy
+                    auto weightSum = 0.0;
+                    auto validSamplesRegular = 0;
+                    for(int path_i = 0; path_i < pathsWithLengtI; path_i++) { //each sample i
+                        if(reg_pdfs[path_i] > std::numeric_limits<Float>::epsilon()) { //a valid sample
+                            auto weight = reg_pdfs[path_i] / (reg_pdfs[path_i] + equ_regu_pdfs[path_i]);
+                            weightedContributionRegular += weight * reg_cs[path_i] / reg_pdfs[path_i];// 
+                            validSamplesRegular += 1;
+                            regular_weights.push_back(weight);                        
+                            weightSum += weight;
+                        }
                     }
+                    //LM_INFO("{} paths of length {}, weight sum regular {}, valid paths {} ",pathsWithLengtI,path_length, weightSum,validSamplesRegular);
 
-                    Float weightEquiStrategy = 0.0;
-                    boolvec3 =  glm::isinf(EquiMeasurementContributions[i]) || glm::isnan(EquiMeasurementContributions[i]);
-                    if(boolvec3.x || boolvec3.y || boolvec3.z || EquiPdfOfEquiSmpls[i] < std::numeric_limits<Float>::epsilon()) {
-                        //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
-                    } else {
-                        weightEquiStrategy = glm::pow(1.0 * EquiPdfOfEquiSmpls[i],mis_power_) /
-                            (glm::pow(1.0 * EquiPdfOfEquiSmpls[i],mis_power_) + glm::pow(1.0 * RegularPdfOfEquiSmpls[i],mis_power_));
-
+                    //equi strategy
+                    //weightSum = 0.0;
+                    auto validSamplesEqui = 0;
+                    for(int path_i = 0; path_i < pathsWithLengtI; path_i++) { //each sample i
+                        if(equ_pdfs[path_i] > std::numeric_limits<Float>::epsilon()) { //a valid sample
+                            auto weight = equ_pdfs[path_i] / (equ_pdfs[path_i] + reg_equi_pdfs[path_i]);
+                            weightedContributionEqui += weight * equ_cs[path_i] / equ_pdfs[path_i];// * ;
+                            validSamplesEqui += 1;
+                            equi_weights.push_back(weight);                        
+                            weightSum += weight;
+                        }
                     }
-                    weightRegularStrategy /= weightRegularStrategy + weightEquiStrategy;
-                    weightEquiStrategy /= weightRegularStrategy + weightEquiStrategy;
-                    contribution += weightRegularStrategy * RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[i] ;
-                    contribution += weightEquiStrategy * EquiMeasurementContributions[i] / EquiPdfOfEquiSmpls[i] ;
-                    //contribution += 0.5 * RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[j] ;
-                    //contribution += 0.5 * EquiMeasurementContributions[i] / EquiPdfOfEquiSmpls[j] ;
-                    //LM_INFO("weights {} , {}",weightEquiStrategy ,weightRegularStrategy);
+                    //LM_INFO("{} paths of length {}, weight sum equi {}, valid paths {} ",pathsWithLengtI,path_length, weightSum,validSamplesEqui);
+
+                    if(validSamplesEqui != validSamplesRegular)
+                        LM_ERROR("do not have same amound of VALID samples: {} equi, {} regular", validSamplesEqui,validSamplesRegular );
+
+                    if(validSamplesEqui != 0)
+                        totalContribution += weightedContributionEqui / static_cast<Float>(validSamplesEqui);// + weightedContributionRegular / static_cast<Float>(validSamplesRegular);
+                    if(validSamplesRegular != 0)
+                        totalContribution += weightedContributionRegular / static_cast<Float>(validSamplesRegular);// + weightedContributionRegular / static_cast<Float>(validSamplesRegular);
+
                 }
-                film_->splat(raster_pos,contribution);  
+
+                film_->splat(raster_pos, totalContribution/ static_cast<Float>(spp_) );/// static_cast<Float>(spp_));
+
+                
             } else { //onesample_mis or delta strategy 
                 auto c = samplePath("delta");
                 film_->splat(raster_pos, c/ static_cast<Float>(spp_));
