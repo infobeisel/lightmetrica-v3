@@ -1435,10 +1435,7 @@ public:
                                 int k = 0;
                                 accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
 
-                                //doppelt
-                                //throughputCam_equi.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
-                                //throughputCam_equi.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
-                                //throughputCam_equi.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+                                
 
                                 // Evaluate BSDF
                                 const auto wo_equi = glm::normalize(b - camera_sample_point_equi);
@@ -1462,6 +1459,11 @@ public:
                                 auto C_equi =  light.eval(sp2.geom,wo_equi,false);
 
                                 
+                                C_equi.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                C_equi.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
+                                C_equi.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+
+
                                 //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                 auto segment_contribution_equi = throughputCam_equi  * connection_area_measure_equi * fs1_equi * C_equi;
                                 auto segment_pdf_equi = 
@@ -1499,11 +1501,7 @@ public:
                                 k = 0;
                                 accCDF = stats::get<stats::OpticalThickness,int,Float>(k);
 
-                                //doppelt!
-                                //throughputCam_regular.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
-                                //throughputCam_regular.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
-                                //throughputCam_regular.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
-
+                                
                                 // Evaluate BSDF
                                 const auto wo_regular = glm::normalize(b - camera_sample_point_regular);
 
@@ -1525,7 +1523,10 @@ public:
                                 
                                 auto C_regular =  light.eval(sp2.geom,wo_regular,false);
 
-                                
+                                C_regular.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
+                                C_regular.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
+                                C_regular.b *= A_B_A_V_S * glm::exp(-accCDF * A_B_A_V_T);
+
                                 //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                 auto segment_contribution_regular = throughputCam_regular  * connection_area_measure_regular * fs1_reqular * C_regular;
                                 auto segment_pdf_regular = 

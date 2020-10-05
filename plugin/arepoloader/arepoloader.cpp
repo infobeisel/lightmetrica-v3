@@ -313,7 +313,7 @@ namespace ArepoLoaderInternals {
 
             p.x = 10;p.y = -10;p.z = 10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.00000003);
+            densities.push_back(0.03);
 
             p.x = -10;p.y = 10;p.z = -10;p.index=4;
             DP.push_back(p);

@@ -10,15 +10,15 @@
 //#define USE_KNN
 
 //scaling factors for optical thickness
-#define A_B_A_V_T 1.0//1.3034926470588235//1.324
-#define A_G_A_V_T 1.0//1.0346507352941177//1.324
-#define A_R_A_V_T 1.0//0.932824736616657//0.748
+#define A_B_A_V_T 1.3034926470588235//1.324
+#define A_G_A_V_T 1.0346507352941177//1.324
+#define A_R_A_V_T 0.932824736616657//0.748
 
 
 //scalling factors for scattering coefficient
-#define A_B_A_V_S 1.0//1.3034926470588235
-#define A_G_A_V_S 1.0//1.0346507352941177
-#define A_R_A_V_S 1.0//0.932824736616657
+#define A_B_A_V_S 1.3034926470588235
+#define A_G_A_V_S 1.0346507352941177
+#define A_R_A_V_S 0.932824736616657
 
 
 #define INSIDE_TOLERANCE 1.0 * std::numeric_limits<lm::Float>::epsilon()
