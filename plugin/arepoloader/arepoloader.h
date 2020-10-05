@@ -138,8 +138,13 @@ namespace stats {
     struct EquiDistanceSampleRandomValueVertexIndex {};
     struct RegularDistanceSampleRandomValueVertexIndex {};
 
+    struct RegularContribution;
+    struct RegularRegularPDF;
+    struct RegularEquiPDF;
+
     struct EquiContribution;
     struct EquiEquiPDF;
+    struct EquiRegularPDF;
 
     struct DistanceSamplesPDFs{};
     //2 distance samples, first one from equiangular, second one from regular 

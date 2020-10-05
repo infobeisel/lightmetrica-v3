@@ -152,8 +152,27 @@ public:
             int num_vrls = tetraIToLightSegments.size();
             auto & equiContributions = 
             stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>();
+            equiContributions.clear();
             auto & equipdfs = 
             stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>();
+            equipdfs.clear();
+
+            auto & regularContributions = 
+            stats::getRef<stats::RegularContribution,int,std::vector<Vec3>>();
+            regularContributions.clear();
+            auto & regularpdfs = 
+            stats::getRef<stats::RegularRegularPDF,int,std::vector<Float>>();
+            regularpdfs.clear();
+
+            auto & regular_of_equi_pdfs = 
+            stats::getRef<stats::RegularEquiPDF,int,std::vector<Float>>();
+            regular_of_equi_pdfs.clear();
+
+            auto & equi_of_regular_pdfs = 
+            stats::getRef<stats::EquiRegularPDF,int,std::vector<Float>>();
+            equi_of_regular_pdfs.clear();
+
+
 
             int num_pointlights = scene_->num_lights(); 
 
@@ -221,7 +240,8 @@ public:
             
             
             //how many contributions are there, per path length?
-            std::vector<int> contributionIndex = {};
+            std::vector<int> contributionIndex_equi = {};
+            std::vector<int> contributionIndex_regular = {};
             
             
             Vec2 raster_pos{};
@@ -229,9 +249,11 @@ public:
             //prepare sample path routine as a lambda, then call it 2 times, once for each strategy
             std::function<Vec3(std::string)> samplePath = [&] (std::string usestrategy) {
 
-                contributionIndex.resize(max_verts_);
-                for(int i = 0; i < max_verts_;i++) { 
-                    contributionIndex[i] = 0;
+                contributionIndex_equi.resize(max_verts_);
+                contributionIndex_regular.resize(max_verts_);
+                for(int i = 0; i < max_verts_*spp_;i++) { 
+                    contributionIndex_equi[i] = 0;
+                    contributionIndex_regular[i] = 0;
                 }
 
                 int vertexIndexStatsKey = 0;
@@ -1081,14 +1103,14 @@ public:
 
                                 if(! std::isnan(segment_pdf) && !std::isinf(segment_pdf) && segment_pdf > std::numeric_limits<Float>::epsilon()) {
                                     
-                                    if(contributionIndex[num_verts] >= equiContributions[num_verts].size()) {
+                                    if(contributionIndex_equi[num_verts] >= equiContributions[num_verts].size()) {
                                         equiContributions[num_verts].
                                         push_back(segment_contribution );
                                         equipdfs[num_verts].
                                         push_back( segment_pdf  );
                                     } else {
-                                        equiContributions[num_verts][contributionIndex[num_verts]] = segment_contribution;
-                                        equipdfs[num_verts][contributionIndex[num_verts]] = segment_pdf ;
+                                        equiContributions[num_verts][contributionIndex_equi[num_verts]] = segment_contribution;
+                                        equipdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf ;
                                     }
                                     
 
@@ -1096,7 +1118,7 @@ public:
                                     currentContribution += segment_contribution;
                                     currentPdf *= segment_pdf;  
 
-                                    contributionIndex[num_verts]++;
+                                    contributionIndex_equi[num_verts]++;
                                     //contribCount++;
 
                                     //EquiMeasurementContributions.push_back(segment_contribution);
@@ -1524,38 +1546,36 @@ public:
 
 
                                 if(! std::isnan(segment_pdf_equi) && !std::isinf(segment_pdf_equi) && segment_pdf_equi > std::numeric_limits<Float>::epsilon()) {
-                                    if(contributionIndex[num_verts] >= equiContributions[num_verts].size()) {
+                                    if(contributionIndex_equi[num_verts] >= equiContributions[num_verts].size()) {
                                         equiContributions[num_verts].
                                         push_back(segment_contribution_equi );
                                         equipdfs[num_verts].
                                         push_back( segment_pdf_equi  );
                                     } else {
-                                        equiContributions[num_verts][contributionIndex[num_verts]] = segment_contribution_equi;
-                                        equipdfs[num_verts][contributionIndex[num_verts]] = segment_pdf_equi ;
+                                        equiContributions[num_verts][contributionIndex_equi[num_verts]] = segment_contribution_equi;
+                                        equipdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf_equi ;
                                     }
                                     currentContribution += segment_contribution_equi;
                                     currentPdf *= segment_pdf_equi;  
-                                    contributionIndex[num_verts]++;
+                                    contributionIndex_equi[num_verts]++;
                                 }
 
-                                /*
-                                TODO: regular tracking contribuztion.
-                                AND THEN MIS
-
+                                
+                                
                                 if(! std::isnan(segment_pdf_regular) && !std::isinf(segment_pdf_regular) && segment_pdf_regular > std::numeric_limits<Float>::epsilon()) {
-                                    if(contributionIndex[num_verts] >= equiContributions[num_verts].size()) {
-                                        equiContributions[num_verts].
-                                        push_back(segment_contribution_equi );
-                                        equipdfs[num_verts].
-                                        push_back( segment_pdf_equi  );
+                                    if(contributionIndex_regular[num_verts] >= regularContributions[num_verts].size()) {
+                                        regularContributions[num_verts].
+                                        push_back(segment_contribution_regular );
+                                        regularpdfs[num_verts].
+                                        push_back( segment_pdf_regular  );
                                     } else {
-                                        equiContributions[num_verts][contributionIndex[num_verts]] = segment_contribution_equi;
-                                        equipdfs[num_verts][contributionIndex[num_verts]] = segment_pdf_equi ;
+                                        regularContributions[num_verts][contributionIndex_regular[num_verts]] = segment_contribution_regular;
+                                        regularpdfs[num_verts][contributionIndex_regular[num_verts]] = segment_pdf_regular ;
                                     }
-                                    currentContribution += segment_contribution_equi;
-                                    currentPdf *= segment_pdf_equi;  
-                                    contributionIndex[num_verts]++;
-                                }*/
+                                    currentContribution += segment_contribution_regular;
+                                    currentPdf *= segment_pdf_regular;  
+                                    contributionIndex_regular[num_verts]++;
+                                }
 
 
                             
@@ -1746,7 +1766,7 @@ public:
                     auto & cs = stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(i);
                     auto & pdfs = stats::getRef<stats::EquiEquiPDF,int,std::vector<Float>>(i);
                     //Float segments = stats::get<stats::EquiContribution,int,int>(i);
-                    auto pathsWithLengtI = contributionIndex[i];
+                    auto pathsWithLengtI = contributionIndex_equi[i];
                     //cs.size() can be anything from previous samples on this thread...
 
                     Vec3 ci = Vec3(0);
@@ -1778,14 +1798,37 @@ public:
             else if(strategy_ == "regular") {
                 samplePath("regular");
                 contributionRegularStrategy = Vec3(0.0);
-                for(int i = 0; i < RegularMeasurementContributions.size(); i++) {
-                    auto boolvec3 =  glm::isinf(RegularMeasurementContributions[i]);
-                    if(boolvec3.x || boolvec3.y || boolvec3.z || RegularPdfOfRegularSmpls[i] < std::numeric_limits<Float>::epsilon()) {
-                        //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
-                    } else 
-                        contributionRegularStrategy += RegularMeasurementContributions[i] / RegularPdfOfRegularSmpls[i];
+
+                for(int i = 0; i < max_verts_; i++) { //for paths of all lengths
+                    auto & cs = stats::getRef<stats::RegularContribution,int,std::vector<Vec3>>(i);
+                    auto & pdfs = stats::getRef<stats::RegularRegularPDF,int,std::vector<Float>>(i);
+                    //Float segments = stats::get<stats::EquiContribution,int,int>(i);
+                    auto pathsWithLengtI = contributionIndex_regular[i];
+                    //cs.size() can be anything from previous samples on this thread...
+
+                    Vec3 ci = Vec3(0);
+                    Float js = 0.0;
+                    //for(int j = 0; j < cs.size(); j++) { //for pahts with length i
+                    for(int j = 0; j < pathsWithLengtI; j++) { //for pahts with length i
+                        auto boolvec3 =  glm::isinf(cs[j]);
+                        if(boolvec3.x || boolvec3.y || boolvec3.z || pdfs[j] < std::numeric_limits<Float>::epsilon()) {
+                            //LM_INFO("contr: is inf or pdf is zero, pdf {}",  RegularPdfOfRegularSmpls[i]);
+                        } else {
+                            ci += cs[j] / pdfs[j];
+                            js += 1.0;
+                        }
+                    }
+                    if(js != 0.0) {
+                        ci /= static_cast<Float>(js); //divided by how many paths
+                       //  LM_INFO("divide by: {}",js);
+                    }
+                    //if(segments != 0.0)
+                    //     ci /= segments; //divided by how many segments in camera path
+
+                    contributionRegularStrategy += ci;
                 }
-                contributionRegularStrategy /= static_cast<Float>(RegularMeasurementContributions.size()); //divided by how many paths
+                
+                //contributionEquiStrategy /= static_cast<Float>(EquiMeasurementContributions.size()); //divided by how many paths
                 film_->splat(raster_pos, contributionRegularStrategy / static_cast<Float>(spp_));
             }
             else if(strategy_ == "mis") {
