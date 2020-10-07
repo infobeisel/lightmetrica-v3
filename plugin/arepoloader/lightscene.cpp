@@ -624,7 +624,7 @@ public:
 
                 auto pos = glm::mat3(global_transform) * lightPos;
                 int tet = volume_->findTetra(pos);
-                LM_INFO("light {} in tetra {}",node.index,tet);
+                //LM_INFO("light {} in tetra {}",node.index,tet);
                 tetraToLights[tet].push_back(node.index);       
                 i++;     
             }
