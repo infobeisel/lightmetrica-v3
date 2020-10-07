@@ -1381,7 +1381,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI, int bfsLayer)> processor) const override {
         auto & cached = cachedDistanceSample(); 
         auto inside = findAndCacheTetra(cached,startPos,lm::Vec3(1,0,0), meshAdapter.get());
-     	thread_local std::vector<int> buffer0 = {cached.tetraI};
+     	thread_local std::vector<int> buffer0;
+        if(buffer0.size() < 1) buffer0.resize(1);
+        buffer0[0] = cached.tetraI;
 
         
         thread_local std::unordered_map<int, bool> alreadyVisited;
@@ -1389,7 +1391,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         int numToVisit = 1; //prepare first iteration
         alreadyVisited[cached.tetraI] = true;
 
-        thread_local std::vector<int> buffer1 = cached.neighborInds;
+        thread_local std::vector<int> buffer1;// = cached.neighborInds;
 	    thread_local std::vector<int> temporary;
         if(inside) {
             int layer = 0;
