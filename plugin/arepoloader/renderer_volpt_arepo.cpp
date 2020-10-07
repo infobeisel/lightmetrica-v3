@@ -515,7 +515,7 @@ public:
                     auto pdf_vrl_selection = 1.0;
                     auto pdf_light_selection = 1.0;
 
-#ifdef USE_KNN_EMBREE
+//#ifdef USE_KNN_EMBREE
 
                     if(num_vrls > 0) {
                         auto min_percent = glm::min(
@@ -563,7 +563,7 @@ public:
 
                         
                     }
-#endif
+//#endif
                                        
                     //make sure it is nullptr before, so i can test later if we hit sth at all
                     stats::set<stats::LastBoundarySequence,int,std::vector<RaySegmentCDF>*>(0,nullptr);
@@ -1165,7 +1165,7 @@ public:
                                 int visitedLightCount = 0;
                                 int acceptedBFSLayer = 0;
 
-                                //LM_INFO("knn query {}, expect k {}", i, lightsPerQuery);
+                                LM_INFO("knn query {}, expect k {}", i, lightsPerQuery);
                                 //perform bfs search
 
                                 
@@ -1174,7 +1174,7 @@ public:
                                 volume_->visitBFS(queryPos,[&] (int tetraI, int bfsLayer) -> bool {
                                     bool continueBFS = true;
                                     auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
-                                    //LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
+                                    LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
                                     
                                     for(auto nodeI : lightNodeIndicesInThisTetra) {
                                         if(!stats::has<stats::DuplicateWatchdog,int,int>(nodeI)){ //if this light hasnt been handled yet, perform lighting!
@@ -1182,10 +1182,10 @@ public:
                                             stats::set<stats::DuplicateWatchdog,int,int>(nodeI,1); 
                                             visitedLightCount++;
                                             //continue bfs, or stop, if
-                                            continueBFS = true;
-                                                    //visitedLightCount > lightsPerQuery && //we have seen enough lights AND
-                                                     //       acceptedBFSLayer != bfsLayer //we did just come to the next layer. always handle a layer entirely.
-                                                    //? false : true; 
+                                            continueBFS =// true;
+                                                    visitedLightCount > lightsPerQuery && //we have seen enough lights AND
+                                                            acceptedBFSLayer != bfsLayer //we did just come to the next layer. always handle a layer entirely.
+                                                    ? false : true; 
                                             acceptedBFSLayer = bfsLayer;
                                             auto & pointNode = scene_->node_at(nodeI);
                                             //LM_INFO("{}, {}, {}",scene_->num_lights(),scene_->num_nodes(),point_scene_nodeIndex);

@@ -1363,10 +1363,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
     void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI, int bfsLayer)> processor) const override {
         auto & cached = cachedDistanceSample(); 
         auto inside = findAndCacheTetra(cached,startPos,lm::Vec3(1,0,0), meshAdapter.get());
-     std::vector<int> buffer0 = {cached.tetraI};
-            std::vector<int> buffer1 = cached.neighborInds;
-         std::vector<int> temporary;
-         std::unordered_map<int, bool> alreadyVisited;
+     	thread_local std::vector<int> buffer0 = {cached.tetraI};
+        thread_local std::vector<int> buffer1 = cached.neighborInds;
+        
+	thread_local std::vector<int> temporary;
+        thread_local std::unordered_map<int, bool> alreadyVisited;
         alreadyVisited.clear();//subsequent calls
         if(inside) {
             int layer = 0;
@@ -1376,7 +1377,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 auto & saveNeighborTetras   = layer % 2 == 0 ? buffer1 : buffer0;
                 //LM_INFO("layer {}, % {}, visit count {} ", layer,layer % 2 == 0,visitTetras.size());
                 saveNeighborTetras.clear();
-                for(int i = 0; i < visitTetras.size() && processor(visitTetras[i],layer); i++) {
+                for(int i = 0; i < visitTetras.size(); i++) {
+			keepVisiting = keepVisiting && processor(visitTetras[i],layer);
                     //LM_INFO("visit {} ",visitTetras[i]);
                     alreadyVisited[visitTetras[i]] = true;
                     updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get(),nullptr);
@@ -1394,7 +1396,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     //    [&](auto val) {return alreadyVisited.find(val) == alreadyVisited.end();});
                     //saveNeighborTetras.insert(saveNeighborTetras.end(),temporary.begin(), temporary.end());
                 }
-                keepVisiting = !saveNeighborTetras.empty();
+                keepVisiting = keepVisiting && !saveNeighborTetras.empty();
 
                 layer++;
             }
