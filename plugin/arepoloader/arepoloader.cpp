@@ -416,6 +416,7 @@ namespace ArepoLoaderInternals {
         lm::Mat3 baryInvT;
         std::vector<std::vector<float>> cornerVals;
 
+        int numNeighbors; //seems more efficient to never call vector.clear().
         std::vector<tetra> neighbors;
         std::vector<int> neighborInds;
 
@@ -868,15 +869,17 @@ namespace ArepoLoaderInternals {
         return insideTetra(tetra, arepoMeshRef->getDT()[tetra], p, cachedS);
     }
 
-    inline void updateCachedNeighbors(int ofTetra,  std::vector<int> & out_neighborInds, lm::ArepoLMMesh * toQueryTetraId,std::vector<tetra> * out_neighbors = nullptr) {
+    //returns number of found neighbors.
+    //it seems more efficient to avoid vector.clear(), thats why the vector's size is NOT a valid result, use the return value instead 
+    inline int updateCachedNeighbors(int ofTetra,  std::vector<int> & out_neighborInds, lm::ArepoLMMesh * toQueryTetraId,std::vector<tetra> * out_neighbors = nullptr) {
         bool foundNeighbor = false;
         bool foundBoundary = false;
-        if(out_neighbors)
-            out_neighbors->clear();
         
-        out_neighborInds.clear();
-
+        //if(out_neighbors)
+        //    out_neighbors->clear();
         
+        //out_neighborInds.clear();
+        int neighborIndI = 0;
         
         auto * ps = arepoMeshRef->getDT()[ofTetra].p;
         auto * ts = arepoMeshRef->getDT();
@@ -887,11 +890,22 @@ namespace ArepoLoaderInternals {
             auto & adjacents = toQueryTetraId->adjacentTs(ps[p]);
             for(auto & i : adjacents) {
                 //LM_INFO("adjacent tetra {} of vertex {}",i,ps[p] );
-                out_neighborInds.push_back(i);
-                if(out_neighbors)
-                    out_neighbors->push_back(ts[i]);
+                if(out_neighborInds.size() <= neighborIndI)
+                    out_neighborInds.push_back(i);
+                else out_neighborInds[neighborIndI] = i;
+
+                if(out_neighbors) { 
+                    //the same for the data itself
+                    if(out_neighbors->size() <= neighborIndI)
+                        out_neighbors->push_back(ts[i]);
+                    else (*out_neighbors)[neighborIndI] = ts[i];
+                }
+                    
+                neighborIndI++;
             }
         }
+
+        return neighborIndI;
 
         
     }
@@ -904,8 +918,9 @@ namespace ArepoLoaderInternals {
         bool foundNeighbor = false;
         bool foundBoundary = false;
         //double check if in original tetra
-        auto & neighbors = cached.neighbors;     
-        for(int i = 0; i < neighbors.size(); i ++) {
+        auto & neighbors = cached.neighbors;    
+        
+        for(int i = 0; i < cached.numNeighbors; i ++) {
             foundNeighbor = insideTetra(cached.neighborInds[i], neighbors[i],p, cached);
             if(foundNeighbor) {
                 return cached.neighborInds[i];
@@ -959,7 +974,8 @@ namespace ArepoLoaderInternals {
                     inside = tetraIndex >= 0;
                 }
                 if(inside) { //sample changed to a neighbor
-                    updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
+                    int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
+                    cachedS.numNeighbors = ns;
                     lm::stats::add<lm::stats::UsedNeighborTetra,int,long long>(h,1);
                     //need to invalidate some information
                     cachedS.hydroI = -1;
@@ -979,7 +995,8 @@ namespace ArepoLoaderInternals {
 
             if(guess >= 0) { //try guess
                 if(insideTetra(guess, p, cachedS)){
-                    updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
+                    int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
+                    cachedS.numNeighbors = ns;
                     //need to invalidate some information
                     cachedS.hydroI = -1;
                     //also store density at corners
@@ -1027,7 +1044,8 @@ namespace ArepoLoaderInternals {
             //}
             
             if(inside) { // we found a tetrahedron where we are inside
-                updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
+                int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
+                cachedS.numNeighbors = ns;
                 //LM_INFO("found tetra inside");
                 cachedS.sampleIndex = currentSample;
                 //need to invalidate some information
@@ -1364,11 +1382,15 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         auto & cached = cachedDistanceSample(); 
         auto inside = findAndCacheTetra(cached,startPos,lm::Vec3(1,0,0), meshAdapter.get());
      	thread_local std::vector<int> buffer0 = {cached.tetraI};
-        thread_local std::vector<int> buffer1 = cached.neighborInds;
+
         
-	thread_local std::vector<int> temporary;
         thread_local std::unordered_map<int, bool> alreadyVisited;
-        alreadyVisited.clear();//subsequent calls
+        alreadyVisited.clear();//subsequent calls within a thread
+        int numToVisit = 1; //prepare first iteration
+        alreadyVisited[cached.tetraI] = true;
+
+        thread_local std::vector<int> buffer1 = cached.neighborInds;
+	    thread_local std::vector<int> temporary;
         if(inside) {
             int layer = 0;
             bool keepVisiting = true;
@@ -1376,28 +1398,25 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 auto & visitTetras          = layer % 2 == 0 ? buffer0 : buffer1;
                 auto & saveNeighborTetras   = layer % 2 == 0 ? buffer1 : buffer0;
                 //LM_INFO("layer {}, % {}, visit count {} ", layer,layer % 2 == 0,visitTetras.size());
-                saveNeighborTetras.clear();
-                for(int i = 0; i < visitTetras.size(); i++) {
-			keepVisiting = keepVisiting && processor(visitTetras[i],layer);
-                    //LM_INFO("visit {} ",visitTetras[i]);
-                    alreadyVisited[visitTetras[i]] = true;
-                    updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get(),nullptr);
-                    //primitive data type, no need to consider std::move stuff i think
-                    for(auto tmp : temporary) {
-                    //LM_INFO("neighbor {} ",tmp);
-
-                        if(alreadyVisited.find(tmp) == alreadyVisited.end()) {
-                        //LM_INFO("add neighbor {} ",tmp);
-                            saveNeighborTetras.push_back(tmp);
+                int saveNI = 0;
+                //visit nodes, mark them. also mark neighbor nodes immediately to avoid duplicates queueing up,
+                // but visit them in the next iteration
+                for(int i = 0; i < numToVisit; i++) {
+                    keepVisiting = keepVisiting && processor(visitTetras[i],layer);
+                    if(!keepVisiting) break;
+                    int ns = updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get(),nullptr);
+                    for(auto tmpI = 0 ; tmpI < ns; tmpI++ ) {
+                        if(alreadyVisited.find(temporary[tmpI]) == alreadyVisited.end()) {
+                            alreadyVisited[temporary[tmpI]] = true;
+                            if(saveNeighborTetras.size() <= saveNI)
+                                saveNeighborTetras.push_back(temporary[tmpI]);
+                            else saveNeighborTetras[saveNI] = temporary[tmpI];
+                            saveNI++;
                         }
-
                     }
-                    //std::copy_if(temporary.begin(),temporary.end(),std::back_inserter(saveNeighborTetras), 
-                    //    [&](auto val) {return alreadyVisited.find(val) == alreadyVisited.end();});
-                    //saveNeighborTetras.insert(saveNeighborTetras.end(),temporary.begin(), temporary.end());
                 }
+                numToVisit = saveNI;//remember for next round
                 keepVisiting = keepVisiting && !saveNeighborTetras.empty();
-
                 layer++;
             }
         }

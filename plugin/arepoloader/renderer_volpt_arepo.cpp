@@ -1165,7 +1165,7 @@ public:
                                 int visitedLightCount = 0;
                                 int acceptedBFSLayer = 0;
 
-                                LM_INFO("knn query {}, expect k {}", i, lightsPerQuery);
+                               // LM_INFO("knn query {}, expect k {}", i, lightsPerQuery);
                                 //perform bfs search
 
                                 
@@ -1174,7 +1174,7 @@ public:
                                 volume_->visitBFS(queryPos,[&] (int tetraI, int bfsLayer) -> bool {
                                     bool continueBFS = true;
                                     auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
-                                    LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
+                                    //LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
                                     
                                     for(auto nodeI : lightNodeIndicesInThisTetra) {
                                         if(!stats::has<stats::DuplicateWatchdog,int,int>(nodeI)){ //if this light hasnt been handled yet, perform lighting!
@@ -1183,9 +1183,9 @@ public:
                                             visitedLightCount++;
                                             //continue bfs, or stop, if
                                             continueBFS =// true;
-                                                    visitedLightCount > lightsPerQuery && //we have seen enough lights AND
-                                                            acceptedBFSLayer != bfsLayer //we did just come to the next layer. always handle a layer entirely.
-                                                    ? false : true; 
+                                                    visitedLightCount > lightsPerQuery ;//&& //we have seen enough lights AND
+                                                            //acceptedBFSLayer != bfsLayer //we did just come to the next layer. always handle a layer entirely.
+                                                    //? false : true; 
                                             acceptedBFSLayer = bfsLayer;
                                             auto & pointNode = scene_->node_at(nodeI);
                                             //LM_INFO("{}, {}, {}",scene_->num_lights(),scene_->num_nodes(),point_scene_nodeIndex);
