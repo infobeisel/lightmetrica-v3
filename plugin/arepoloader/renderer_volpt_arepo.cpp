@@ -524,6 +524,7 @@ public:
                             static_cast<Float>(num_vrls) * knn_max_percent_vrls_,static_cast<Float>(num_vrls));
                         min_percent = glm::max(min_percent,static_cast<Float>(knn_min_k_));
                         auto vrl_normFac = 1.0 - glm::exp(-(max_percent-min_percent));
+			//TODO why min_percent - ?!
                         auto logu = min_percent - glm::log(1 - rng.u() * vrl_normFac);
                         vrl_knn_res.k = static_cast<unsigned int>(logu);
                         vrl_knn_res.k++;
@@ -545,13 +546,14 @@ public:
 
                         auto max_percent = glm::min(
                             static_cast<Float>(num_pointlights) * knn_max_percent_points_,static_cast<Float>(num_pointlights));
+			max_percent = glm::max(max_percent,static_cast<Float>(knn_min_k_));
 
                         
                         //auto point_normFac = 1.0 - glm::exp(-(num_pointlights-min_percent));
                         auto point_normFac = 1.0 - glm::exp(-(max_percent-min_percent));
                         auto logu = min_percent - glm::log(1 - rng.u() * point_normFac);
                         point_knn_res.k = static_cast<unsigned int>(logu);
-                        point_knn_res.k++;
+                        //point_knn_res.k++;
                         point_knn_res.k = point_knn_res.k >= num_pointlights ? num_pointlights : point_knn_res.k;
                         point_knn_res.k = point_knn_res.k < 1 ? 1 : point_knn_res.k;
 
@@ -559,6 +561,10 @@ public:
                         //point_knn_res.k = num_pointlights;
 
                         auto pdf_light_selection = glm::exp(min_percent - point_knn_res.k) / point_normFac;
+			if(num_pointlights == 1) {
+				pdf_light_selection = 1.0;
+				point_knn_res.k = 1;
+			}	
                         // static_cast<Float>(point_knn_res.k) /  static_cast<Float>(num_pointlights);
 
                         
@@ -1163,30 +1169,30 @@ public:
                             for(int i = 0; i < num_knn_queries_; i++) { 
                                 auto queryPos = a + a_d * queryTs[i]; 
                                 int visitedLightCount = 0;
-                                int acceptedBFSLayer = 0;
+                                int acceptedBFSLayer = 3;
 
                                // LM_INFO("knn query {}, expect k {}", i, lightsPerQuery);
                                 //perform bfs search
 
-                                
+
                                 stats::set<stats::TetraIdGuess,int,int>(0,queryTetraInds[i]);
 
                                 volume_->visitBFS(queryPos,[&] (int tetraI, int bfsLayer) -> bool {
+
                                     bool continueBFS = true;
                                     auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
                                     //LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
-                                    
+					if(bfsLayer > acceptedBFSLayer )
+						return false;
                                     for(auto nodeI : lightNodeIndicesInThisTetra) {
                                         if(!stats::has<stats::DuplicateWatchdog,int,int>(nodeI)){ //if this light hasnt been handled yet, perform lighting!
-                                            //LM_INFO("have not seen{} yet", nodeI);
+                                           // LM_INFO("have not seen{} yet", nodeI);
                                             stats::set<stats::DuplicateWatchdog,int,int>(nodeI,1); 
                                             visitedLightCount++;
-                                            //continue bfs, or stop, if
-                                            continueBFS =// true;
-                                                    visitedLightCount > lightsPerQuery ;//&& //we have seen enough lights AND
-                                                            //acceptedBFSLayer != bfsLayer //we did just come to the next layer. always handle a layer entirely.
+                                            //continue bfs
+                                            continueBFS = continueBFS && visitedLightCount < lightsPerQuery ;
                                                     //? false : true; 
-                                            acceptedBFSLayer = bfsLayer;
+                                            //acceptedBFSLayer = bfsLayer;
                                             auto & pointNode = scene_->node_at(nodeI);
                                             //LM_INFO("{}, {}, {}",scene_->num_lights(),scene_->num_nodes(),point_scene_nodeIndex);
                                             auto point_light_index = scene_->light_index_at(nodeI);

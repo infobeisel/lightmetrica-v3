@@ -325,7 +325,7 @@ namespace ArepoLoaderInternals {
 
             p.x = -10;p.y = -10;p.z = -10;p.index=6;
             DP.push_back(p);
-            densities.push_back(0.003);
+            densities.push_back(0.000000003);
 
             p.x = 10;p.y = -10;p.z = -10;p.index=7;
             DP.push_back(p);
@@ -1418,7 +1418,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     }
                 }
                 numToVisit = saveNI;//remember for next round
-                keepVisiting = keepVisiting && !saveNeighborTetras.empty();
+                keepVisiting = keepVisiting && numToVisit > 0;
                 layer++;
             }
         }
