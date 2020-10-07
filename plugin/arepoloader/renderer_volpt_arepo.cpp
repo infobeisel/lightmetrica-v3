@@ -150,6 +150,13 @@ public:
             //    - implement pybinding helper for parsing the stars (takes hours in python)
             auto & tetraIToLightSegments =  lm::stats::getGlobalRefUnsafe<lm::stats::VRL,lm::stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>()[0]; //for the moment everything is stored in vector 0
             int num_vrls = tetraIToLightSegments.size();
+
+            auto & tetraToPointLights = stats::getGlobalRefUnsafe<lm::stats::LightsInTetra,lm::stats::TetraIndex,std::vector<int>>();
+            /*for(auto p : tetraToPointLights)  {
+                for(auto v : p.second)  
+                LM_INFO("tetra {}, light {}",p.first,v);
+            }*/
+
             auto & equiContributions = 
             stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>();
             //equiContributions.clear();
@@ -508,7 +515,7 @@ public:
                     auto pdf_vrl_selection = 1.0;
                     auto pdf_light_selection = 1.0;
 
-#ifdef USE_KNN
+#ifdef USE_KNN_EMBREE
 
                     if(num_vrls > 0) {
                         auto min_percent = glm::min(
@@ -519,7 +526,7 @@ public:
                         auto vrl_normFac = 1.0 - glm::exp(-(max_percent-min_percent));
                         auto logu = min_percent - glm::log(1 - rng.u() * vrl_normFac);
                         vrl_knn_res.k = static_cast<unsigned int>(logu);
-                        point_knn_res.k++;
+                        vrl_knn_res.k++;
 
                         //vrl_knn_res.k = num_vrls; //TESST
 
@@ -605,17 +612,18 @@ public:
                     if(boundaries != nullptr && totalTau > 0.0) { //the chance to have in-scattering                        
                         auto & cameraSegments = *boundaries;
 
-#ifdef USE_KNN
+                        std::vector<Float> queryTs;
+                        std::vector<int> queryTetraInds;
                         {
-                            //CHOOSE POINTS FOR KNN QUERIES ALONG RAY
+                            //CHOOSE POINTS FOR KNN QUERIES ALONG RAY, BOTH FOR KNN EMBREE AND DELAUNAY BFS
                             int found_sample = 0;
                             std::vector<Float> zetas;
 
-                            for(int i = 0; i < num_knn_queries_; i++)
+                            for(int i = 0; i < num_knn_queries_; i++) {
                                 zetas.push_back(rng.u() * totalTau);
-                            std::vector<Float> queryTs;
-                            for(int i = 0; i < num_knn_queries_; i++)
                                 queryTs.push_back(0.0);
+                                queryTetraInds.push_back(0);
+                            }
                             //TODO PDFS ?!
                             
                             //auto zeta = rng.u() * totalTau; //a new sample within total 
@@ -647,6 +655,7 @@ public:
                                             //zetaRegularPDF = mu_t / totalTau;  
                                             //zetaRegularPDF = 1.0;  
                                             queryTs[i] = travelT + t;   
+                                            queryTetraInds[i] = tetrasegment.tetraI;
                                             //zetaAccCdf += normcdf;
                                             //break;
                                             found_sample++;
@@ -657,6 +666,7 @@ public:
                                 }
                             }
 
+#ifdef USE_KNN_EMBREE
                             for(int i = 0; i < num_knn_queries_; i++) {
                                 auto queryPos = a + a_d * queryTs[i]; // point based knn is potentially wrong, need ray based knn!!!
 
@@ -714,9 +724,9 @@ public:
                             //pdf_light_selection = static_cast<Float>(point_knns_wo_duplicates.size()) /  static_cast<Float>(num_pointlights);
                             
 
-
-                        }
 #endif
+                        }
+
 
 
                         //auto a = sp.geom.p + a_d * currentTransmittanceDistanceSample; //dont use camera ray but camera point
@@ -733,7 +743,7 @@ public:
                             //LM_INFO("have found {} vrls ", vrl_knns.size());
                             //LM_INFO("there are {} vrls ", vrl_knns_wo_duplicates.size() );
                             if(sample_vrls_)
-#ifdef USE_KNN
+#ifdef USE_KNN_EMBREE
                             for(auto & p : vrl_knns_wo_duplicates) {
                                 auto & neighbor = p.second;//point_knns.top();
                             //while(false && num_vrls > 0 && !vrl_knns.empty() ) {
@@ -1125,7 +1135,7 @@ public:
 
                             //while(true && num_pointlights > 0 && !point_knns.empty()) {
                             if(sample_lights_)
-#ifdef USE_KNN
+#ifdef USE_KNN_EMBREE
                             for(auto & p : point_knns_wo_duplicates) {
                                 auto & neighbor = p.second;//point_knns.top();
                                 //d_total += neighbor.d;
@@ -1147,15 +1157,60 @@ public:
                                 auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;    
 
 #else 
-                            scene_->traverse_primitive_nodes([&](const SceneNode& node, Mat4 global_transform) {
-                                if (node.type != SceneNodeType::Primitive) {
-                                    return;
-                                }
-                                if (!node.primitive.light) {
-                                    return;
-                                }
-                                auto & light = *node.primitive.light;
-                                auto lightPos = light.sample_position({{0.0,0.0},0.0}, Transform(global_transform)).value().geom.p;  
+                            
+                            stats::clear<stats::DuplicateWatchdog,int,int>();
+                            int lightsPerQuery = glm::max(1,static_cast<int>(point_knn_res.k / num_knn_queries_));
+                            for(int i = 0; i < num_knn_queries_; i++) { 
+                                auto queryPos = a + a_d * queryTs[i]; 
+                                int visitedLightCount = 0;
+                                int acceptedBFSLayer = 0;
+
+                                //LM_INFO("knn query {}, expect k {}", i, lightsPerQuery);
+                                //perform bfs search
+
+                                
+                                stats::set<stats::TetraIdGuess,int,int>(0,queryTetraInds[i]);
+
+                                volume_->visitBFS(queryPos,[&] (int tetraI, int bfsLayer) -> bool {
+                                    bool continueBFS = true;
+                                    auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
+                                    //LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
+                                    
+                                    for(auto nodeI : lightNodeIndicesInThisTetra) {
+                                        if(!stats::has<stats::DuplicateWatchdog,int,int>(nodeI)){ //if this light hasnt been handled yet, perform lighting!
+                                            //LM_INFO("have not seen{} yet", nodeI);
+                                            stats::set<stats::DuplicateWatchdog,int,int>(nodeI,1); 
+                                            visitedLightCount++;
+                                            //continue bfs, or stop, if
+                                            continueBFS = true;
+                                                    //visitedLightCount > lightsPerQuery && //we have seen enough lights AND
+                                                     //       acceptedBFSLayer != bfsLayer //we did just come to the next layer. always handle a layer entirely.
+                                                    //? false : true; 
+                                            acceptedBFSLayer = bfsLayer;
+                                            auto & pointNode = scene_->node_at(nodeI);
+                                            //LM_INFO("{}, {}, {}",scene_->num_lights(),scene_->num_nodes(),point_scene_nodeIndex);
+                                            auto point_light_index = scene_->light_index_at(nodeI);
+                                            auto lightprim = scene_->light_primitive_index_at(point_light_index); //need to ask for "light primitive", given "light index"
+                                            assert(pointNode.primitive.light != nullptr);
+
+                                            Mat4 global_transform = lightprim.global_transform.M;
+                                            auto & light = *pointNode.primitive.light;
+                                            auto possample = rng.next<Light::PositionSampleU>();
+                                            auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;  
+                                            //now, handle the light
+
+
+
+                                
+                            //scene_->traverse_primitive_nodes([&](const SceneNode& node, Mat4 global_transform) {
+                            //    if (node.type != SceneNodeType::Primitive) {
+                            //        return;
+                            //    }
+                            //    if (!node.primitive.light) {
+                            //        return;
+                            //    }
+                            //    auto & light = *node.primitive.light;
+                            //    auto lightPos = light.sample_position({{0.0,0.0},0.0}, Transform(global_transform)).value().geom.p;  
 #endif
 
 
@@ -1619,11 +1674,19 @@ public:
 
                             
 
-#ifdef USE_KNN
+#ifdef USE_KNN_EMBREE
                             
                             }
 #else
-                            });
+                            }//if light 
+                            //for each light in tetra
+                            }
+                            return continueBFS;
+                            });//for bfs tetras
+                            
+                            
+
+                            }
 #endif
 
                        // }

@@ -14,6 +14,7 @@
 #include <lm/medium.h>
 #include <lm/phase.h>
 #include <lm/stats.h>
+#include "arepoloader.h"
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 namespace stats {
@@ -199,6 +200,7 @@ namespace {
 class LightScene_ final : public Scene {
 private:
     AccelKnn* accel_;                                   // Acceleration structure for closest light sampling
+    Volume_Arepo * volume_;
     std::vector<SceneNode> nodes_;                   // Scene nodes (index 0: root node)
     std::optional<int> camera_;                      // Camera index
     std::vector<LightPrimitiveIndex> lights_;        // Primitive node indices of lights and global transforms
@@ -208,6 +210,7 @@ private:
     LightSamplingMode lightsamplingmode;
     std::vector<Float> star_coords_;
     std::vector<Float> star_ugriz_;
+
     
     std::vector<Ptr<Light>> createdLights_;
     Float model_scale_;
@@ -251,6 +254,7 @@ public:
         star_coords_ = lm::json::value<std::vector<Float>>(prop,"star_coords");
         star_ugriz_ = lm::json::value<std::vector<Float>>(prop,"star_ugriz");
         model_scale_ = lm::json::value<Float>(prop,"model_scale");
+        volume_ = json::comp_ref<Volume_Arepo>(prop, "volume");
         //f_coefs_g_to_temp_ = lm::json::value<std::vector<Float>>(prop,"f_coefs_g_to_temp");
 
         //to sRGB
@@ -596,15 +600,33 @@ public:
         
         nodes_.reserve(2 * createdLights_.size()); //transforms and primitives
         nodes_[root_node()].group.children.reserve(createdLights_.size());
-        for(auto & l : createdLights_)
+        light_indices_map_.reserve(createdLights_.size());
+        lights_.reserve(createdLights_.size());
+
+        //add them to the scene
+        for(auto & l : createdLights_) {
             add_primitive({
                 {"light",l->loc()}
             });
+        }
 
+        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
+        auto & tetraToLights = stats::getGlobalRef<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
+        
+        int i = 0; //this is so ugly as it trusts the following method to iterate over the nodes in the same way they have been added above!
         traverse_primitive_nodes([&](const SceneNode& node, Mat4 global_transform) {
             if (node.type == SceneNodeType::Primitive && node.primitive.light) {
                 light_indices_map_[node.index] = int(lights_.size());
                 lights_.push_back({ Transform(global_transform), node.index });
+
+                Light::PositionSampleU possample; //invalid pos sample, but not needed for point light sourcews
+                auto lightPos = node.primitive.light->sample_position(possample, Transform(global_transform)).value().geom.p;//dont forget to account for local position   
+
+                auto pos = glm::mat3(global_transform) * lightPos;
+                int tet = volume_->findTetra(pos);
+                LM_INFO("light {} in tetra {}",node.index,tet);
+                tetraToLights[tet].push_back(node.index);       
+                i++;     
             }
         });
 

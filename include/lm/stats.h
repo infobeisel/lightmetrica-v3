@@ -338,6 +338,15 @@ LM_PUBLIC_API void update(Key key, std::function<void(Value &)> updater) {
 
 
 
+template <typename Tag, typename Key, typename Value>
+/*!
+    \brief checks whether a thread local statistics data point exists given the key. only needed if insert upon failure should be avoided. 
+    use othersie get() otherwise, it will always default construct if not existent before.
+*/
+LM_PUBLIC_API bool has( Key & key) {
+    return internals::Statistics<Tag, Key,Value>::threadInstance().data.find(key) != 
+           internals::Statistics<Tag, Key,Value>::threadInstance().data.end();
+}
 
 
 template <typename Tag, typename Key, typename Value>

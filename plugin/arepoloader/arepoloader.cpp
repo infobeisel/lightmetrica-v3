@@ -868,88 +868,32 @@ namespace ArepoLoaderInternals {
         return insideTetra(tetra, arepoMeshRef->getDT()[tetra], p, cachedS);
     }
 
-    inline void updateCachedNeighbors(CachedSample & cached,  lm::ArepoLMMesh * toQueryTetraId) {
-        auto ofTetra = cached.tetraI;
+    inline void updateCachedNeighbors(int ofTetra,  std::vector<int> & out_neighborInds, lm::ArepoLMMesh * toQueryTetraId,std::vector<tetra> * out_neighbors = nullptr) {
         bool foundNeighbor = false;
         bool foundBoundary = false;
-        auto & neighbors = cached.neighbors; 
-        auto & neighborInds = cached.neighborInds; 
-        neighbors.clear();
-        neighborInds.clear();
+        if(out_neighbors)
+            out_neighbors->clear();
+        
+        out_neighborInds.clear();
 
         
         
-
-        auto alreadyContains = [&] (int tet) {
-            for(auto n : neighborInds)
-                if(n == tet)
-                    return true;
-            return false;
-        };
-        auto isNeighbor = [&] (int tet, int of_tet) {
-            int * p1s = arepoMeshRef->getDT()[tet].p;
-            int * p2s = arepoMeshRef->getDT()[of_tet].p;
-            for(int i = 0; i < 4; i++)
-                for(int j = 0; j < 4; j++)
-                    if(p1s[i] == p2s[j])
-                        return true;
-            return false;
-        };
-
-        auto isNeighbor2 = [&] (int tet, int of_tet) {
-            bool foundN2 = isNeighbor(tet, of_tet);
-            for(int i = 0;i < 4; i++) {
-                int firstNeighbor = arepoMeshRef->getDT()[tet].t[i];
-                if(firstNeighbor >= 0)
-                    foundN2 = foundN2 || isNeighbor(firstNeighbor,tet);
-            }
-            return foundN2;
-            
-        };
-
-        std::function<void(int,int)> addNeighbors = [&] (int of_tet, int original_tet) -> void {
-            auto tetStrct = arepoMeshRef->getDT()[of_tet]; 
-            int n0 = tetStrct.t[0];
-            foundBoundary = foundBoundary || n0 < 0; 
-            if(n0 >= 0) {
-                neighbors.push_back(tetStrct);
-                neighborInds.push_back(of_tet);
-
-                for(int i = 0;i < 4; i++) {
-                    int tetInd = tetStrct.t[i];
-                    if(tetInd >= 0 && !alreadyContains(tetInd) && isNeighbor(tetInd,original_tet)) {
-                        //also add the neighbors
-                        addNeighbors(tetInd, original_tet);
-                    }
-                }
-            }
-        };
         auto * ps = arepoMeshRef->getDT()[ofTetra].p;
         auto * ts = arepoMeshRef->getDT();
         //auto mostprobable = arepoMeshRef->getDT()[ofTetra].t[(cached.looksAtTriId - 1) % 4];
 
         for(int p = 0; p < 4; p++) {
+            //LM_INFO("adjacents of vertex {}",ps[p] );
             auto & adjacents = toQueryTetraId->adjacentTs(ps[p]);
             for(auto & i : adjacents) {
-                neighborInds.push_back(i);
-                neighbors.push_back(ts[i]);
+                //LM_INFO("adjacent tetra {} of vertex {}",i,ps[p] );
+                out_neighborInds.push_back(i);
+                if(out_neighbors)
+                    out_neighbors->push_back(ts[i]);
             }
         }
 
         
-
-        //neighbors.push_back(mostprobable);
-        //neighborInds.push_back(mostprobable.t[(cached.looksAtTriId - 1) % 3]);
-        /*if(mostprobable >= 0 && mostprobable < arepoMeshRef->getNdt() && arepoMeshRef->getDT()[mostprobable].t[0] >= 0) {
-            neighbors.push_back(arepoMeshRef->getDT()[mostprobable]);
-            neighborInds.push_back(mostprobable);
-            addNeighbors(mostprobable,ofTetra);
-        }*/
-            
-        //else
-        //    addNeighbors(ofTetra,ofTetra);
-        
-    
     }
 
     //assumes the cached sample has been updated,
@@ -1015,7 +959,7 @@ namespace ArepoLoaderInternals {
                     inside = tetraIndex >= 0;
                 }
                 if(inside) { //sample changed to a neighbor
-                    updateCachedNeighbors(cachedS,toQueryTetraId);
+                    updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                     lm::stats::add<lm::stats::UsedNeighborTetra,int,long long>(h,1);
                     //need to invalidate some information
                     cachedS.hydroI = -1;
@@ -1035,7 +979,7 @@ namespace ArepoLoaderInternals {
 
             if(guess >= 0) { //try guess
                 if(insideTetra(guess, p, cachedS)){
-                    updateCachedNeighbors(cachedS,toQueryTetraId);
+                    updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                     //need to invalidate some information
                     cachedS.hydroI = -1;
                     //also store density at corners
@@ -1083,7 +1027,7 @@ namespace ArepoLoaderInternals {
             //}
             
             if(inside) { // we found a tetrahedron where we are inside
-                updateCachedNeighbors(cachedS,toQueryTetraId);
+                updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                 //LM_INFO("found tetra inside");
                 cachedS.sampleIndex = currentSample;
                 //need to invalidate some information
@@ -1416,7 +1360,46 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return true;
     }
 
+    void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI, int bfsLayer)> processor) const override {
+        auto & cached = cachedDistanceSample(); 
+        auto inside = findAndCacheTetra(cached,startPos,lm::Vec3(1,0,0), meshAdapter.get());
+     std::vector<int> buffer0 = {cached.tetraI};
+            std::vector<int> buffer1 = cached.neighborInds;
+         std::vector<int> temporary;
+         std::unordered_map<int, bool> alreadyVisited;
+        alreadyVisited.clear();//subsequent calls
+        if(inside) {
+            int layer = 0;
+            bool keepVisiting = true;
+            while(keepVisiting) { //as long as the buffer containing the tetras to visit is not empty
+                auto & visitTetras          = layer % 2 == 0 ? buffer0 : buffer1;
+                auto & saveNeighborTetras   = layer % 2 == 0 ? buffer1 : buffer0;
+                //LM_INFO("layer {}, % {}, visit count {} ", layer,layer % 2 == 0,visitTetras.size());
+                saveNeighborTetras.clear();
+                for(int i = 0; i < visitTetras.size() && processor(visitTetras[i],layer); i++) {
+                    //LM_INFO("visit {} ",visitTetras[i]);
+                    alreadyVisited[visitTetras[i]] = true;
+                    updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get(),nullptr);
+                    //primitive data type, no need to consider std::move stuff i think
+                    for(auto tmp : temporary) {
+                    //LM_INFO("neighbor {} ",tmp);
 
+                        if(alreadyVisited.find(tmp) == alreadyVisited.end()) {
+                        //LM_INFO("add neighbor {} ",tmp);
+                            saveNeighborTetras.push_back(tmp);
+                        }
+
+                    }
+                    //std::copy_if(temporary.begin(),temporary.end(),std::back_inserter(saveNeighborTetras), 
+                    //    [&](auto val) {return alreadyVisited.find(val) == alreadyVisited.end();});
+                    //saveNeighborTetras.insert(saveNeighborTetras.end(),temporary.begin(), temporary.end());
+                }
+                keepVisiting = !saveNeighborTetras.empty();
+
+                layer++;
+            }
+        }
+    }
 
     void travel(lm::Ray ray,  CachedSample & useCache,  std::function<bool(bool inside,lm::Ray currentRay, lm::Float t, CachedSample & info)> processor) const {
         bool inside = false;
@@ -1789,6 +1772,12 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
     }
     
+    virtual int findTetra(lm::Vec3 pos) const override {
+        auto & cache = cachedDistanceSample();
+        auto found = findAndCacheTetra(cache,pos,lm::Vec3(1,0,0),meshAdapter.get());
+        return found ? cache.tetraI : -1;
+
+    }
 
 
     virtual lm::Float eval_scalar(lm::Vec3 p) const override {

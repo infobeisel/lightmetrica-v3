@@ -290,7 +290,7 @@ public:
        
         int currentIndex = 0;
         //assume everything is stored in one vector
-#ifdef USE_KNN
+#ifdef USE_KNN_EMBREE
 
         if(numvrls > 0) {
             std::function<bool(Mat4&,int&)> nextObject = [&](Mat4 & out_global_transform,int & out_someindex) {

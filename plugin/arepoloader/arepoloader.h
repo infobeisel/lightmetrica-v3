@@ -7,7 +7,7 @@
 //#include "../../../ArepoVTK/arepo/include/mesh/voronoi/voronoi.h"
 #include "voronoi_3db.h" //shit didnt want to include any arepo code here
 
-//#define USE_KNN
+//#define USE_KNN_EMBREE
 
 //scaling factors for optical thickness
 #define A_B_A_V_T 1.3034926470588235//1.324
@@ -166,7 +166,9 @@ namespace stats {
     struct VRL{};
     typedef int TetraIndex;
 
+    struct LightsInTetra{};
 
+    struct DuplicateWatchdog {};
 
     
 
@@ -218,6 +220,8 @@ public:
     virtual Vec3 eval_color(Vec3 p) const = 0;
     virtual Float sample_distance(Ray ray,lm::Float tmin, lm::Float tmax, lm::Rng& rng,lm::Float & weight) const = 0;
     virtual Float eval_transmittance(lm::Ray ray, Float tmin, Float tmax) const = 0;
+    virtual void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI, int bfsLayer)> processor) const = 0;
+    virtual int findTetra(lm::Vec3 pos) const = 0;
 
 };
 
