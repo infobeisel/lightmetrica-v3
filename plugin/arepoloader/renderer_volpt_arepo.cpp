@@ -1169,7 +1169,7 @@ public:
                             for(int i = 0; i < num_knn_queries_; i++) { 
                                 auto queryPos = a + a_d * queryTs[i]; 
                                 int visitedLightCount = 0;
-                                int acceptedBFSLayer = 3;
+                                int acceptedBFSLayer = 10;
 
                                // LM_INFO("knn query {}, expect k {}", i, lightsPerQuery);
                                 //perform bfs search

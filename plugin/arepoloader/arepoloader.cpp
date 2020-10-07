@@ -1388,6 +1388,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         thread_local std::unordered_map<int, bool> alreadyVisited;
         alreadyVisited.clear();//subsequent calls within a thread
+        alreadyVisited.reserve(100); //?!
         int numToVisit = 1; //prepare first iteration
         alreadyVisited[cached.tetraI] = true;
 
