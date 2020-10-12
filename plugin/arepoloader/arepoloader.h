@@ -7,7 +7,7 @@
 //#include "../../../ArepoVTK/arepo/include/mesh/voronoi/voronoi.h"
 #include "voronoi_3db.h" //shit didnt want to include any arepo code here
 
-//#define USE_KNN_EMBREE
+#define USE_KNN_EMBREE
 
 //scaling factors for optical thickness
 #define A_B_A_V_T 1.3034926470588235//1.324
@@ -139,13 +139,15 @@ namespace stats {
     struct EquiDistanceSampleRandomValueVertexIndex {};
     struct RegularDistanceSampleRandomValueVertexIndex {};
 
-    struct RegularContribution;
-    struct RegularRegularPDF;
-    struct RegularEquiPDF;
+    struct RegularContribution{};
+    struct RegularRegularPDF{};
+    struct RegularEquiPDF{};
 
-    struct EquiContribution;
-    struct EquiEquiPDF;
-    struct EquiRegularPDF;
+    struct EquiContribution{};
+    struct EquiEquiPDF{};
+    struct EquiRegularPDF{};
+
+    struct EmissiveContribution{};
 
     struct DistanceSamplesPDFs{};
     //2 distance samples, first one from equiangular, second one from regular 
@@ -182,6 +184,8 @@ struct RaySegmentCDF {
     lm::Float t;
     lm::Float a;
     lm::Float b;
+    lm::Float a_kelv;
+    lm::Float b_kelv;
     int tetraI;
 };
 

@@ -37,7 +37,7 @@ ConfigSet Config;
 
 namespace ArepoLoaderInternals {
 
-    #define DENSITY_CRANKUP 1.0
+    #define DENSITY_CRANKUP 1e-6
     #define REJECTION_SAMPLES_COUNT 10
     #define RAY_SEGMENT_ALLOC 200
 
@@ -510,63 +510,20 @@ namespace ArepoLoaderInternals {
         return inside(c.tmpDets, c.mainDeterminant);
     }
 
-    inline void sampleCachedScalarCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached) {
-        //this method assumes that the ray resides inside the current tetrahedron
-        //therefore it clamps the barycentric coordinates in the b term to 1
-        
+    inline void sampleCachedScalarCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, int quantityIndex = TF_VAL_DENS) {
         auto lambda012_a = cached.baryInvT * ray.d;
         auto lambda012_b = cached.baryInvT * (ray.o - cached.tetraVs[3]);
 
-        auto maxd = glm::max(
-            cached.cornerVals[0][TF_VAL_DENS] ,glm::max(
-            cached.cornerVals[1][TF_VAL_DENS] ,glm::max(
-            cached.cornerVals[2][TF_VAL_DENS] ,
-            cached.cornerVals[3][TF_VAL_DENS] )));
-        
         auto densities = lm::Vec4(
-            cached.cornerVals[0][TF_VAL_DENS] ,
-            cached.cornerVals[1][TF_VAL_DENS] ,
-            cached.cornerVals[2][TF_VAL_DENS] ,
-            cached.cornerVals[3][TF_VAL_DENS] );
-
-       
-
-        //densities *= scale_;
-        //auto lambda012_a = glm::transpose(cached.baryInvT) * lm::Vec3(densities);
-        //lambda012_a = lambda012_a - glm::transpose(cached.baryInvT) * lm::Vec3(densities[3]);
+            cached.cornerVals[0][quantityIndex] ,
+            cached.cornerVals[1][quantityIndex] ,
+            cached.cornerVals[2][quantityIndex] ,
+            cached.cornerVals[3][quantityIndex] );
 
         b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z), densities);
         a = glm::dot( lambda012_a, lm::Vec3(densities));
         a +=  densities[3] * (- lambda012_a.x - lambda012_a.y - lambda012_a.z);
-        
-        //a = 0.001;
-        //b = 0.000001;
 
-        //LM_INFO("{} and {}",a,b);
-        if(b<=0.0) {
-           // LM_ERROR("b is non positive?!");
-           // LM_INFO("b is non positive?!");
-
-             if(densities.x <= 0.0 &&
-        densities.y <= 0.0 &&
-        densities.z <= 0.0 && 
-        densities.w <= 0.0 ) {
-          //          LM_INFO("densities dont have positive value ?!");
-            
-           //     LM_INFO("dens {},{},{},{}",cached.cornerVals[0][TF_VAL_DENS],
-           ///     cached.cornerVals[1][TF_VAL_DENS],
-             //   cached.cornerVals[2][TF_VAL_DENS],
-             //   cached.cornerVals[3][TF_VAL_DENS]);
-            
-        }
-
-        }
-        //if(a < 0.0) {
-        //    LM_ERROR("a is negative?!");
-        //    LM_INFO("a is negative?!");
-        //}
-        
-        
     }
 
 
@@ -781,12 +738,14 @@ namespace ArepoLoaderInternals {
             int num = arepoMeshRef->getDP()[ cachedS.tetraInds[i]].index;
 #ifdef MOCK_AREPO
             cachedS.cornerVals[i][TF_VAL_DENS] = arepoMeshRef->getDensity(num);
+            cachedS.cornerVals[i][TF_VAL_TEMP] = 4000.0;
 #else
             if(num >= 0) {
                 int hydroIndex = getCorrectedHydroInd(num);
                 
                 if(hydroIndex > -1 && num  < NumGas) {
-                    addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP/MODEL_SCALE);//lengths[minDistIndex] / totalD );
+                    //addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP/MODEL_SCALE);//lengths[minDistIndex] / totalD );
+                    addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP);//lengths[minDistIndex] / totalD );
                 }  
             }
 #endif
@@ -1543,6 +1502,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 segments[0].t = tmin;
                 segments[0].a = 0.0;
                 segments[0].b = 0.0;
+                segments[0].a_kelv = 0.0;
+                segments[0].b_kelv = 0.0;
                 segments[0].tetraI = cached.tetraI; //smells ugly, but is used for performance reasons only (see renderer_volpt_arepo, l. 1281), does not affect correctness
                 segmentCount++;
 
@@ -1564,12 +1525,16 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                         toFill.t = tmax;
                         toFill.a = 0;
                         toFill.b = 0;
+                        toFill.a_kelv = 0;
+                        toFill.b_kelv = 0;
                         toFill.tetraI = info.tetraI; //last valid tetra
                     } else { //currently we aren't in any tetra, but this will change (and potentially we travelled through tetras before too)
                         toFill.localcdf = 0.0;
                         toFill.t = t;
                         toFill.a = 0;
                         toFill.b = 0;
+                        toFill.a_kelv = 0;
+                        toFill.b_kelv = 0;
                         toFill.tetraI = info.tetraI; //upcoming valid tetra
                         ret = true;
                         totalT += toFill.t;
@@ -1582,10 +1547,15 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 } else {
                     lm::Float a,b;
                     sampleCachedScalarCoefficients(currentRay,  a, b, info);
+                    lm::Float a_temp, b_temp;
+                    sampleCachedScalarCoefficients(currentRay,  a_temp, b_temp, info, TF_VAL_TEMP);
                     toFill.localcdf = sampleCDF( t, a, b);
                     toFill.t = t;
                     toFill.a = a;
                     toFill.b = b;
+                    toFill.a_kelv = a_temp;
+                    toFill.b_kelv = b_temp;
+                        
                     toFill.tetraI = info.tetraI;
                     //only count segments that will participate in scatter.
                     if(toFill.localcdf > std::numeric_limits<lm::Float>::epsilon())

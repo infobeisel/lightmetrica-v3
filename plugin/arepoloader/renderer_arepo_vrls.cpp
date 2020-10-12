@@ -18,6 +18,9 @@
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
+        
+
+
 
 
 class Renderer_Arepo_VRL final : public Renderer {
@@ -107,6 +110,9 @@ public:
         film_->clear();
         const auto size = film_->size();
         timer::ScopedTimer st;
+
+
+      
 
 
         //the scheduler gives one sample per light

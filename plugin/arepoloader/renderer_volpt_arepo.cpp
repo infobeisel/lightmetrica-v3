@@ -21,6 +21,211 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
 
 
+//from 200 to 40000 in steps of 200.
+static const Vec3 blackBodyCIEs[199] = 
+{{1.26427583e-50,2.05026700e-51,4.35619247e-60}
+,{1.54858470e-29,5.29443495e-30,1.32918710e-34}
+,{6.93284707e-22,2.76749913e-22,8.96796945e-26}
+,{6.94430507e-18,3.12903671e-18,4.97602273e-21}
+,{1.97606340e-15,9.95025707e-16,5.33968163e-18}
+,{9.00083832e-14,4.99691969e-14,6.64752656e-16}
+,{1.41331327e-12,8.53160132e-13,2.24566394e-14}
+,{1.13178168e-11,7.33639893e-12,3.26356073e-13}
+,{5.76373920e-11,3.96882168e-11,2.66962191e-12}
+,{2.13386836e-10,1.54668474e-10,1.45164246e-11}
+,{6.25770747e-10,4.73816178e-10,5.84610553e-11}
+,{1.53970745e-09,1.21010071e-09,1.87605967e-10}
+,{3.30842038e-09,2.68456531e-09,5.04956431e-10}
+,{6.38894076e-09,5.32853304e-09,1.18285023e-09}
+,{1.13249238e-08,9.67171734e-09,2.47813619e-09}
+,{1.87214615e-08,1.63198439e-08,4.74005344e-09}
+,{2.92168021e-08,2.59266091e-08,8.40966379e-09}
+,{4.34549303e-08,3.91644720e-08,1.40114320e-08}
+,{6.20616020e-08,5.66976596e-08,2.21387006e-08}
+,{8.56251649e-08,7.91594547e-08,3.34352976e-08}
+,{1.14682516e-07,1.07134697e-07,4.85754892e-08}
+,{1.49709918e-07,1.41147575e-07,6.82441383e-08}
+,{1.91118031e-07,1.81654259e-07,9.31184476e-08}
+,{2.39250379e-07,2.29039626e-07,1.23852167e-07}
+,{2.94384449e-07,2.83617251e-07,1.61062715e-07}
+,{3.56734704e-07,3.45631836e-07,2.05321319e-07}
+,{4.26456878e-07,4.15263353e-07,2.57146047e-07}
+,{5.03653060e-07,4.92632285e-07,3.16997458e-07}
+,{5.88377152e-07,5.77805471e-07,3.85276491e-07}
+,{6.80640436e-07,6.70802183e-07,4.62324216e-07}
+,{7.80417013e-07,7.71600159e-07,5.48423061e-07}
+,{8.87648979e-07,8.80141391e-07,6.43799158e-07}
+,{1.00225126e-06,9.96337560e-07,7.48625498e-07}
+,{1.12411603e-06,1.12007502e-06,8.63025628e-07}
+,{1.25311670e-06,1.25121933e-06,9.87077671e-07}
+,{1.38911151e-06,1.38961927e-06,1.12081850e-06}
+,{1.53194668e-06,1.53511043e-06,1.26424791e-06}
+,{1.68145917e-06,1.68751831e-06,1.41733273e-06}
+,{1.83747909e-06,1.84666105e-06,1.58001071e-06}
+,{1.99983179e-06,2.01235171e-06,1.75219428e-06}
+,{2.16833962e-06,2.18440029e-06,1.93377398e-06}
+,{2.34282344e-06,2.36261541e-06,2.12462166e-06}
+,{2.52310393e-06,2.54680566e-06,2.32459342e-06}
+,{2.70900262e-06,2.73678083e-06,2.53353222e-06}
+,{2.90034277e-06,2.93235284e-06,2.75127034e-06}
+,{3.09695010e-06,3.13333649e-06,2.97763146e-06}
+,{3.29865342e-06,3.33955015e-06,3.21243256e-06}
+,{3.50528501e-06,3.55081618e-06,3.45548566e-06}
+,{3.71668106e-06,3.76696135e-06,3.70659923e-06}
+,{3.93268191e-06,3.98781711e-06,3.96557951e-06}
+,{4.15313226e-06,4.21321978e-06,4.23223167e-06}
+,{4.37788133e-06,4.44301071e-06,4.50636073e-06}
+,{4.60678290e-06,4.67703631e-06,4.78777240e-06}
+,{4.83969541e-06,4.91514809e-06,5.07627384e-06}
+,{5.07648193e-06,5.15720268e-06,5.37167422e-06}
+,{5.31701014e-06,5.40306175e-06,5.67378522e-06}
+,{5.56115230e-06,5.65259196e-06,5.98242149e-06}
+,{5.80878515e-06,5.90566483e-06,6.29740099e-06}
+,{6.05978986e-06,6.16215671e-06,6.61854521e-06}
+,{6.31405190e-06,6.42194857e-06,6.94567947e-06}
+,{6.57146097e-06,6.68492594e-06,7.27863307e-06}
+,{6.83191084e-06,6.95097874e-06,7.61723936e-06}
+,{7.09529927e-06,7.22000116e-06,7.96133592e-06}
+,{7.36152785e-06,7.49189150e-06,8.31076455e-06}
+,{7.63050192e-06,7.76655203e-06,8.66537132e-06}
+,{7.90213039e-06,8.04388885e-06,9.02500658e-06}
+,{8.17632565e-06,8.32381176e-06,9.38952494e-06}
+,{8.45300345e-06,8.60623410e-06,9.75878523e-06}
+,{8.73208274e-06,8.89107262e-06,1.01326505e-05}
+,{9.01348558e-06,9.17824733e-06,1.05109878e-05}
+,{9.29713700e-06,9.46768140e-06,1.08936683e-05}
+,{9.58296491e-06,9.75930101e-06,1.12805673e-05}
+,{9.87089997e-06,1.00530352e-05,1.16715637e-05}
+,{1.01608754e-05,1.03488159e-05,1.20665403e-05}
+,{1.04528272e-05,1.06465775e-05,1.24653838e-05}
+,{1.07466935e-05,1.09462570e-05,1.28679843e-05}
+,{1.10424148e-05,1.12477940e-05,1.32742355e-05}
+,{1.13399342e-05,1.15511302e-05,1.36840344e-05}
+,{1.16391964e-05,1.18562097e-05,1.40972814e-05}
+,{1.19401486e-05,1.21629786e-05,1.45138802e-05}
+,{1.22427398e-05,1.24713852e-05,1.49337375e-05}
+,{1.25469208e-05,1.27813796e-05,1.53567631e-05}
+,{1.28526443e-05,1.30929138e-05,1.57828696e-05}
+,{1.31598649e-05,1.34059419e-05,1.62119727e-05}
+,{1.34685385e-05,1.37204192e-05,1.66439904e-05}
+,{1.37786230e-05,1.40363030e-05,1.70788438e-05}
+,{1.40900775e-05,1.43535521e-05,1.75164563e-05}
+,{1.44028627e-05,1.46721268e-05,1.79567538e-05}
+,{1.47169408e-05,1.49919889e-05,1.83996648e-05}
+,{1.50322752e-05,1.53131014e-05,1.88451197e-05}
+,{1.53488306e-05,1.56354289e-05,1.92930515e-05}
+,{1.56665730e-05,1.59589370e-05,1.97433952e-05}
+,{1.59854696e-05,1.62835928e-05,2.01960878e-05}
+,{1.63054888e-05,1.66093642e-05,2.06510685e-05}
+,{1.66265999e-05,1.69362206e-05,2.11082783e-05}
+,{1.69487734e-05,1.72641323e-05,2.15676601e-05}
+,{1.72719807e-05,1.75930706e-05,2.20291585e-05}
+,{1.75961944e-05,1.79230078e-05,2.24927199e-05}
+,{1.79213878e-05,1.82539172e-05,2.29582926e-05}
+,{1.82475351e-05,1.85857729e-05,2.34258261e-05}
+,{1.85746114e-05,1.89185501e-05,2.38952717e-05}
+,{1.89025928e-05,1.92522247e-05,2.43665823e-05}
+,{1.92314560e-05,1.95867732e-05,2.48397120e-05}
+,{1.95611783e-05,1.99221733e-05,2.53146165e-05}
+,{1.98917382e-05,2.02584030e-05,2.57912527e-05}
+,{2.02231145e-05,2.05954414e-05,2.62695790e-05}
+,{2.05552868e-05,2.09332680e-05,2.67495549e-05}
+,{2.08882354e-05,2.12718631e-05,2.72311410e-05}
+,{2.12219412e-05,2.16112076e-05,2.77142995e-05}
+,{2.15563856e-05,2.19512831e-05,2.81989933e-05}
+,{2.18915508e-05,2.22920715e-05,2.86851865e-05}
+,{2.22274193e-05,2.26335556e-05,2.91728444e-05}
+,{2.25639743e-05,2.29757186e-05,2.96619333e-05}
+,{2.29011996e-05,2.33185441e-05,3.01524202e-05}
+,{2.32390792e-05,2.36620165e-05,3.06442735e-05}
+,{2.35775978e-05,2.40061204e-05,3.11374621e-05}
+,{2.39167406e-05,2.43508410e-05,3.16319560e-05}
+,{2.42564932e-05,2.46961640e-05,3.21277262e-05}
+,{2.45968414e-05,2.50420753e-05,3.26247441e-05}
+,{2.49377718e-05,2.53885614e-05,3.31229823e-05}
+,{2.52792711e-05,2.57356093e-05,3.36224140e-05}
+,{2.56213265e-05,2.60832062e-05,3.41230132e-05}
+,{2.59639257e-05,2.64313397e-05,3.46247546e-05}
+,{2.63070564e-05,2.67799978e-05,3.51276135e-05}
+,{2.66507071e-05,2.71291689e-05,3.56315661e-05}
+,{2.69948663e-05,2.74788417e-05,3.61365891e-05}
+,{2.73395229e-05,2.78290050e-05,3.66426598e-05}
+,{2.76846662e-05,2.81796484e-05,3.71497563e-05}
+,{2.80302857e-05,2.85307613e-05,3.76578570e-05}
+,{2.83763713e-05,2.88823337e-05,3.81669412e-05}
+,{2.87229131e-05,2.92343558e-05,3.86769886e-05}
+,{2.90699014e-05,2.95868180e-05,3.91879793e-05}
+,{2.94173269e-05,2.99397110e-05,3.96998941e-05}
+,{2.97651805e-05,3.02930259e-05,4.02127144e-05}
+,{3.01134534e-05,3.06467539e-05,4.07264218e-05}
+,{3.04621370e-05,3.10008864e-05,4.12409985e-05}
+,{3.08112227e-05,3.13554150e-05,4.17564273e-05}
+,{3.11607026e-05,3.17103319e-05,4.22726913e-05}
+,{3.15105687e-05,3.20656289e-05,4.27897741e-05}
+,{3.18608131e-05,3.24212986e-05,4.33076595e-05}
+,{3.22114285e-05,3.27773333e-05,4.38263321e-05}
+,{3.25624073e-05,3.31337260e-05,4.43457765e-05}
+,{3.29137426e-05,3.34904694e-05,4.48659779e-05}
+,{3.32654273e-05,3.38475566e-05,4.53869218e-05}
+,{3.36174546e-05,3.42049811e-05,4.59085942e-05}
+,{3.39698179e-05,3.45627361e-05,4.64309812e-05}
+,{3.43225107e-05,3.49208154e-05,4.69540694e-05}
+,{3.46755268e-05,3.52792126e-05,4.74778457e-05}
+,{3.50288601e-05,3.56379218e-05,4.80022973e-05}
+,{3.53825044e-05,3.59969370e-05,4.85274117e-05}
+,{3.57364541e-05,3.63562525e-05,4.90531768e-05}
+,{3.60907034e-05,3.67158626e-05,4.95795806e-05}
+,{3.64452468e-05,3.70757618e-05,5.01066115e-05}
+,{3.68000788e-05,3.74359448e-05,5.06342582e-05}
+,{3.71551941e-05,3.77964063e-05,5.11625096e-05}
+,{3.75105876e-05,3.81571413e-05,5.16913548e-05}
+,{3.78662543e-05,3.85181448e-05,5.22207835e-05}
+,{3.82221891e-05,3.88794119e-05,5.27507851e-05}
+,{3.85783874e-05,3.92409378e-05,5.32813496e-05}
+,{3.89348445e-05,3.96027180e-05,5.38124672e-05}
+,{3.92915556e-05,3.99647479e-05,5.43441283e-05}
+,{3.96485165e-05,4.03270231e-05,5.48763234e-05}
+,{4.00057226e-05,4.06895393e-05,5.54090434e-05}
+,{4.03631697e-05,4.10522922e-05,5.59422791e-05}
+,{4.07208537e-05,4.14152778e-05,5.64760220e-05}
+,{4.10787704e-05,4.17784919e-05,5.70102633e-05}
+,{4.14369159e-05,4.21419308e-05,5.75449947e-05}
+,{4.17952863e-05,4.25055905e-05,5.80802078e-05}
+,{4.21538778e-05,4.28694673e-05,5.86158948e-05}
+,{4.25126865e-05,4.32335574e-05,5.91520477e-05}
+,{4.28717090e-05,4.35978574e-05,5.96886588e-05}
+,{4.32309415e-05,4.39623637e-05,6.02257207e-05}
+,{4.35903807e-05,4.43270728e-05,6.07632258e-05}
+,{4.39500231e-05,4.46919814e-05,6.13011671e-05}
+,{4.43098654e-05,4.50570862e-05,6.18395374e-05}
+,{4.46699043e-05,4.54223840e-05,6.23783298e-05}
+,{4.50301366e-05,4.57878716e-05,6.29175376e-05}
+,{4.53905592e-05,4.61535459e-05,6.34571542e-05}
+,{4.57511690e-05,4.65194040e-05,6.39971731e-05}
+,{4.61119631e-05,4.68854429e-05,6.45375879e-05}
+,{4.64729384e-05,4.72516597e-05,6.50783924e-05}
+,{4.68340922e-05,4.76180515e-05,6.56195804e-05}
+,{4.71954216e-05,4.79846157e-05,6.61611462e-05}
+,{4.75569239e-05,4.83513494e-05,6.67030837e-05}
+,{4.79185963e-05,4.87182500e-05,6.72453873e-05}
+,{4.82804362e-05,4.90853150e-05,6.77880513e-05}
+,{4.86424410e-05,4.94525418e-05,6.83310703e-05}
+,{4.90046082e-05,4.98199278e-05,6.88744389e-05}
+,{4.93669354e-05,5.01874706e-05,6.94181517e-05}
+,{4.97294200e-05,5.05551680e-05,6.99622037e-05}
+,{5.00920597e-05,5.09230174e-05,7.05065897e-05}
+,{5.04548521e-05,5.12910165e-05,7.10513047e-05}
+,{5.08177950e-05,5.16591633e-05,7.15963439e-05}
+,{5.11808861e-05,5.20274553e-05,7.21417025e-05}
+,{5.15441232e-05,5.23958905e-05,7.26873758e-05}
+,{5.19075041e-05,5.27644668e-05,7.32333591e-05}
+,{5.22710268e-05,5.31331820e-05,7.37796481e-05}
+,{5.26346891e-05,5.35020341e-05,7.43262382e-05}
+,{5.29984890e-05,5.38710211e-05,7.48731251e-05}};
+
+
+
+
 void to_json(lm::Json& j, const LightToCameraRaySegmentCDF& p) {
     j = {
         {"weight" , {
@@ -179,6 +384,11 @@ public:
             stats::getRef<stats::EquiRegularPDF,int,std::vector<Float>>();
             //equi_of_regular_pdfs.clear();
 
+            auto & emissiveContributions = 
+            stats::getRef<stats::EmissiveContribution,int,std::vector<Vec3>>();
+            //equiContributions.clear();
+            
+
 
 
             int num_pointlights = scene_->num_lights(); 
@@ -187,6 +397,13 @@ public:
 
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
+            
+
+              //to sRGB
+            auto m0 = Vec3(3.2404542,-0.9692660,0.0556434);     
+            auto m1 = Vec3( -1.5371385, 1.8760108,-0.2040259);  
+            auto m2 = Vec3(  -0.4985314, 0.0415560, 1.0572252);
+            auto XYZ_TO_sRGB = Mat3(m0,m1,m2);
             
              //LM_INFO("current sample id : {}", std::to_string(stats::get<stats::CurrentSampleId,long long>(0)));
             //
@@ -239,8 +456,10 @@ public:
             //how many contributions are there, per path length?
             std::vector<int> contributionIndex_equi = {};
             std::vector<int> contributionIndex_regular = {};
+            std::vector<int> contributionIndex_emissive = {};
             contributionIndex_equi.resize(max_verts_);
             contributionIndex_regular.resize(max_verts_);
+            contributionIndex_emissive.resize(max_verts_);
             
             
             Vec2 raster_pos{};
@@ -259,6 +478,7 @@ public:
                 for(int i = 0; i < max_verts_;i++) { 
                     contributionIndex_equi[i] = 0; // important : path of length 0. gets index, but is ignored later.
                     contributionIndex_regular[i] = 0;
+                    contributionIndex_emissive[i] = 0;
                 }
 
               
@@ -949,7 +1169,6 @@ public:
                                 auto zetaTransmittance = 1.0;
                                 auto zetaT = totalT * zeta / totalTau; //will get replaced in loop
                                 auto zetaAccCdf = 0.0;
-                                //warp Zeta according nonzero particle density
                                 {
                                     auto travelT = 0.0;
                                     auto effTravelT = 0.0;
@@ -1484,6 +1703,9 @@ public:
                                 int tetraILandedIn_equi = -1;
                                 auto cam_scatter_pdf_regular_of_equi = 1.0;
                                 bool foundEqui = false;
+
+                                Vec3 accumulatedEmission = Vec3(0);
+
                                 for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                     auto & tetrasegment =  cameraSegments[segmentI];
                                     if(!foundEqui && t_equi < travelT + tetrasegment.t) { //found sample point
@@ -1503,8 +1725,27 @@ public:
 
                                         tetraILandedIn_equi = tetrasegment.tetraI;
                                         foundEqui = true;
-                                        break;
+                                        //break;
                                     }
+
+                                    auto fromTemp = tetrasegment.b_kelv;
+                                    auto toTemp = tetrasegment.b_kelv + tetrasegment.t * tetrasegment.a_kelv;
+                                    Vec3 fromrgb = Vec3(0);
+                                    Vec3 torgb = Vec3(0);
+                                        //LM_INFO("from temp {}",fromTemp);
+                                        //LM_INFO("to temp {}",toTemp);
+                                    if(fromTemp > 200.0) {
+                                        auto lookupI = static_cast<int>((200.0 * (fromTemp - 200.0) / (40000.0 - 200.0)));
+                                        fromrgb = tetrasegment.b * XYZ_TO_sRGB * blackBodyCIEs[glm::min(199,glm::max(0,lookupI))];
+                                       // LM_INFO("from temp {}",fromTemp);
+                                    }
+                                    if(toTemp > 200.0) {
+                                        auto lookupI = static_cast<int>((200.0 * (toTemp - 200.0) / (40000.0 - 200.0)));
+                                        torgb =  (tetrasegment.b + tetrasegment.a * tetrasegment.t) * XYZ_TO_sRGB * blackBodyCIEs[glm::min(199,glm::max(0,lookupI))];
+                                        //LM_INFO("temp {},{},{}",torgb.x,torgb.y,torgb.z);
+                                    }
+                                    accumulatedEmission += 10000.0 * (0.5*torgb * tetrasegment.t *  tetrasegment.t + fromrgb * tetrasegment.t);
+                                    
                                   
 
                                     travelT += tetrasegment.t;
@@ -1643,22 +1884,22 @@ public:
                                     segment_pdf_equi = 0.0;
                                     segment_pdf_equi_of_regular = 0.0;
                                 }
-                                    if(contributionIndex_equi[num_verts] >= equiContributions[num_verts].size()) {
-                                        equiContributions[num_verts].
-                                        push_back(segment_contribution_equi );
-                                        equipdfs[num_verts].
-                                        push_back( segment_pdf_equi  );
-                                        equi_of_regular_pdfs[num_verts].
-                                        push_back(segment_pdf_equi_of_regular);
-                                        
-                                    } else {
-                                        equiContributions[num_verts][contributionIndex_equi[num_verts]] = segment_contribution_equi;
-                                        equipdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf_equi ;
-                                        equi_of_regular_pdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf_equi_of_regular;
-                                    }
-                                    currentContribution += segment_contribution_equi;
-                                    currentPdf *= segment_pdf_equi;  
-                                    contributionIndex_equi[num_verts]++;
+                                if(contributionIndex_equi[num_verts] >= equiContributions[num_verts].size()) {
+                                    equiContributions[num_verts].
+                                    push_back(segment_contribution_equi );
+                                    equipdfs[num_verts].
+                                    push_back( segment_pdf_equi  );
+                                    equi_of_regular_pdfs[num_verts].
+                                    push_back(segment_pdf_equi_of_regular);
+                                    
+                                } else {
+                                    equiContributions[num_verts][contributionIndex_equi[num_verts]] = segment_contribution_equi;
+                                    equipdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf_equi ;
+                                    equi_of_regular_pdfs[num_verts][contributionIndex_equi[num_verts]] = segment_pdf_equi_of_regular;
+                                }
+                                currentContribution += segment_contribution_equi;
+                                currentPdf *= segment_pdf_equi;  
+                                contributionIndex_equi[num_verts]++;
                                 
 
 
@@ -1681,13 +1922,23 @@ public:
                                     regularpdfs[num_verts][contributionIndex_regular[num_verts]] = segment_pdf_regular ;
                                     regular_of_equi_pdfs[num_verts][contributionIndex_regular[num_verts]] = segment_pdf_regular_of_equi;
                                 }
+
+
                                 currentContribution += segment_contribution_regular;
                                 currentPdf *= segment_pdf_regular;  
                                 contributionIndex_regular[num_verts]++;
                                 
 
-
+                                if(contributionIndex_emissive[num_verts] >= emissiveContributions[num_verts].size()) {
+                                    emissiveContributions[num_verts].
+                                    push_back(accumulatedEmission);
+                                    
+                                } else {
+                                    emissiveContributions[num_verts][contributionIndex_emissive[num_verts]] = accumulatedEmission;
+                                }
                                 
+                                contributionIndex_emissive[num_verts]++;
+
 
 
                             
@@ -1932,6 +2183,30 @@ public:
                 film_->splat(raster_pos, c/ static_cast<Float>(spp_));
             }
 
+
+            {//emissive
+                auto emissiveContr = Vec3(0);
+                for(int i = 0; i < max_verts_; i++) { //for paths of all lengths
+                    auto & cs = stats::getRef<stats::EmissiveContribution,int,std::vector<Vec3>>(i);
+                    auto pathsWithLengtI = contributionIndex_emissive[i];
+                    Vec3 ci = Vec3(0);
+                    Float js = 0.0;
+                    //for(int j = 0; j < cs.size(); j++) { //for pahts with length i
+                    for(int j = 0; j < pathsWithLengtI; j++) { //for pahts with length i
+                        //LM_INFO("path length {}, sample {} , pdf ,  contr {},{},{}", pathsWithLengtI,j,cs[j].x,cs[j].y,cs[j].z );
+                        ci += cs[j] ;
+                        js += 1.0;
+                    }
+                    if(js != 0.0) {
+                        ci /= static_cast<Float>(js); //divided by how many paths
+                    }
+                    emissiveContr += ci;
+                }
+                //contributionEquiStrategy /= static_cast<Float>(EquiMeasurementContributions.size()); //divided by how many paths
+                film_->splat(raster_pos, emissiveContr / static_cast<Float>(spp_));
+            }
+
+            
 
             /*for(int i = 0; i < max_verts_; i++) { //for paths of all lengths
                 auto & cs = stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>(i);
