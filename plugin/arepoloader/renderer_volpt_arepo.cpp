@@ -673,13 +673,16 @@ public:
                             }
 
 #ifdef USE_KNN_EMBREE
+			    point_knns_wo_duplicates.clear();
+			    vrl_knns_wo_duplicates.clear();
+			    point_knn_res.k = glm::max(1,(int)point_knn_res.k / num_knn_queries_);
                             for(int i = 0; i < num_knn_queries_; i++) {
                                 auto queryPos = a + a_d * queryTs[i]; // point based knn is potentially wrong, need ray based knn!!!
 
-                                vrl_knn_res.knn = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+                                vrl_knn_res.knn = std::priority_queue<Neighbour, std::vector<Neighbour>>() ;
                                 //vrl_knn_res.visited.clear();
 
-                                point_knn_res.knn = std::priority_queue<Neighbour, std::vector<Neighbour>>();
+                                point_knn_res.knn = std::priority_queue<Neighbour, std::vector<Neighbour>>()  ;
                                 //point_knn_res.visited.clear();
 
                                 stats::set<stats::KNNLineComp,int,std::pair<Vec3,Vec3>>(0, 
@@ -693,37 +696,46 @@ public:
                                 {
                                     vrl_knns.push(vrl_knn_res.knn.top());
                                     vrl_knn_res.knn.pop();
-                                    if(vrl_knns.size() > vrl_knn_res.k) {
-                                        vrl_knns.pop();
-                                    }
+                                    //if(vrl_knns.size() > vrl_knn_res.k) {
+                                     //   vrl_knns.pop();
+                                    //}
                                 }
                                 if(sample_lights_)
                                     pointLightAccel_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
                                         std::numeric_limits<Float>::max(), point_knn_res );
-
-                                while (!point_knn_res.knn.empty())
+				int totalCount = 0;
+				//LM_INFO("found {} lights, need  {} in total", point_knn_res.knn.size(), point_knn_res.k * num_knn_queries_);
+                                while (sample_lights_ && !point_knn_res.knn.empty() && totalCount < point_knn_res.k)
                                 {
-                                    point_knns.push(point_knn_res.knn.top());
+				    auto & n = point_knn_res.knn.top();
+                                    point_knns_wo_duplicates[n.nodeIndex] = n;
+                                    //point_knns.push(point_knn_res.knn.top());
                                     point_knn_res.knn.pop();
-                                    if(point_knns.size() > point_knn_res.k) {
-                                        point_knns.pop();
-                                    }
+				    totalCount++;
+                                   // if(point_knns.size() > point_knn_res.k) {
+                                   //     point_knns.pop();
+                                    //}
                                 }
                             }
-
+			    //LM_INFO("found {} lights in total", point_knns_wo_duplicates.size());
                             //remove doubles
-                            point_knns_wo_duplicates.clear();
-                            while(!point_knns.empty()) {
+                            
+			/* fix VRLs
+	int totalCount = 0; 
+                            while(!point_knns.empty() && totalCount < point_knn_res.k) {
                                 auto & n = point_knns.top();
                                 point_knns_wo_duplicates[n.nodeIndex] = n;
                                 point_knns.pop();
+				totalCount++;
                             }
+				totalCount = 0;
                             vrl_knns_wo_duplicates.clear();
-                            while(!vrl_knns.empty()) {
+                            while(!vrl_knns.empty() && totalCount < vrl_knn_res.k) {
                                 auto & n = vrl_knns.top();
                                 vrl_knns_wo_duplicates[n.nodeIndex] = n;
                                 vrl_knns.pop();
-                            }
+				totalCount++;
+                            }*/
 
 
                             //now have w nearest neighbours at hand!
