@@ -71,6 +71,7 @@ namespace ArepoLoaderInternals {
 
         virtual BBox WorldBound() override {return ref->WorldBound();}
         virtual lm::Float getDensity(int index) {LM_ERROR("getDensity: not implemented");return -1;}
+        virtual lm::Float getTemperature(int index) {LM_ERROR("getTemperature: not implemented");return -1;}
         virtual lm::Float max_density() {LM_ERROR("max_density: not implemented");return -1;}
 
     
@@ -79,6 +80,7 @@ namespace ArepoLoaderInternals {
         std::vector<tetra> DT;
         std::vector<point> DP;
         std::vector<lm::Float> densities;
+        std::vector<lm::Float> temperatures;
         int Ndt;
         int Ndp;
 
@@ -105,9 +107,11 @@ namespace ArepoLoaderInternals {
         //    albedo_ = json::value<Vec3>(prop, "albedo");
         
         //}
-        ArepoMeshMock()  {
+        ArepoMeshMock(lm::Json const & prop)  {
 
-             
+            densities = lm::json::value<std::vector<lm::Float>>(prop,"densities");
+            temperatures = lm::json::value<std::vector<lm::Float>>(prop,"temperatures");
+
 
             /*
             point A;A.x=-1;A.y=1;A.z=1;A.index=0;
@@ -301,35 +305,35 @@ namespace ArepoLoaderInternals {
 
             p.x = -10;p.y = 10;p.z = 10;p.index = 0;
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
             p.x = 10;p.y = 10;p.z = 10;p.index=1;
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
             p.x = -10;p.y = -10;p.z = 10;p.index=2;
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
             p.x = 10;p.y = -10;p.z = 10;p.index=3;
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
             p.x = -10;p.y = 10;p.z = -10;p.index=4;
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
             p.x = 10;p.y = 10;p.z = -10;p.index = 5; //F
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
             p.x = -10;p.y = -10;p.z = -10;p.index=6;
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
             p.x = 10;p.y = -10;p.z = -10;p.index=7;
             DP.push_back(p);
-            densities.push_back(0.000000003);
+            //densities.push_back(0.000000003);
 
 
            
@@ -381,6 +385,9 @@ namespace ArepoLoaderInternals {
             //    LM_INFO("density {}: {}, ask {} ",i, densities[i], index);
            // }
             return densities[index] / MODEL_SCALE;
+        }
+        virtual lm::Float getTemperature(int index) {
+            return temperatures[index] / MODEL_SCALE;
         }
 
         virtual lm::Float max_density() override  {
@@ -738,7 +745,7 @@ namespace ArepoLoaderInternals {
             int num = arepoMeshRef->getDP()[ cachedS.tetraInds[i]].index;
 #ifdef MOCK_AREPO
             cachedS.cornerVals[i][TF_VAL_DENS] = arepoMeshRef->getDensity(num);
-            cachedS.cornerVals[i][TF_VAL_TEMP] = 4000.0;
+            cachedS.cornerVals[i][TF_VAL_TEMP] = arepoMeshRef->getTemperature(num);
 #else
             if(num >= 0) {
                 int hydroIndex = getCorrectedHydroInd(num);
@@ -1102,7 +1109,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
         //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
 #ifdef MOCK_AREPO
-        arepoMesh = std::make_unique<ArepoMeshMock>();
+        arepoMesh = std::make_unique<ArepoMeshMock>(prop);
         arepoMeshRef = arepoMesh.get();
         auto arepoBound = arepoMesh->WorldBound();
 
