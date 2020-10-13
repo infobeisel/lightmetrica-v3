@@ -70,6 +70,8 @@ namespace ArepoLoaderInternals {
 
         virtual BBox WorldBound() = 0;
         virtual lm::Float getDensity(int index) = 0;
+        virtual lm::Float getTemperature(int index) = 0;
+
         virtual lm::Float max_density() = 0;
      };
 }
