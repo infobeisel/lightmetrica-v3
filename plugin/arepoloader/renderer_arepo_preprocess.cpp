@@ -242,13 +242,25 @@ public:
 
                 Vec3 starpos = star.position;
                 Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
+                
+                glm::tmat4x3<lm::Float> pVs;
+                connectP(corners,starpos,pVs);
+                lm::Vec4 dets;
+                computeDeterminants(pVs,dets);
+                lm::Float mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
+                bool isInside = inside(dets, mainDeterminant);
+                //smallest distance to tetra ? well something simila..?
+                auto sth = glm::abs(mainDeterminant / (glm::abs(dets[0]) + glm::abs(dets[1]) + glm::abs(dets[2]) + glm::abs(dets[3])));
+                
                 //calculate tetra's minimum distance to star
-                auto d = glm::distance2(corners[0],starpos);
-                d = glm::min(d, glm::distance2(corners[1],starpos));
-                d = glm::min(d, glm::distance2(corners[2],starpos));
-                d = glm::min(d, glm::distance2(corners[3],starpos));
+                //auto d = glm::distance2(corners[0],starpos);
+                //d = glm::min(d, glm::distance2(corners[1],starpos));
+                //d = glm::min(d, glm::distance2(corners[2],starpos));
+                //d = glm::min(d, glm::distance2(corners[3],starpos));
 
-                bool comp = (starintens / d) > impact_threshold_;
+                //bool comp = (starintens / d) > impact_threshold_;
+
+                bool comp = isInside || (sth < impact_threshold_);
 
                 if(comp) {
                     stats::update<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>(
