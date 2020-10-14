@@ -356,7 +356,7 @@ public:
             auto & tetraIToLightSegments =  lm::stats::getGlobalRefUnsafe<lm::stats::VRL,lm::stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>()[0]; //for the moment everything is stored in vector 0
             int num_vrls = tetraIToLightSegments.size();
 
-            auto & tetraToPointLights = stats::getGlobalRefUnsafe<lm::stats::LightsInTetra,lm::stats::TetraIndex,std::vector<StarSource>>();
+            auto & tetraToPointLights = stats::getGlobalRefUnsafe<lm::stats::LightsInTetra,lm::stats::TetraIndex,std::deque<StarSource>>();
             /*for(auto p : tetraToPointLights)  {
                 for(auto v : p.second)  
                 LM_INFO("tetra {}, light {}",p.first,v);
