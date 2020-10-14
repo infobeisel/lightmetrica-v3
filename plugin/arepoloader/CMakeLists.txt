@@ -6,7 +6,7 @@ set (CMAKE_C_FLAGS -DH5_USE_110_API)
 set( CMAKE_BUILD_TYPE Release)
 #set( CMAKE_BUILD_TYPE Debug)
 
-add_compile_options(-O2)
+add_compile_options(-O3)
 #add_compile_options(-g)
 #placed findGMP.cmake in this directory...
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR} )#${PROJECT_SOURCE_DIR}/../../openvdb/cmake/)
@@ -26,7 +26,7 @@ message(STATUS "GSL package was found: '${GSL_INCLUDE_DIRS}','${GSL_LIBRARIES}'"
 message(STATUS "GMP package was found: '${GMP_INCLUDES}','${GMP_LIBRARIES}'")
 
 
-add_library(arepoloader SHARED "pluecker.h" "statstags.h" "arepoloader.h" "raytetrapluecker.cpp" "arepoloader.cpp" "mesh_arepo.cpp" "medium_het_arepo.cpp" "renderer_volpt_arepo.cpp" "renderer_arepo_vrls.cpp" "renderer_arepo_preprocess.cpp" "lightscene.cpp")
+add_library(arepoloader SHARED "pluecker.h" "statstags.h" "arepoloader.h" "raytetrapluecker.cpp" "arepoloader.cpp" "mesh_arepo.cpp" "medium_het_arepo.cpp" "renderer_volpt_arepo.cpp" "renderer_tetra_based.cpp" "renderer_arepo_vrls.cpp" "renderer_arepo_preprocess.cpp" "lightscene.cpp")
 
 option(MOCK_AREPO "Mock Arepo Data" OFF)
 if(MOCK_AREPO)
