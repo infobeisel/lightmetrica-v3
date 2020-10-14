@@ -123,7 +123,7 @@ public:
         stats::clearGlobal<lm::stats::ResampleAccel,int,long long>( );
         stats::clearGlobal<lm::stats::TotalTetraTests,int,long long>( );
 
-        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
 
         film_->clear();
@@ -253,7 +253,7 @@ public:
                 bool comp = (starintens / d) > impact_threshold_;
 
                 if(comp) {
-                    stats::update<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>(
+                    stats::update<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>(
                         tetraI, 
                         [&](auto & vec) {
                             vec.push_back(star);
@@ -272,7 +272,7 @@ public:
         },  
         [&](auto pxlindx,auto smplindx,auto threadid) {
 
-            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
             stats::clear<lm::stats::SampleIdCacheHits,int,long long>( );
             stats::clear<lm::stats::SampleIdCacheMisses,int,long long>( );
@@ -288,10 +288,11 @@ public:
 
             
             //merge the per tetrahedron vectors of star light sources
-            stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>( 
+            stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>( 
                 [](auto & vector1, auto & vector2 ) { vector1.insert(vector1.begin(),vector2.begin(), vector2.end());return vector1;}
             );
 
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
             stats::mergeToGlobal<lm::stats::SampleIdCacheHits,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
