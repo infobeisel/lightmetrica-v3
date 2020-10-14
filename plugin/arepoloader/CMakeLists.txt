@@ -4,6 +4,8 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_C_FLAGS -DH5_USE_110_API)
 
 set( CMAKE_BUILD_TYPE Release)
+#set( CMAKE_BUILD_TYPE Debug)
+
 add_compile_options(-O2)
 #add_compile_options(-g)
 #placed findGMP.cmake in this directory...
@@ -24,7 +26,7 @@ message(STATUS "GSL package was found: '${GSL_INCLUDE_DIRS}','${GSL_LIBRARIES}'"
 message(STATUS "GMP package was found: '${GMP_INCLUDES}','${GMP_LIBRARIES}'")
 
 
-add_library(arepoloader SHARED "pluecker.h" "statstags.h" "arepoloader.h" "raytetrapluecker.cpp" "arepoloader.cpp" "mesh_arepo.cpp" "medium_het_arepo.cpp" "renderer_volpt_arepo.cpp" "renderer_arepo_vrls.cpp" "lightscene.cpp")
+add_library(arepoloader SHARED "pluecker.h" "statstags.h" "arepoloader.h" "raytetrapluecker.cpp" "arepoloader.cpp" "mesh_arepo.cpp" "medium_het_arepo.cpp" "renderer_volpt_arepo.cpp" "renderer_arepo_vrls.cpp" "renderer_arepo_preprocess.cpp" "lightscene.cpp")
 
 option(MOCK_AREPO "Mock Arepo Data" OFF)
 if(MOCK_AREPO)
@@ -45,13 +47,13 @@ target_include_directories(arepoloader PUBLIC
 "${HDF5_INCLUDE_DIRS}"
 "${GSL_INCLUDE_DIRS}"
 "${GMP_INCLUDES}"
-"/home/beisel/ArepoVTK/arepo/include/"
-"/home/beisel/ArepoVTK/include/"
+"/home/beisel/Projects/ArepoVTK/arepo/include/"
+"/home/beisel/Projects/ArepoVTK/include/"
 )
 
 target_link_libraries(arepoloader PUBLIC
-"/home/beisel/ArepoVTK/libarepovtk.a"
-"/home/beisel/ArepoVTK/arepo/libarepo.a"
+"/home/beisel/Projects/ArepoVTK/libarepovtk.a"
+"/home/beisel/Projects/ArepoVTK/arepo/libarepo.a"
 "${PROJECT_SOURCE_DIR}"
 "${PNG_LIBRARIES}"
 "${OpenMP_CXX_LIBRARIES}"

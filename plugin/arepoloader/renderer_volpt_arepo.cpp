@@ -356,7 +356,7 @@ public:
             auto & tetraIToLightSegments =  lm::stats::getGlobalRefUnsafe<lm::stats::VRL,lm::stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>()[0]; //for the moment everything is stored in vector 0
             int num_vrls = tetraIToLightSegments.size();
 
-            auto & tetraToPointLights = stats::getGlobalRefUnsafe<lm::stats::LightsInTetra,lm::stats::TetraIndex,std::vector<int>>();
+            auto & tetraToPointLights = stats::getGlobalRefUnsafe<lm::stats::LightsInTetra,lm::stats::TetraIndex,std::vector<StarSource>>();
             /*for(auto p : tetraToPointLights)  {
                 for(auto v : p.second)  
                 LM_INFO("tetra {}, light {}",p.first,v);
@@ -1408,23 +1408,23 @@ public:
 
                                 stats::set<stats::TetraIdGuess,int,int>(0,queryTetraInds[i]);
 
-                                volume_->visitBFS(queryPos,[&] (int tetraI, int bfsLayer) -> bool {
+                                //volume_->visitBFS(queryPos,[&] (int tetraI, int bfsLayer) -> bool {
 
                                     bool continueBFS = true;
-                                    auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
+                                    auto & lightNodeIndicesInThisTetra = tetraToPointLights[queryTetraInds[i]];
                                     //LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
-					if(bfsLayer > acceptedBFSLayer )
-						return false;
-                                    for(auto nodeI : lightNodeIndicesInThisTetra) {
-                                        if(!stats::has<stats::DuplicateWatchdog,int,int>(nodeI)){ //if this light hasnt been handled yet, perform lighting!
+                                    //if(bfsLayer > acceptedBFSLayer )
+                                    //    return false;
+                                    for(auto starSource : lightNodeIndicesInThisTetra) {
+                                        if(!stats::has<stats::DuplicateWatchdog,int,int>(starSource.index)){ //if this light hasnt been handled yet, perform lighting!
                                            // LM_INFO("have not seen{} yet", nodeI);
-                                            stats::set<stats::DuplicateWatchdog,int,int>(nodeI,1); 
+                                            stats::set<stats::DuplicateWatchdog,int,int>(starSource.index,1); 
                                             visitedLightCount++;
                                             //continue bfs
-                                            continueBFS = continueBFS && visitedLightCount < lightsPerQuery ;
+                                            //continueBFS = continueBFS && visitedLightCount < lightsPerQuery ;
                                                     //? false : true; 
                                             //acceptedBFSLayer = bfsLayer;
-                                            auto & pointNode = scene_->node_at(nodeI);
+                                            /*auto & pointNode = scene_->node_at(nodeI);
                                             //LM_INFO("{}, {}, {}",scene_->num_lights(),scene_->num_nodes(),point_scene_nodeIndex);
                                             auto point_light_index = scene_->light_index_at(nodeI);
                                             auto lightprim = scene_->light_primitive_index_at(point_light_index); //need to ask for "light primitive", given "light index"
@@ -1433,8 +1433,9 @@ public:
                                             Mat4 global_transform = lightprim.global_transform.M;
                                             auto & light = *pointNode.primitive.light;
                                             auto possample = rng.next<Light::PositionSampleU>();
-                                            auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;  
+                                            auto lightPos = light.sample_position(possample, Transform(global_transform)).value().geom.p;  */
                                             //now, handle the light
+                                            Vec3 lightPos = starSource.position;
 
 
 
@@ -1787,7 +1788,11 @@ public:
                                 //solidangledirectionpdf1_equi *= cam_area_measure_conv_equi; //convert pdf to vertex area
                                 //solidangledirectionpdf2 *= vrl_area_measure_conv; //convert pdf to vertex area
                                 
+                                #ifdef USE_KNN_EMBREE
                                 auto C_equi =  light.eval(sp2.geom,wo_equi,false);
+                                #else
+                                Vec3 C_equi =  starSource.intensity;
+                                #endif 
 
                                 
                                 C_equi.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
@@ -1851,8 +1856,12 @@ public:
                                 //fs2 *= solidangledirectionpdf2;
                                 solidangledirectionpdf1_regular *= cam_area_measure_conv_regular; //convert pdf to vertex area
                                 //solidangledirectionpdf2 *= vrl_area_measure_conv; //convert pdf to vertex area
-                                
+                                #ifdef USE_KNN_EMBREE
                                 auto C_regular =  light.eval(sp2.geom,wo_regular,false);
+                                #else
+                                Vec3 C_regular =  starSource.intensity;
+                                #endif 
+
 
                                 C_regular.r *= A_R_A_V_S * glm::exp(-accCDF * A_R_A_V_T);
                                 C_regular.g *= A_G_A_V_S * glm::exp(-accCDF * A_G_A_V_T);
@@ -1947,15 +1956,11 @@ public:
                             
                             }
 #else
-                            }//if light 
-                            //for each light in tetra
-                            }
-                            return continueBFS;
-                            });//for bfs tetras
-                            
-                            
+                            }//if not yet seen
 
+                            }//for every light that has impact
                             }
+                            
 #endif
 
                        // }

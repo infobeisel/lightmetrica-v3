@@ -159,6 +159,7 @@ public:
             auto cdfSoFar = 0.0;
             auto tSoFar = 0.0;
             
+
             std::function<void(Vec3,RaySegmentCDF const &, int)> raysegmentVisitor = [&] (lm::Vec3 boundarypos,lm::RaySegmentCDF const & tetrasegment, int tetraI) -> void {
                 //add an entry for the current tetrahedron
                 LightToCameraRaySegmentCDF segment;
