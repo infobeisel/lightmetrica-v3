@@ -249,6 +249,7 @@ protected:
     Float knn_max_percent_vrls_;
     Float knn_min_percent_points_;
     Float knn_max_percent_points_;
+    Float impact_threshold_;
 
 
 public:
@@ -288,6 +289,9 @@ public:
         spp_ = json::value<long long>(prop, "spp");
         vrlStorage_ = json::comp_ref<AccelKnn>(prop, "vrl_accel");
         pointLightAccel_ = json::comp_ref<AccelKnn>(prop, "pointlight_accel");
+
+        impact_threshold_ = json::value<Float>(prop, "impact_threshold",1.0);
+
 
         #if VOLPT_IMAGE_SAMPLING
         sched_ = comp::create<scheduler::Scheduler>(
@@ -1041,7 +1045,13 @@ public:
 
                                         auto th = glm::dot((b - a), a_d); 
                                         auto shortest = a + a_d * th - b;
+                                        
                                         auto equih = glm::length(shortest);
+                                        Float starintens = glm::max(starSource.intensity[0],glm::max(starSource.intensity[1],starSource.intensity[2]));
+
+                                        if(starintens/equih < impact_threshold_) //BIAS
+                                            continue;
+
 
                                         Float a_ =  minT - th;//- th;//ray.o - lightPos;
 

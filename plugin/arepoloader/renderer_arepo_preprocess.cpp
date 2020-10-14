@@ -229,7 +229,7 @@ public:
                 //smallest distance to tetra ? well something simila..?
                 auto sth = (glm::abs(dets[0]) + glm::abs(dets[1]) + glm::abs(dets[2]) + glm::abs(dets[3])) - glm::abs(mainDeterminant);
                 
-                bool comp = isInside || (starintens / sth) > impact_threshold_;
+                bool comp = isInside || (starintens / sth) > impact_threshold_;//BIAS
 
 
                 if(comp) {
