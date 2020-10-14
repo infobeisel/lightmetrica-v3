@@ -300,8 +300,9 @@ namespace ArepoLoaderInternals {
             
 
        
-
+            DP.clear();
             point p;
+
 
             p.x = -10;p.y = 10;p.z = 10;p.index = 0;
             DP.push_back(p);
@@ -1344,12 +1345,16 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return true;
     }
 
-    void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI, int bfsLayer)> processor) const override {
+    void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI,glm::tmat4x3<lm::Float> corners, int bfsLayer)> processor) const override {
         auto & cached = cachedDistanceSample(); 
         auto inside = findAndCacheTetra(cached,startPos,lm::Vec3(1,0,0), meshAdapter.get());
      	thread_local std::vector<int> buffer0;
         if(buffer0.size() < 1) buffer0.resize(1);
         buffer0[0] = cached.tetraI;
+        
+        //thread_local std::vector<glm::tmat4x3<lm::Float>> tempVs;
+        //if(tempVs.size() < 1) tempVs.resize(1);
+        //tempVs[0] = cached.tetraVs;
 
         
         thread_local std::unordered_map<int, bool> alreadyVisited;
@@ -1371,9 +1376,18 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 //visit nodes, mark them. also mark neighbor nodes immediately to avoid duplicates queueing up,
                 // but visit them in the next iteration
                 for(int i = 0; i < numToVisit; i++) {
-                    keepVisiting = keepVisiting && processor(visitTetras[i],layer);
+
+                    //gather corner positions for processor
+                    auto & tetToVisit = arepoMeshRef->getDT()[visitTetras[i]];
+                    auto vs = glm::tmat4x3<lm::Float>();
+                    for(int i = 0; i < 4; i++) {
+                        auto v =  arepoMeshRef->getDP()[tetToVisit.p[i]];
+                        vs[i] = MODEL_SCALE * lm::Vec3(v.x,v.y,v.z);
+                    }
+
+                    keepVisiting = keepVisiting && processor(visitTetras[i],vs,layer);
                     if(!keepVisiting) break;
-                    int ns = updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get(),nullptr);
+                    int ns = updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get());
                     for(auto tmpI = 0 ; tmpI < ns; tmpI++ ) {
                         if(alreadyVisited.find(temporary[tmpI]) == alreadyVisited.end()) {
                             alreadyVisited[temporary[tmpI]] = true;
