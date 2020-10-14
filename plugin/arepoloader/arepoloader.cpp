@@ -747,56 +747,56 @@ namespace ArepoLoaderInternals {
     inline bool insideTetra(int tetraIndex,lm::Vec3 const & loc, tetra const & tetra,
         glm::tmat4x3<lm::Float> & verts, CachedSample & cachedS)  {
 
-            glm::tmat4x3<lm::Float> pVs;//point to vertex connections
-            //glm::tmat4x3<lm::Float> verts;
-            glm::ivec4 vertInds;
-            lm::Vec4 determinants;
+        glm::tmat4x3<lm::Float> pVs;//point to vertex connections
+        //glm::tmat4x3<lm::Float> verts;
+        glm::ivec4 vertInds;
+        lm::Vec4 determinants;
 
 
-            for(int i = 0; i < 4; i++) {
-                vertInds[i] = tetra.p[i];
-                //auto av =  arepoMeshRef->getDP()[vertInds[i]];
-                //verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
-                pVs[i] = verts[i] - loc;
-            }
+        for(int i = 0; i < 4; i++) {
+            vertInds[i] = tetra.p[i];
+            //auto av =  arepoMeshRef->getDP()[vertInds[i]];
+            //verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
+            pVs[i] = verts[i] - loc;
+        }
 
-            //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
-            lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
-            //if(mainDeterminant > 0.0)
-                //   LM_INFO( "cw");
-
-
-            //skip points 
-            //wtf see arepo vtk
-            DPinfinity = -1;
-            if  (
-            (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
-            || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
-            || tetra.t[0] == -1)
-            {
-                //LM_INFO("skip");
-                return false;
-            }
+        //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
+        lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
+        //if(mainDeterminant > 0.0)
+            //   LM_INFO( "cw");
 
 
+        //skip points 
+        //wtf see arepo vtk
+        DPinfinity = -1;
+        if  (
+        (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
+        || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
+        || tetra.t[0] == -1)
+        {
+            //LM_INFO("skip");
+            return false;
+        }
 
-            connectP(verts,loc,pVs);
-            computeDeterminants(pVs,determinants);
-            bool insideTet = inside(determinants,mainDeterminant);
-            if(insideTet) {
-                cachedS.tetraI = tetraIndex;
-                cachedS.tetraVs = verts;
-                cachedS.tetraInds = vertInds;
-                cachedS.tmpPVs = pVs;
-                cachedS.tmpDets = determinants;
-                cachedS.mainDeterminant = mainDeterminant;
-                updateCachedBaryInvT(cachedS);
-                cachedS.hydroI = -1;
-                cachedS.minDistI = -1;
-                cacheCornerValues(cachedS);
-            }
 
-            return insideTet;
+
+        connectP(verts,loc,pVs);
+        computeDeterminants(pVs,determinants);
+        bool insideTet = inside(determinants,mainDeterminant);
+        if(insideTet) {
+            cachedS.tetraI = tetraIndex;
+            cachedS.tetraVs = verts;
+            cachedS.tetraInds = vertInds;
+            cachedS.tmpPVs = pVs;
+            cachedS.tmpDets = determinants;
+            cachedS.mainDeterminant = mainDeterminant;
+            updateCachedBaryInvT(cachedS);
+            cachedS.hydroI = -1;
+            cachedS.minDistI = -1;
+            cacheCornerValues(cachedS);
+        }
+
+        return insideTet;
 
     }
     
