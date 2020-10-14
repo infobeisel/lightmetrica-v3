@@ -1411,6 +1411,9 @@ public:
                                 //volume_->visitBFS(queryPos,[&] (int tetraI, int bfsLayer) -> bool {
 
                                     bool continueBFS = true;
+                                    if (tetraToPointLights.find(queryTetraInds[i]) == tetraToPointLights.end())
+                                        continue;
+
                                     auto & lightNodeIndicesInThisTetra = tetraToPointLights[queryTetraInds[i]];
                                     //LM_INFO("lights associated {} with visit tetra {}, bfs {}",lightNodeIndicesInThisTetra.size(),tetraI, bfsLayer);
                                     //if(bfsLayer > acceptedBFSLayer )

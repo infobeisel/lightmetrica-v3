@@ -21,7 +21,9 @@ using namespace ArepoLoaderInternals;
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
         
-
+namespace stats {
+        struct TetsPerLight{};
+}
 
 
 void to_json(lm::Json& j, const StarSource& p) {
@@ -106,7 +108,6 @@ public:
 
 
     virtual Json render() const override {
-		scene_->require_renderable();
 
         //reconstruct scheduler with new sample count
         Json info;
@@ -124,6 +125,9 @@ public:
         stats::clearGlobal<lm::stats::TotalTetraTests,int,long long>( );
 
         stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+
+        stats::clearGlobal<stats::TetsPerLight,int,Float>();
+
 
 
         film_->clear();
@@ -176,11 +180,6 @@ public:
             auto reproduced_mag = scaling * g_response_flux;
             flux_to_mag_g(reproduced_mag);
 
-            //LM_INFO("reproduced g mag {}",reproduced_mag);
-            //LM_INFO("reproduced temp {}",temperature);
-            //LM_INFO("incoming mag : {},{},{},{}, reproduced g mag: {}",
-            //g_mag,r_mag,i_mag,z_mag,
-        // reproduced_mag);
 
             Float x_,y_,z_;
             tempToXYZ(temperature,x_,y_,z_);
@@ -196,31 +195,6 @@ public:
             star.index = ind;
             
 
-            /*lightprop["Le"] = rgb;
-
-            lightprop["position"] = model_scale_ * Vec3(star_coords_[coord_i],star_coords_[coord_i+1],star_coords_[coord_i+2]);
-            std::string name = "light" + std::to_string(ind);
-            createdLights_.push_back(
-                std::move(
-                    comp::create<Light>(
-                        "light::point", make_loc(name), lightprop)
-                )
-            );*/
-            /*LM_INFO("star with jansky {},{},{},{},  with temp {}, rgb {},{},{}, at pos {},{},{}",
-            g,r,i,z,
-            temperature,
-            rgb.r,
-            rgb.g,
-            rgb.b,
-            star_coords_[coord_i],
-            star_coords_[coord_i+1],star_coords_[coord_i+2]
-            );*/
-
-            //}
-            
-
-
-
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
             
@@ -231,6 +205,7 @@ public:
 
             int currentBFSLayer = 0;
             bool addedAny = true;
+            int numLs = 0;
             volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<lm::Float> corners, int bfsLayer) -> bool {
                 //first try: store where this star is located in. 
                 //store information directly instead of indices. more cache efficient? but more storage.
@@ -252,17 +227,10 @@ public:
                 lm::Float mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
                 bool isInside = inside(dets, mainDeterminant);
                 //smallest distance to tetra ? well something simila..?
-                auto sth = glm::abs(mainDeterminant / (glm::abs(dets[0]) + glm::abs(dets[1]) + glm::abs(dets[2]) + glm::abs(dets[3])));
+                auto sth = (glm::abs(dets[0]) + glm::abs(dets[1]) + glm::abs(dets[2]) + glm::abs(dets[3])) - glm::abs(mainDeterminant);
                 
-                //calculate tetra's minimum distance to star
-                //auto d = glm::distance2(corners[0],starpos);
-                //d = glm::min(d, glm::distance2(corners[1],starpos));
-                //d = glm::min(d, glm::distance2(corners[2],starpos));
-                //d = glm::min(d, glm::distance2(corners[3],starpos));
+                bool comp = isInside || (starintens / sth) > impact_threshold_;
 
-                //bool comp = (starintens / d) > impact_threshold_;
-
-                bool comp = isInside || (sth < impact_threshold_);
 
                 if(comp) {
                     stats::update<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>(
@@ -271,11 +239,16 @@ public:
                             vec.push_back(star);
                         }
                     );
+                    numLs++;
                     addedAny = true;
                 }
              
-                
-                return !enteredNewLayer || (enteredNewLayer && haveAddedAnyInLastLayer); //continue if didnt stop adding
+                bool continu = !enteredNewLayer || (enteredNewLayer && haveAddedAnyInLastLayer);
+                if(!continu) {
+                    stats::add<stats::TetsPerLight,int,Float>(ind,numLs);
+                    //LM_INFO("gonna stop at bfs layer {}, add {} myself",bfsLayer,numLs);
+                }
+                return continu; //continue if didnt stop adding
 
             });
     
@@ -285,6 +258,8 @@ public:
         [&](auto pxlindx,auto smplindx,auto threadid) {
 
             stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+
+            stats::clear<stats::TetsPerLight,int,Float>();
 
             stats::clear<lm::stats::SampleIdCacheHits,int,long long>( );
             stats::clear<lm::stats::SampleIdCacheMisses,int,long long>( );
@@ -305,6 +280,10 @@ public:
             );
 
             stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+
+
+            stats::mergeToGlobal<lm::stats::TetsPerLight,int,Float>( 
+                [](Float & v0,Float & v1 ) { return v0 + v1;} );
 
             stats::mergeToGlobal<lm::stats::SampleIdCacheHits,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
@@ -329,6 +308,14 @@ public:
         auto accelsmpls = stats::getGlobal<lm::stats::ResampleAccel,int,long long>( 0);
         auto totaltetratests = stats::getGlobal<lm::stats::TotalTetraTests,int,long long>(0 );
 
+        auto & tetsPerLight = stats::getGlobalRef<lm::stats::TetsPerLight,int,Float>();
+        Float numlights = tetsPerLight.size();
+        Float avg = 0.0;
+        for(auto p : tetsPerLight) {
+            avg += p.second / numlights;
+        }
+
+        LM_INFO("average number of tetrahedra a light is associated with: {}", avg);
 
         
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
