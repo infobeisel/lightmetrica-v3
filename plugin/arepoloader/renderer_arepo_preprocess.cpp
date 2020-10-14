@@ -75,7 +75,7 @@ public:
     virtual void construct(const Json& prop) override {
         scene_ = json::comp_ref<Scene>(prop, "scene");
         volume_= json::comp_ref<Volume_Arepo>(prop, "volume");
-        film_ = json::comp_ref<Film>(prop, "output");
+
         seed_ = json::value_or_none<unsigned int>(prop, "seed");
         rr_prob_ = json::value<Float>(prop, "rr_prob", .2_f);
         const auto sched_name = json::value<std::string>(prop, "scheduler");
@@ -106,7 +106,7 @@ public:
 
 
     virtual Json render() const override {
-		scene_->require_renderable();
+		//i am not actually rendering
 
         //reconstruct scheduler with new sample count
         Json info;
@@ -126,8 +126,6 @@ public:
         stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
 
-        film_->clear();
-        const auto size = film_->size();
         timer::ScopedTimer st;
 
 
@@ -328,12 +326,7 @@ public:
          totaltetratests
          );
 
-        // Rescale film
-        #if VOLPT_IMAGE_SAMPLING
-        film_->rescale(Float(size.w* size.h) / processed);
-        #else
-        //film_->rescale(1_f / processed);
-        #endif
+        
 
         return { {"processed", processed}, {"elapsed", st.now()} };
     }
