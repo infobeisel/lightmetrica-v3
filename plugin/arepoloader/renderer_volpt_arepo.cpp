@@ -2165,8 +2165,8 @@ public:
                     }
                     //LM_INFO("{} paths of length {}, weight sum equi {}, valid paths {} ",pathsWithLengtI,path_length, weightSum,validSamplesEqui);
 
-                    if(validSamplesEqui != validSamplesRegular)
-                        LM_ERROR("do not have same amound of VALID samples: {} equi, {} regular", validSamplesEqui,validSamplesRegular );
+                    //if(validSamplesEqui != validSamplesRegular)
+                    //    LM_ERROR("do not have same amound of VALID samples: {} equi, {} regular", validSamplesEqui,validSamplesRegular );
 
                     if(validSamplesEqui != 0)
                         totalContribution += weightedContributionEqui / static_cast<Float>(validSamplesEqui);// + weightedContributionRegular / static_cast<Float>(validSamplesRegular);
