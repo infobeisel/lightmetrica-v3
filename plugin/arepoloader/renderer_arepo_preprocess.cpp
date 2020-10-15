@@ -88,6 +88,11 @@ public:
         
         //want to cast direct lighting on sensor, each sample treating one light
         
+        Json info;
+        info["num_samples"] = star_coords_.size() / 3;
+
+        sched_ = comp::create<scheduler::Scheduler>(
+            "scheduler::spi::sample", make_loc("scheduler"), info);
 
 
     }
@@ -106,13 +111,7 @@ public:
 
     virtual Json render() const override {
 
-        //reconstruct scheduler with new sample count
-        Json info;
-        info["num_samples"] = star_coords_.size() / 3;
-
-        auto ontheflysched_ = comp::create<scheduler::Scheduler>(
-            "scheduler::spi::sample", make_loc("scheduler"), info);
-
+        
         stats::clearGlobal<stats::CachedSampleId,int,long long>( );
 
         stats::clearGlobal<stats::SampleIdCacheHits,int,long long>( );
@@ -122,7 +121,7 @@ public:
         stats::clearGlobal<stats::ResampleAccel,int,long long>( );
         stats::clearGlobal<stats::TotalTetraTests,int,long long>( );
 
-        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
 
         stats::clearGlobal<stats::TetsPerLight,int,Float>();
 
@@ -143,7 +142,7 @@ public:
 
 
         //the scheduler gives one sample per light
-        const auto processed = ontheflysched_->run([&](long long pixel_index, long long sample_index, int threadid) {
+        const auto processed = sched_->run([&](long long pixel_index, long long sample_index, int threadid) {
             
             //parse light
             Json lightprop;
@@ -229,7 +228,7 @@ public:
 
 
                 if(comp) {
-                    stats::update<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>(
+                    stats::update<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>(
                         tetraI, 
                         [&](auto & vec) {
                             vec.push_back(star);
@@ -254,7 +253,7 @@ public:
         [&](auto pxlindx,auto smplindx,auto threadid) {
             stats::clear<stats::CachedSampleId,int,long long>();
 
-            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
 
             stats::clear<stats::TetsPerLight,int,Float>();
 
@@ -272,11 +271,11 @@ public:
 
             
             //merge the per tetrahedron vectors of star light sources
-            stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>( 
-                [](auto & vector1, auto & vector2 ) { vector1.insert(vector1.begin(),vector2.begin(), vector2.end());return vector1;}
+            stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>( 
+                [] (auto & vector1, auto & vector2 )   { vector1.insert(vector1.end(),vector2.begin(), vector2.end());return vector1;}
             );
 
-            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
 
 
             stats::mergeToGlobal<stats::TetsPerLight,int,Float>( 

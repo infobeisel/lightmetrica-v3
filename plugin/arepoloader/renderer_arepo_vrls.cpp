@@ -72,12 +72,17 @@ public:
         
         //want to cast direct lighting on sensor, each sample treating one light
         
-        auto copy = prop;
-        copy["num_samples"] = scene_->num_lights();
-        LM_INFO("num samples {}",scene_->num_lights());
-        sched_ = comp::create<scheduler::Scheduler>(
-            "scheduler::spi::" + sched_name, make_loc("scheduler"), copy);
+        //auto copy = prop;
+        //copy["num_samples"] = scene_->num_lights();
+        //LM_INFO("num samples {}",scene_->num_lights());
+        //sched_ = comp::create<scheduler::Scheduler>(
+        //    "scheduler::spi::" + sched_name, make_loc("scheduler"), copy);
 
+        Json info;
+        info["num_samples"] = star_coords_.size() / 3;
+
+        sched_ = comp::create<scheduler::Scheduler>(
+            "scheduler::spi::sample", make_loc("scheduler"), info);
 
 
     }
@@ -99,12 +104,6 @@ public:
 
         //reconstruct scheduler with new sample count
 
-        Json copy;
-        copy["num_samples"] = scene_->num_lights();
-        LM_INFO("num samples {}",scene_->num_lights());
-        
-        auto ontheflysched_ = comp::create<scheduler::Scheduler>(
-            "scheduler::spi::sample", make_loc("scheduler"), copy);
 
         stats::clearGlobal<stats::CachedSampleId,int,long long>( );
 
@@ -115,7 +114,7 @@ public:
         stats::clearGlobal<stats::ResampleAccel,int,long long>( );
         stats::clearGlobal<stats::TotalTetraTests,int,long long>( );
 
-        stats::clearGlobal<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>();
+        stats::clearGlobal<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>();
         stats::clearGlobal<stats::TetsPerLight,int,Float>();
 
 
@@ -132,7 +131,7 @@ public:
 
 
         //the scheduler gives one sample per light
-        const auto processed = ontheflysched_->run([&](long long pixel_index, long long sample_index, int threadid) {
+        const auto processed = sched_->run([&](long long pixel_index, long long sample_index, int threadid) {
 
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
@@ -212,7 +211,7 @@ public:
                 bool comp = intensity * glm::exp(-segment.cdfSoFar) > impact_threshold_;//BIAS
                 if(save_vrls_ && comp) {
                     
-                    stats::update<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>(
+                    stats::update<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>(
                         tetraI, 
                         [&](auto & vec) {
                             vec.push_back(segment);
@@ -250,7 +249,7 @@ public:
         },  
         [&](auto pxlindx,auto smplindx,auto threadid) {
 
-            stats::clear<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>();
+            stats::clear<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>();
 
             stats::clear<stats::CachedSampleId,int,long long>();
             stats::clear<stats::TetsPerLight,int,Float>();
@@ -267,11 +266,11 @@ public:
             
             
             //merge the per tetrahedron vectors of star light sources
-            stats::mergeToGlobal<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>( 
-                [](auto & vector1, auto & vector2 ) { vector1.insert(vector1.begin(),vector2.begin(), vector2.end());return vector1;}
+            stats::mergeToGlobal<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>( 
+                [](auto & vector1, auto & vector2 ) { vector1.insert(vector1.end(),vector2.begin(), vector2.end());return vector1;}
             );
 
-            stats::clear<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>();
+            stats::clear<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>();
 
 
             stats::mergeToGlobal<stats::TetsPerLight,int,Float>( 

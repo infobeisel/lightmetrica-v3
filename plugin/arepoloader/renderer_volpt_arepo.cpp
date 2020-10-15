@@ -354,10 +354,10 @@ public:
             //    - here: sample vrl buffer to choose vrl segments that will shine wonderfully on this the distance 
             //    - think of pdf that direct light splatting gives ? 0 probabliy because its a point light...
             //    - implement pybinding helper for parsing the stars (takes hours in python)
-            auto & tetraIToLightSegments =  stats::getGlobalRefUnsafe<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>()[0]; //for the moment everything is stored in vector 0
+            auto & tetraIToLightSegments =  stats::getGlobalRefUnsafe<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>()[0]; //for the moment everything is stored in vector 0
             int num_vrls = tetraIToLightSegments.size();
 
-            auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+            auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
             /*for(auto p : tetraToPointLights)  {
                 for(auto v : p.second)  
                 LM_INFO("tetra {}, light {}",p.first,v);
@@ -1539,7 +1539,7 @@ public:
                                         }
                                         travelT += tetrasegment.t;
                                         accCdf += tetrasegment.localcdf;
-                                        zetaTransmittance_regular *= glm::exp(-  accCdf );
+                                        zetaTransmittance_regular = glm::exp(-  accCdf );
                                     }
                                 }*/
 

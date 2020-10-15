@@ -402,6 +402,8 @@ namespace stats {
 
     struct LightsInTetra{};
 
+    struct SceneLightsInTetra{};
+
     struct DuplicateWatchdog {};
 
     struct TetsPerLight{};

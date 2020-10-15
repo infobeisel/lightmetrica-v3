@@ -445,8 +445,8 @@ public:
             });
         }
 
-        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
-        auto & tetraToLights = stats::getGlobalRef<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
+        stats::clearGlobal<stats::SceneLightsInTetra,stats::TetraIndex,std::vector<int>>();
+        auto & tetraToLights = stats::getGlobalRef<stats::SceneLightsInTetra,stats::TetraIndex,std::vector<int>>();
         
         int i = 0; //this is so ugly as it trusts the following method to iterate over the nodes in the same way they have been added above!
         traverse_primitive_nodes([&](const SceneNode& node, Mat4 global_transform) {

@@ -226,7 +226,9 @@ static const Vec3 blackBodyCIEs[199] =
 
 
 
-class Renderer_VolPT_Base : public Renderer {
+
+    
+class RendererTetraBased final : public Renderer {
 protected:
     std::string strategy_;
     Float mis_power_;
@@ -251,8 +253,8 @@ protected:
     Float knn_max_percent_points_;
     Float impact_threshold_;
 
-
 public:
+
     LM_SERIALIZE_IMPL(ar) {
         ar(scene_, film_, max_verts_, rr_prob_, sched_,vrlStorage_);
     }
@@ -264,7 +266,6 @@ public:
         comp::visit(visit, vrlStorage_);
     }
 
-public:
     virtual void construct(const Json& prop) override {
         
         knn_min_k_ = json::value<int>(prop, "knn_min_k",10);
@@ -291,6 +292,7 @@ public:
         pointLightAccel_ = json::comp_ref<AccelKnn>(prop, "pointlight_accel");
 
         impact_threshold_ = json::value<Float>(prop, "impact_threshold",1.0);
+        LM_INFO("impact_threshold: {}", impact_threshold_);
 
 
         #if VOLPT_IMAGE_SAMPLING
@@ -302,15 +304,6 @@ public:
         #endif
 
     }
-};
-
-
-
-
-    
-class RendererTetraBased final : public Renderer_VolPT_Base {
-
-public:
     virtual Json render() const override {
 		scene_->require_renderable();
 
@@ -327,20 +320,30 @@ public:
         const auto size = film_->size();
         timer::ScopedTimer st;
 
+        int vrls = 0;
+        auto & tetraIToLightSegments =  stats::getGlobalRefUnsafe<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>();
+        for(auto p : tetraIToLightSegments)  {
+            for(auto v : p.second)  
+                vrls++;
+            //
+        }
+        LM_INFO("vrls {}",vrls);
+
+        int lightspertetra = 0;
+        auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+        for(auto p : tetraToPointLights)  {
+            for(auto v : p.second) 
+                lightspertetra++; 
+            //LM_INFO("tetra {}, light {}",p.first,v.index);
+        }
+        LM_INFO("lights per tetra {}",lightspertetra);
+
 
 
         const auto processed = sched_->run([&](long long pixel_index, long long sample_index, int threadid) {
             LM_KEEP_UNUSED(sample_index);
         
-            auto & tetraIToLightSegments =  stats::getGlobalRefUnsafe<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>();
-            int num_vrls = tetraIToLightSegments.size();
-
-            auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
-            /*for(auto p : tetraToPointLights)  {
-                for(auto v : p.second)  
-                LM_INFO("tetra {}, light {}",p.first,v);
-            }*/
-
+            
             auto & equiContributions = 
             stats::getRef<stats::EquiContribution,int,std::vector<Vec3>>();
             //equiContributions.clear();
@@ -632,22 +635,28 @@ public:
 
                         //CHOOSE POINTS FOR KNN QUERIES ALONG RAY
                         std::vector<Float> queryTs;
+                        std::vector<Float> queryPDFs;
                         std::vector<int> queryTetraInds;
                         {
                             int found_sample = 0;
                             std::vector<Float> zetas;
 
                             for(int i = 0; i < num_knn_queries_; i++) {
-                                zetas.push_back(rng.u() * totalTau);
+                                //zetas.push_back(rng.u() * totalTau);
+                                //zetas.push_back(rng.u());
+                                zetas.push_back(-gsl_log1p(-rng.u() * lowDensityNormalizationFactor));
+
                                 queryTs.push_back(0.0);
                                 queryTetraInds.push_back(0);
+                                queryPDFs.push_back(1);
                             }
                             //TODO PDFS ?!
                             
                             //auto zeta = rng.u() * totalTau; //a new sample within total 
-                            auto zetaRegularPDF = 0.0;
+                            //auto zetaRegularPDF = 0.0;
                             auto zetaAccCdf = 0.0;
-                            //warp Zeta according optical thickness
+                            auto zetaTransmittance = 1.0;
+
                             {
                                 auto travelT = 0.0;
                                 auto segmentThroughput = 1.0;
@@ -655,18 +664,28 @@ public:
                                     auto & tetrasegment =  cameraSegments[segmentI];
                                     for(int i = 0; i < num_knn_queries_; i++) {
                                         if (zetaAccCdf  + tetrasegment.localcdf  > zetas[i]) {
+                                        //if (travelT - minT  > zetas[i] * (totalT-minT)) {
                                             auto normcdf =  zetaAccCdf ;
                                             lm::Float t = sampleCachedICDF_andCDF( zetas[i],zetas[i] , tetrasegment.t ,
                                             normcdf ,  tetrasegment.a ,   tetrasegment.b );
+                                            zetaTransmittance *= glm::exp(-  normcdf );
                                             queryTs[i] = travelT + t;   
+                                            //queryTs[i] = minT + zetas[i] * (totalT-minT); 
+                                            queryPDFs[i] = 1.0;
+                                            //queryPDFs[i] = tetrasegment.b + tetrasegment.t * tetrasegment.a; 
+                                            //queryPDFs[i] *= zetaTransmittance; 
+                                            //queryPDFs[i] /=  totalTau;
+                                            //queryPDFs[i] /=  lowDensityNormalizationFactor;
                                             queryTetraInds[i] = tetrasegment.tetraI;
-                                            //zetaAccCdf += normcdf;
+                                            zetaAccCdf += normcdf;
                                             //break;
                                             found_sample++;
                                         }
                                     }
                                     travelT += tetrasegment.t;
                                     zetaAccCdf += tetrasegment.localcdf;
+                                    zetaTransmittance *= glm::exp(-zetaAccCdf );
+
                                 }
                             }
                         }
@@ -690,7 +709,7 @@ public:
                                 auto & vrlsInThisTetra = tetraIToLightSegments[tetraI];
 
 
-                                for(auto vrl : vrlsInThisTetra) {
+                                for(auto & vrl : vrlsInThisTetra) {
                                         
                                     auto b_d = vrl.d;
                                     auto b = vrl.p;
@@ -936,6 +955,7 @@ public:
                                     //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                     auto segment_contribution_equi = throughputCam_equi  * connection_area_measure_equi * fs1_equi * fs2_equi * vrl_area_measure_conv * VRL_C_equi;
                                     auto segment_pdf_equi = 
+                                    queryPDFs[queryI] *
                                     pathPDF 
                                     * vrl_scatter_pdf
                                     * cam_scatter_pdf_equi
@@ -946,6 +966,7 @@ public:
                                     // connection probability stated to be one * connection_area_measure
                                     ;
                                     auto segment_pdf_equi_of_regular = 
+                                    queryPDFs[queryI] *
                                     pathPDF * vrl_scatter_pdf * cam_scatter_pdf_equi_of_regular * pdf_vrl_selection;
                                     
                                     auto throughputCam_regular = throughput * segmentThroughput_regular *
@@ -1007,6 +1028,7 @@ public:
                                     //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                     auto segment_contribution_regular = throughputCam_regular  * connection_area_measure_regular * fs1_reqular * fs2_reqular * vrl_area_measure_conv * VRL_C_regular;
                                     auto segment_pdf_regular = 
+                                    queryPDFs[queryI] *
                                     pathPDF //pathPdfEquiStrategyEquiSamples  //yes it is the main path part
                                     * vrl_scatter_pdf
                                     * cam_scatter_pdf_regular
@@ -1017,6 +1039,7 @@ public:
                                     // connection probability stated to be one * connection_area_measure
                                     ;
                                     auto segment_pdf_regular_of_equi = 
+                                        queryPDFs[queryI] *
                                         pathPDF * vrl_scatter_pdf * cam_scatter_pdf_regular_of_equi * pdf_light_selection;
                                     //auto otherPdf = 
                                     //    pathPdfRegularStrategyEquiSamples
@@ -1110,9 +1133,8 @@ public:
 
                                 auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
 
-                                for(auto starSource : lightNodeIndicesInThisTetra) {
+                                for(auto & starSource : lightNodeIndicesInThisTetra) {
                                     if(!stats::has<stats::DuplicateWatchdog,int,int>(starSource.index)){ //if this light hasnt been handled yet, perform lighting!
-                                        // LM_INFO("have not seen{} yet", nodeI);
                                         stats::set<stats::DuplicateWatchdog,int,int>(starSource.index,1); 
                                         visitedLightCount++;
 
@@ -1128,7 +1150,6 @@ public:
 
                                         if(starintens/equih < impact_threshold_) //BIAS
                                             continue;
-
 
                                         Float a_ =  minT - th;//- th;//ray.o - lightPos;
 
@@ -1293,6 +1314,7 @@ public:
                                         //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                         auto segment_contribution_equi = throughputCam_equi  * connection_area_measure_equi * fs1_equi * C_equi;
                                         auto segment_pdf_equi = 
+                                        queryPDFs[queryI] *
                                         pathPDF 
                                         //* vrl_scatter_pdf
                                         * cam_scatter_pdf_equi
@@ -1303,6 +1325,7 @@ public:
                                         // connection probability stated to be one * connection_area_measure
                                         ;
                                         auto segment_pdf_equi_of_regular = 
+                                        queryPDFs[queryI] *
                                         pathPDF * cam_scatter_pdf_equi_of_regular * pdf_light_selection;
                                         
                                         auto throughputCam_regular = throughput * segmentThroughput_regular *
@@ -1349,6 +1372,7 @@ public:
                                         //auto segment_contribution = throughputCam * Tr * connection_area_measure * fs1 * fs2 * VRL_C;
                                         auto segment_contribution_regular = throughputCam_regular  * connection_area_measure_regular * fs1_reqular * C_regular;
                                         auto segment_pdf_regular = 
+                                        queryPDFs[queryI] *
                                         pathPDF //pathPdfEquiStrategyEquiSamples  //yes it is the main path part
                                         //* vrl_scatter_pdf
                                         * cam_scatter_pdf_regular
@@ -1359,6 +1383,7 @@ public:
                                         // connection probability stated to be one * connection_area_measure
                                         ;
                                         auto segment_pdf_regular_of_equi = 
+                                            queryPDFs[queryI] *
                                             pathPDF * cam_scatter_pdf_regular_of_equi * pdf_light_selection;
                                         //auto otherPdf = 
                                         //    pathPdfRegularStrategyEquiSamples
