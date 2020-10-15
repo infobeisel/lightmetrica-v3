@@ -90,14 +90,25 @@ inline bool inside(glm::tvec4<F> & determinants, F tetraDeterminant) {
 
 
 namespace ArepoLoaderInternals {
+
+
+    struct TetraPoint {
+        glm::tvec3<float> position;
+        int index;
+    };
+    struct Tetra {
+        int t[4]; //neighbors
+        int p[4]; //indices to positions
+    };
+    
     struct IArepoMeshMock {
-        virtual tetra * getDT() = 0;
-        virtual point * getDP() = 0;
+        virtual Tetra * getDT() = 0;
+        virtual TetraPoint * getDP() = 0;
         virtual std::vector<lm::Float> & getdensities() = 0;
         virtual int getNdt() = 0;
         virtual int getNdp() = 0;
 
-        virtual BBox WorldBound() = 0;
+        virtual lm::Bound WorldBound() = 0;
         virtual lm::Float getDensity(int index) = 0;
         virtual lm::Float getTemperature(int index) = 0;
 
