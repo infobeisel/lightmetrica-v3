@@ -390,6 +390,7 @@ namespace stats {
 
     struct DuplicateWatchdog {};
 
+    struct TetsPerLight{};
     
 
 

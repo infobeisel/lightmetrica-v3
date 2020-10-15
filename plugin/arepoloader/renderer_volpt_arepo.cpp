@@ -226,7 +226,7 @@ static const Vec3 blackBodyCIEs[199] =
 
 
 
-void to_json(lm::Json& j, const LightToCameraRaySegmentCDF& p) {
+void to_json(Json& j, const LightToCameraRaySegmentCDF& p) {
     j = {
         {"weight" , {
             {"x",p.weight.x},
@@ -243,7 +243,7 @@ void to_json(lm::Json& j, const LightToCameraRaySegmentCDF& p) {
 }
 
 
-void from_json(const lm::Json& j, LightToCameraRaySegmentCDF& p) {
+void from_json(const Json& j, LightToCameraRaySegmentCDF& p) {
     //do nothing;
 }
 
@@ -331,12 +331,13 @@ public:
     virtual Json render() const override {
 		scene_->require_renderable();
 
-        stats::clearGlobal<lm::stats::SampleIdCacheHits,int,long long>( );
-        stats::clearGlobal<lm::stats::SampleIdCacheMisses,int,long long>( );
-        stats::clearGlobal<lm::stats::UsedCachedTetra,int,long long>( );
-        stats::clearGlobal<lm::stats::UsedNeighborTetra,int,long long>( );
-        stats::clearGlobal<lm::stats::ResampleAccel,int,long long>( );
-        stats::clearGlobal<lm::stats::TotalTetraTests,int,long long>( );
+        stats::clearGlobal<stats::CachedSampleId,int,long long>( );
+        stats::clearGlobal<stats::SampleIdCacheHits,int,long long>( );
+        stats::clearGlobal<stats::SampleIdCacheMisses,int,long long>( );
+        stats::clearGlobal<stats::UsedCachedTetra,int,long long>( );
+        stats::clearGlobal<stats::UsedNeighborTetra,int,long long>( );
+        stats::clearGlobal<stats::ResampleAccel,int,long long>( );
+        stats::clearGlobal<stats::TotalTetraTests,int,long long>( );
 
 
         //film_->clear();
@@ -353,10 +354,10 @@ public:
             //    - here: sample vrl buffer to choose vrl segments that will shine wonderfully on this the distance 
             //    - think of pdf that direct light splatting gives ? 0 probabliy because its a point light...
             //    - implement pybinding helper for parsing the stars (takes hours in python)
-            auto & tetraIToLightSegments =  lm::stats::getGlobalRefUnsafe<lm::stats::VRL,lm::stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>()[0]; //for the moment everything is stored in vector 0
+            auto & tetraIToLightSegments =  stats::getGlobalRefUnsafe<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>()[0]; //for the moment everything is stored in vector 0
             int num_vrls = tetraIToLightSegments.size();
 
-            auto & tetraToPointLights = stats::getGlobalRefUnsafe<lm::stats::LightsInTetra,lm::stats::TetraIndex,std::deque<StarSource>>();
+            auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
             /*for(auto p : tetraToPointLights)  {
                 for(auto v : p.second)  
                 LM_INFO("tetra {}, light {}",p.first,v);
@@ -2246,6 +2247,7 @@ public:
             stats::clear<lm::stats::UsedNeighborTetra,int,long long>( );
             stats::clear<lm::stats::ResampleAccel,int,long long>( );
             stats::clear<lm::stats::TotalTetraTests,int,long long>( );
+            stats::clear<stats::CachedSampleId,int,long long>();
 
         } , 
         [&](auto pxlindx,auto smplindx,auto threadid) {

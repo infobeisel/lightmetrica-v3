@@ -6,7 +6,7 @@ set (CMAKE_C_FLAGS -DH5_USE_110_API)
 set( CMAKE_BUILD_TYPE Release)
 #set( CMAKE_BUILD_TYPE Debug)
 
-add_compile_options(-O3)
+add_compile_options(-O2)
 #add_compile_options(-g)
 #placed findGMP.cmake in this directory...
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR} )#${PROJECT_SOURCE_DIR}/../../openvdb/cmake/)

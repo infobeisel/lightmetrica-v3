@@ -21,12 +21,9 @@ using namespace ArepoLoaderInternals;
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
         
-namespace stats {
-        struct TetsPerLight{};
-}
 
 
-void to_json(lm::Json& j, const StarSource& p) {
+void to_json(Json& j, const StarSource& p) {
     j = {
         {"intensity" , {
             {"r",p.intensity.x},
@@ -46,7 +43,7 @@ void to_json(lm::Json& j, const StarSource& p) {
 }
 
 
-void from_json(const lm::Json& j, StarSource& p) {
+void from_json(const Json& j, StarSource& p) {
     //do nothing;
 }
 
@@ -65,7 +62,7 @@ protected:
     std::optional<unsigned int> seed_;
     Component::Ptr<scheduler::Scheduler> sched_;
     long long spp_;
-    Component::Ptr<lm::Light> reprlight_;
+    Component::Ptr<Light> reprlight_;
     Float impact_threshold_;
 
     std::vector<Float> star_coords_;
@@ -84,9 +81,9 @@ public:
         spp_ = json::value<long long>(prop, "spp");
         impact_threshold_ = json::value<Float>(prop, "impact_threshold",1.0);
 
-        star_coords_ = lm::json::value<std::vector<Float>>(prop,"star_coords");
-        star_ugriz_ = lm::json::value<std::vector<Float>>(prop,"star_ugriz");
-        model_scale_ = lm::json::value<Float>(prop,"model_scale");
+        star_coords_ = json::value<std::vector<Float>>(prop,"star_coords");
+        star_ugriz_ = json::value<std::vector<Float>>(prop,"star_ugriz");
+        model_scale_ = json::value<Float>(prop,"model_scale");
         
         
         //want to cast direct lighting on sensor, each sample treating one light
@@ -116,13 +113,14 @@ public:
         auto ontheflysched_ = comp::create<scheduler::Scheduler>(
             "scheduler::spi::sample", make_loc("scheduler"), info);
 
+        stats::clearGlobal<stats::CachedSampleId,int,long long>( );
 
-        stats::clearGlobal<lm::stats::SampleIdCacheHits,int,long long>( );
-        stats::clearGlobal<lm::stats::SampleIdCacheMisses,int,long long>( );
-        stats::clearGlobal<lm::stats::UsedCachedTetra,int,long long>( );
-        stats::clearGlobal<lm::stats::UsedNeighborTetra,int,long long>( );
-        stats::clearGlobal<lm::stats::ResampleAccel,int,long long>( );
-        stats::clearGlobal<lm::stats::TotalTetraTests,int,long long>( );
+        stats::clearGlobal<stats::SampleIdCacheHits,int,long long>( );
+        stats::clearGlobal<stats::SampleIdCacheMisses,int,long long>( );
+        stats::clearGlobal<stats::UsedCachedTetra,int,long long>( );
+        stats::clearGlobal<stats::UsedNeighborTetra,int,long long>( );
+        stats::clearGlobal<stats::ResampleAccel,int,long long>( );
+        stats::clearGlobal<stats::TotalTetraTests,int,long long>( );
 
         stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
@@ -206,7 +204,7 @@ public:
             int currentBFSLayer = 0;
             bool addedAny = true;
             int numLs = 0;
-            volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<lm::Float> corners, int bfsLayer) -> bool {
+            volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<Float> corners, int bfsLayer) -> bool {
                 //first try: store where this star is located in. 
                 //store information directly instead of indices. more cache efficient? but more storage.
                 
@@ -220,11 +218,11 @@ public:
                 Vec3 starpos = star.position;
                 Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
                 
-                glm::tmat4x3<lm::Float> pVs;
+                glm::tmat4x3<Float> pVs;
                 connectP(corners,starpos,pVs);
-                lm::Vec4 dets;
+                Vec4 dets;
                 computeDeterminants(pVs,dets);
-                lm::Float mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
+                Float mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
                 bool isInside = inside(dets, mainDeterminant);
                 //smallest distance to tetra ? well something simila..?
                 auto sth = (glm::abs(dets[0]) + glm::abs(dets[1]) + glm::abs(dets[2]) + glm::abs(dets[3])) - glm::abs(mainDeterminant);
@@ -245,7 +243,7 @@ public:
              
                 bool continu = !enteredNewLayer || (enteredNewLayer && haveAddedAnyInLastLayer);
                 if(!continu) {
-                    stats::add<stats::TetsPerLight,int,Float>(ind,numLs);
+                    stats::set<stats::TetsPerLight,int,Float>(ind,numLs);
                     //LM_INFO("gonna stop at bfs layer {}, add {} myself",bfsLayer,numLs);
                 }
                 return continu; //continue if didnt stop adding
@@ -256,17 +254,18 @@ public:
 
         },  
         [&](auto pxlindx,auto smplindx,auto threadid) {
+            stats::clear<stats::CachedSampleId,int,long long>();
 
             stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
             stats::clear<stats::TetsPerLight,int,Float>();
 
-            stats::clear<lm::stats::SampleIdCacheHits,int,long long>( );
-            stats::clear<lm::stats::SampleIdCacheMisses,int,long long>( );
-            stats::clear<lm::stats::UsedCachedTetra,int,long long>( );
-            stats::clear<lm::stats::UsedNeighborTetra,int,long long>( );
-            stats::clear<lm::stats::ResampleAccel,int,long long>( );
-            stats::clear<lm::stats::TotalTetraTests,int,long long>( );
+            stats::clear<stats::SampleIdCacheHits,int,long long>( );
+            stats::clear<stats::SampleIdCacheMisses,int,long long>( );
+            stats::clear<stats::UsedCachedTetra,int,long long>( );
+            stats::clear<stats::UsedNeighborTetra,int,long long>( );
+            stats::clear<stats::ResampleAccel,int,long long>( );
+            stats::clear<stats::TotalTetraTests,int,long long>( );
 
         } , 
         [&](auto pxlindx,auto smplindx,auto threadid) {
@@ -282,33 +281,33 @@ public:
             stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
 
-            stats::mergeToGlobal<lm::stats::TetsPerLight,int,Float>( 
+            stats::mergeToGlobal<stats::TetsPerLight,int,Float>( 
                 [](Float & v0,Float & v1 ) { return v0 + v1;} );
 
-            stats::mergeToGlobal<lm::stats::SampleIdCacheHits,int,long long>( 
+            stats::mergeToGlobal<stats::SampleIdCacheHits,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
-            stats::mergeToGlobal<lm::stats::SampleIdCacheMisses,int,long long>( 
+            stats::mergeToGlobal<stats::SampleIdCacheMisses,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
-            stats::mergeToGlobal<lm::stats::UsedCachedTetra,int,long long>( 
+            stats::mergeToGlobal<stats::UsedCachedTetra,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
-            stats::mergeToGlobal<lm::stats::UsedNeighborTetra,int,long long>( 
+            stats::mergeToGlobal<stats::UsedNeighborTetra,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
-            stats::mergeToGlobal<lm::stats::ResampleAccel,int,long long>( 
+            stats::mergeToGlobal<stats::ResampleAccel,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
-            stats::mergeToGlobal<lm::stats::TotalTetraTests,int,long long>( 
+            stats::mergeToGlobal<stats::TotalTetraTests,int,long long>( 
                 [](long long & v0,long long & v1 ) { return v0 + v1;} );
 
         }
         );
 
-        auto smplhits = stats::getGlobal<lm::stats::SampleIdCacheHits,int,long long>(0 );
-        auto smplmisses = stats::getGlobal<lm::stats::SampleIdCacheMisses,int,long long>(0 );
-        auto tetrahits =  stats::getGlobal<lm::stats::UsedCachedTetra,int,long long>( 0);
-        auto tetraneighborhits = stats::getGlobal<lm::stats::UsedNeighborTetra,int,long long>(0 );
-        auto accelsmpls = stats::getGlobal<lm::stats::ResampleAccel,int,long long>( 0);
-        auto totaltetratests = stats::getGlobal<lm::stats::TotalTetraTests,int,long long>(0 );
+        auto smplhits = stats::getGlobal<stats::SampleIdCacheHits,int,long long>(0 );
+        auto smplmisses = stats::getGlobal<stats::SampleIdCacheMisses,int,long long>(0 );
+        auto tetrahits =  stats::getGlobal<stats::UsedCachedTetra,int,long long>( 0);
+        auto tetraneighborhits = stats::getGlobal<stats::UsedNeighborTetra,int,long long>(0 );
+        auto accelsmpls = stats::getGlobal<stats::ResampleAccel,int,long long>( 0);
+        auto totaltetratests = stats::getGlobal<stats::TotalTetraTests,int,long long>(0 );
 
-        auto & tetsPerLight = stats::getGlobalRef<lm::stats::TetsPerLight,int,Float>();
+        auto & tetsPerLight = stats::getGlobalRef<stats::TetsPerLight,int,Float>();
         Float numlights = tetsPerLight.size();
         Float avg = 0.0;
         for(auto p : tetsPerLight) {
