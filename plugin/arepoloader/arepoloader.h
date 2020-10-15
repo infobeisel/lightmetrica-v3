@@ -60,19 +60,21 @@ inline lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b) {
     return ( b * toT  +  a * 0.5 *toT * toT   );
 }
 
-
-inline lm::Float det3x3(lm::Vec3 b,lm::Vec3 c,lm::Vec3 d) {
+template<typename F>
+inline F det3x3(glm::tvec3<F> b,glm::tvec3<F> c,glm::tvec3<F> d) {
     //glm::determinant(lm::Mat3(b0,b1,b2));
     return b[0]*c[1]*d[2] + c[0]*d[1]*b[2] + d[0]*b[1]*c[2] - d[0]*c[1]*b[2] - c[0]*b[1]*d[2] - b[0]*d[1]*c[2];
 }
 
-inline void connectP(glm::tmat4x3<lm::Float> const  & verts, lm::Vec3 const & p, glm::tmat4x3<lm::Float> & pToVerts) {
+template<typename F>
+inline void connectP(glm::tmat4x3<F> const  & verts,glm::tvec3<F> const & p, glm::tmat4x3<F> & pToVerts) {
 
     for(int i = 0; i < 4; i++)
         pToVerts[i] = verts[i] - p;
 }
 
-inline void computeDeterminants(glm::tmat4x3<lm::Float> & pToVerts, lm::Vec4 & results) {
+template<typename F>
+inline void computeDeterminants(glm::tmat4x3<F> & pToVerts, glm::tvec4<F>  & results) {
     results[0] = det3x3(pToVerts[1],pToVerts[2],pToVerts[3]);
     results[1] = det3x3(pToVerts[0],pToVerts[2],pToVerts[3]);
     results[2] = det3x3(pToVerts[0],pToVerts[1],pToVerts[3]);
@@ -81,7 +83,8 @@ inline void computeDeterminants(glm::tmat4x3<lm::Float> & pToVerts, lm::Vec4 & r
 
 
 //this test works irrespective of vertex order of the tetrahedron
-inline bool inside(lm::Vec4 & determinants, lm::Float tetraDeterminant) {
+template<typename F>
+inline bool inside(glm::tvec4<F> & determinants, F tetraDeterminant) {
     return abs(abs(tetraDeterminant) - (abs(determinants[0])+abs(determinants[1])+abs(determinants[2])+abs(determinants[3]))) < INSIDE_TOLERANCE;       
 }
 

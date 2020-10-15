@@ -405,22 +405,21 @@ namespace ArepoLoaderInternals {
 
     static lm::Accel *  accelRef = nullptr;
 
-
     class CachedSample {
         public:
         long long sampleIndex; //the id of the sample that is currently cached
         int tetraI;
         int hydroI;
         int minDistI;
-        glm::tmat4x3<lm::Float> tetraVs;
+        glm::tmat4x3<float> tetraVs;
         glm::ivec4 tetraInds;
         std::vector<float> values;
 
-        glm::tmat4x3<lm::Float> tmpPVs; //some point to vertex connections
-        lm::Vec4 tmpDets; //determinants
+        glm::tmat4x3<float> tmpPVs; //some point to vertex connections
+        glm::tvec4<float> tmpDets; //determinants
 
         //T^-1, a barycentric coordinates matrix
-        lm::Float mainDeterminant; //the tetrahedron's determinant
+        float mainDeterminant; //the tetrahedron's determinant
         lm::Mat3 baryInvT;
         std::vector<std::vector<float>> cornerVals;
 
@@ -428,7 +427,7 @@ namespace ArepoLoaderInternals {
         std::vector<tetra> neighbors;
         std::vector<int> neighborInds;
 
-        lm::Vec4 dirDets;
+        glm::tvec4<float> dirDets;
 
         int looksAtTriId;//the tetrahedron's triangle index (0-3) the current sample ray looks at.
         lm::Accel::Hit lastHit;
@@ -493,16 +492,16 @@ namespace ArepoLoaderInternals {
     }
 
 
-
-    inline bool insideCachedTetra(lm::Vec3 p, CachedSample & c) {
-        connectP(c.tetraVs,p,c.tmpPVs);
-        computeDeterminants(c.tmpPVs,c.tmpDets);
-        return inside(c.tmpDets, c.mainDeterminant);
+    template<typename F>
+    inline bool insideCachedTetra(glm::tvec3<F> p, CachedSample & c) {
+        connectP<float>(c.tetraVs,p,c.tmpPVs);
+        computeDeterminants<float>(c.tmpPVs,c.tmpDets);
+        return inside<float>(c.tmpDets, c.mainDeterminant);
     }
 
     inline void sampleCachedScalarCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, int quantityIndex = TF_VAL_DENS) {
         auto lambda012_a = cached.baryInvT * ray.d;
-        auto lambda012_b = cached.baryInvT * (ray.o - cached.tetraVs[3]);
+        auto lambda012_b = cached.baryInvT * (ray.o - static_cast<lm::Vec3>(cached.tetraVs[3]));
 
         auto densities = lm::Vec4(
             cached.cornerVals[0][quantityIndex] ,
@@ -537,18 +536,18 @@ namespace ArepoLoaderInternals {
         // where negative means dir is "right of", positive "left of" axis XR
         glm::ivec3 indices; 
 
-        cached.dirDets[0] = det3x3(ray.d,cached.tmpPVs[1],cached.tmpPVs[3]);
+        cached.dirDets[0] = det3x3<float>(ray.d,cached.tmpPVs[1],cached.tmpPVs[3]);
         bool det_B_D =  cached.mainDeterminant < 0.0 ? cached.dirDets[0] > 0.0 : cached.dirDets[0] < 0.0;
         indices.x = det_B_D ? 0 : 2; //A or C is guaranteed first vertex of final triangle
 
-        cached.dirDets[1] = det3x3(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[3]);
+        cached.dirDets[1] = det3x3<float>(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[3]);
         bool det_AorC_D = cached.mainDeterminant < 0.0 ? cached.dirDets[1] < 0.0 : cached.dirDets[1] > 0.0;
         indices.y = det_B_D   ? 
         (det_AorC_D ? 1 : 2) : 
         (det_AorC_D ? 0 : 1);
 
 
-        cached.dirDets[2] = det3x3(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[indices.y]);
+        cached.dirDets[2] = det3x3<float>(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[indices.y]);
         //left of horizontal x to y ?
         bool det_horizontal = cached.mainDeterminant < 0.0 ? cached.dirDets[2] < 0.0 :cached.dirDets[2] > 0.0;
         //the top or the bottom?
@@ -595,18 +594,18 @@ namespace ArepoLoaderInternals {
         
         //construct determinants : ray direction (assume it is normalized) and PVs
         auto p = ray.o + ray.d;
-        glm::tmat4x3<lm::Float> pVs;//point to vertex connections
-        glm::tmat4x3<lm::Float> verts;
-        connectP(cached.tetraVs,p, pVs);
+        glm::tmat4x3<float> pVs;//point to vertex connections
+        glm::tmat4x3<float> verts;
+        connectP<float>(cached.tetraVs,p, pVs);
 
 
         //TODO already better but still having t issues O:O
-        lm::Float volumeRelation = std::abs(mainD) + std::abs(det3x3(pVs[indices[0]],pVs[indices[1]], pVs[indices[2]]));
+        lm::Float volumeRelation = std::abs(mainD) + std::abs(det3x3<float>(pVs[indices[0]],pVs[indices[1]], pVs[indices[2]]));
         volumeRelation =  volumeRelation / std::abs(mainD); 
         //ray.d *= abs(mainD);
-        lm::Float bary0 = std::abs( det3x3(cached.tmpPVs[indices[1]],cached.tmpPVs[indices[2]], ray.d) );
-        lm::Float bary1 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[2]], ray.d) );
-        lm::Float bary2 = std::abs( det3x3(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[1]], ray.d) );
+        lm::Float bary0 = std::abs( det3x3<float>(cached.tmpPVs[indices[1]],cached.tmpPVs[indices[2]], ray.d) );
+        lm::Float bary1 = std::abs( det3x3<float>(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[2]], ray.d) );
+        lm::Float bary2 = std::abs( det3x3<float>(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[1]], ray.d) );
         lm::Float baryOrigin = 1.0 - bary0 - bary1 - bary2;
         
         auto t =  abs(mainD) / (bary0 + bary1 + bary2); 
@@ -743,25 +742,23 @@ namespace ArepoLoaderInternals {
         
          
     }
+    template<typename F>
+    inline bool insideTetra(int tetraIndex,glm::tvec3<F> const & loc, tetra const & tetra,
+        glm::tmat4x3<F> & verts, CachedSample & cachedS)  {
 
-    inline bool insideTetra(int tetraIndex,lm::Vec3 const & loc, tetra const & tetra,
-        glm::tmat4x3<lm::Float> & verts, CachedSample & cachedS)  {
-
-        glm::tmat4x3<lm::Float> pVs;//point to vertex connections
+        glm::tmat4x3<F> pVs;//point to vertex connections
         //glm::tmat4x3<lm::Float> verts;
         glm::ivec4 vertInds;
-        lm::Vec4 determinants;
+        glm::tvec4<F> determinants;
 
 
         for(int i = 0; i < 4; i++) {
             vertInds[i] = tetra.p[i];
-            //auto av =  arepoMeshRef->getDP()[vertInds[i]];
-            //verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
             pVs[i] = verts[i] - loc;
         }
 
         //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
-        lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
+        F mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
         //if(mainDeterminant > 0.0)
             //   LM_INFO( "cw");
 
@@ -804,12 +801,12 @@ namespace ArepoLoaderInternals {
     //performs point in tetrahedron test, returns result. 
     //stores all relevant test data into cachedS if p is in the tetra
     inline bool insideTetra(int tetraIndex, tetra const & tetra, lm::Vec3 const & p, CachedSample & cachedS)  {
-        glm::tmat4x3<lm::Float> verts;
+        glm::tmat4x3<float> verts;
         for(int i = 0; i < 4; i++) {
-            auto av =  arepoMeshRef->getDP()[tetra.p[i]];
-            verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
+            auto & av =  arepoMeshRef->getDP()[tetra.p[i]];
+            verts[i] = static_cast<float>(MODEL_SCALE) * glm::vec3(av.x,av.y,av.z);
         }
-        return insideTetra(tetraIndex,p,tetra,verts,cachedS);
+        return insideTetra<float>(tetraIndex,static_cast<glm::tvec3<float>>(p),tetra,verts,cachedS);
         
     }
 
