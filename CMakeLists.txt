@@ -45,6 +45,7 @@ set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
 # External dependencies
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
+#find_package ( OPENMP REQUIRED )
 # This prevents for pybind11 to use C++ standard flags -std=c++14 in its CMake script,
 # which introduces duplicated -std flags in the g++ commands.
 # This causes a problem since some compiler versions (e.g., GCC 7.3)

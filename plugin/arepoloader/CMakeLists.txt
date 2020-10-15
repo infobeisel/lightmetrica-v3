@@ -1,4 +1,5 @@
-cmake_minimum_required (VERSION 3.1)
+#cmake_minimum_required (VERSION 3.12)
+cmake_minimum_required (VERSION 3.10)
 project (arepoloader)
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_C_FLAGS -DH5_USE_110_API)
@@ -45,13 +46,13 @@ target_include_directories(arepoloader PUBLIC
 "${HDF5_INCLUDE_DIRS}"
 "${GSL_INCLUDE_DIRS}"
 "${GMP_INCLUDES}"
-"/home/beisel/ArepoVTK/arepo/include/"
-"/home/beisel/ArepoVTK/include/"
+"/root/Projects/ArepoVTK/arepo/include"
+"/root/Projects/ArepoVTK/include"
 )
 
 target_link_libraries(arepoloader PUBLIC
-"/home/beisel/ArepoVTK/libarepovtk.a"
-"/home/beisel/ArepoVTK/arepo/libarepo.a"
+"/root/Projects/ArepoVTK/libarepovtk.a"
+"/root/Projects/ArepoVTK/arepo/libarepo.a"
 "${PROJECT_SOURCE_DIR}"
 "${PNG_LIBRARIES}"
 "${OpenMP_CXX_LIBRARIES}"
