@@ -300,8 +300,9 @@ namespace ArepoLoaderInternals {
             
 
        
-
+            DP.clear();
             point p;
+
 
             p.x = -10;p.y = 10;p.z = 10;p.index = 0;
             DP.push_back(p);
@@ -480,23 +481,9 @@ namespace ArepoLoaderInternals {
 
     };
 
-    inline double det3x3(lm::Vec3 b,lm::Vec3 c,lm::Vec3 d) {
-        //glm::determinant(lm::Mat3(b0,b1,b2));
-        return b[0]*c[1]*d[2] + c[0]*d[1]*b[2] + d[0]*b[1]*c[2] - d[0]*c[1]*b[2] - c[0]*b[1]*d[2] - b[0]*d[1]*c[2];
-    }
     
-    inline void connectP(glm::tmat4x3<lm::Float> const  & verts, lm::Vec3 const & p, glm::tmat4x3<lm::Float> & pToVerts) {
+    
 
-        for(int i = 0; i < 4; i++)
-            pToVerts[i] = verts[i] - p;
-    }
-
-    inline void computeDeterminants(glm::tmat4x3<lm::Float> & pToVerts, lm::Vec4 & results) {
-        results[0] = det3x3(pToVerts[1],pToVerts[2],pToVerts[3]);
-        results[1] = det3x3(pToVerts[0],pToVerts[2],pToVerts[3]);
-        results[2] = det3x3(pToVerts[0],pToVerts[1],pToVerts[3]);
-        results[3] = det3x3(pToVerts[0],pToVerts[1],pToVerts[2]); 
-    }
 
     //this only works iff the tetrahedron is specified with a specific vertex order, namely, see mesh_arepo.cpp !!!
     inline bool insideOld(lm::Vec4 & determinants) {
@@ -505,10 +492,6 @@ namespace ArepoLoaderInternals {
         return ret0 || ret1;
     }
 
-    //this test works irrespective of vertex order of the tetrahedron
-    inline bool inside(lm::Vec4 & determinants, lm::Float tetraDeterminant) {
-        return abs(abs(tetraDeterminant) - (abs(determinants[0])+abs(determinants[1])+abs(determinants[2])+abs(determinants[3]))) < INSIDE_TOLERANCE;       
-    }
 
 
     inline bool insideCachedTetra(lm::Vec3 p, CachedSample & c) {
@@ -764,56 +747,56 @@ namespace ArepoLoaderInternals {
     inline bool insideTetra(int tetraIndex,lm::Vec3 const & loc, tetra const & tetra,
         glm::tmat4x3<lm::Float> & verts, CachedSample & cachedS)  {
 
-            glm::tmat4x3<lm::Float> pVs;//point to vertex connections
-            //glm::tmat4x3<lm::Float> verts;
-            glm::ivec4 vertInds;
-            lm::Vec4 determinants;
+        glm::tmat4x3<lm::Float> pVs;//point to vertex connections
+        //glm::tmat4x3<lm::Float> verts;
+        glm::ivec4 vertInds;
+        lm::Vec4 determinants;
 
 
-            for(int i = 0; i < 4; i++) {
-                vertInds[i] = tetra.p[i];
-                //auto av =  arepoMeshRef->getDP()[vertInds[i]];
-                //verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
-                pVs[i] = verts[i] - loc;
-            }
+        for(int i = 0; i < 4; i++) {
+            vertInds[i] = tetra.p[i];
+            //auto av =  arepoMeshRef->getDP()[vertInds[i]];
+            //verts[i] = MODEL_SCALE * lm::Vec3(av.x,av.y,av.z);
+            pVs[i] = verts[i] - loc;
+        }
 
-            //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
-            lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
-            //if(mainDeterminant > 0.0)
-                //   LM_INFO( "cw");
-
-
-            //skip points 
-            //wtf see arepo vtk
-            DPinfinity = -1;
-            if  (
-            (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
-            || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
-            || tetra.t[0] == -1)
-            {
-                //LM_INFO("skip");
-                return false;
-            }
+        //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
+        lm::Float mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
+        //if(mainDeterminant > 0.0)
+            //   LM_INFO( "cw");
 
 
+        //skip points 
+        //wtf see arepo vtk
+        DPinfinity = -1;
+        if  (
+        (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
+        || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
+        || tetra.t[0] == -1)
+        {
+            //LM_INFO("skip");
+            return false;
+        }
 
-            connectP(verts,loc,pVs);
-            computeDeterminants(pVs,determinants);
-            bool insideTet = inside(determinants,mainDeterminant);
-            if(insideTet) {
-                cachedS.tetraI = tetraIndex;
-                cachedS.tetraVs = verts;
-                cachedS.tetraInds = vertInds;
-                cachedS.tmpPVs = pVs;
-                cachedS.tmpDets = determinants;
-                cachedS.mainDeterminant = mainDeterminant;
-                updateCachedBaryInvT(cachedS);
-                cachedS.hydroI = -1;
-                cachedS.minDistI = -1;
-                cacheCornerValues(cachedS);
-            }
 
-            return insideTet;
+
+        connectP(verts,loc,pVs);
+        computeDeterminants(pVs,determinants);
+        bool insideTet = inside(determinants,mainDeterminant);
+        if(insideTet) {
+            cachedS.tetraI = tetraIndex;
+            cachedS.tetraVs = verts;
+            cachedS.tetraInds = vertInds;
+            cachedS.tmpPVs = pVs;
+            cachedS.tmpDets = determinants;
+            cachedS.mainDeterminant = mainDeterminant;
+            updateCachedBaryInvT(cachedS);
+            cachedS.hydroI = -1;
+            cachedS.minDistI = -1;
+            cacheCornerValues(cachedS);
+        }
+
+        return insideTet;
 
     }
     
@@ -1344,12 +1327,16 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         return true;
     }
 
-    void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI, int bfsLayer)> processor) const override {
+    void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI,glm::tmat4x3<lm::Float> corners, int bfsLayer)> processor) const override {
         auto & cached = cachedDistanceSample(); 
         auto inside = findAndCacheTetra(cached,startPos,lm::Vec3(1,0,0), meshAdapter.get());
      	thread_local std::vector<int> buffer0;
         if(buffer0.size() < 1) buffer0.resize(1);
         buffer0[0] = cached.tetraI;
+        
+        //thread_local std::vector<glm::tmat4x3<lm::Float>> tempVs;
+        //if(tempVs.size() < 1) tempVs.resize(1);
+        //tempVs[0] = cached.tetraVs;
 
         
         thread_local std::unordered_map<int, bool> alreadyVisited;
@@ -1371,9 +1358,18 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                 //visit nodes, mark them. also mark neighbor nodes immediately to avoid duplicates queueing up,
                 // but visit them in the next iteration
                 for(int i = 0; i < numToVisit; i++) {
-                    keepVisiting = keepVisiting && processor(visitTetras[i],layer);
+
+                    //gather corner positions for processor
+                    auto & tetToVisit = arepoMeshRef->getDT()[visitTetras[i]];
+                    auto vs = glm::tmat4x3<lm::Float>();
+                    for(int i = 0; i < 4; i++) {
+                        auto v =  arepoMeshRef->getDP()[tetToVisit.p[i]];
+                        vs[i] = MODEL_SCALE * lm::Vec3(v.x,v.y,v.z);
+                    }
+
+                    keepVisiting = keepVisiting && processor(visitTetras[i],vs,layer);
                     if(!keepVisiting) break;
-                    int ns = updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get(),nullptr);
+                    int ns = updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get());
                     for(auto tmpI = 0 ; tmpI < ns; tmpI++ ) {
                         if(alreadyVisited.find(temporary[tmpI]) == alreadyVisited.end()) {
                             alreadyVisited[temporary[tmpI]] = true;

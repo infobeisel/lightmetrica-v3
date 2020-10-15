@@ -15,69 +15,79 @@
 #include <lm/accel.h>
 #include "statstags.h"
 #include "arepoloader.h"
-using namespace ArepoLoaderInternals;
 
+
+using namespace ArepoLoaderInternals;
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
         
 
 
+void to_json(Json& j, const StarSource& p) {
+    j = {
+        {"intensity" , {
+            {"r",p.intensity.x},
+            {"g",p.intensity.y},
+            {"b",p.intensity.z}
+            }
+        },
+        {"position" , {
+            {"x",p.position.x},
+            {"y",p.position.y},
+            {"z",p.position.z}
+            }
+        },
+        {"index" , p.index}
+        
+    };
+}
 
 
-class Renderer_Arepo_VRL final : public Renderer {
+void from_json(const Json& j, StarSource& p) {
+    //do nothing;
+}
+
+
+class Renderer_Arepo_Preprocess final : public Renderer {
 
 protected:
     std::string strategy_;
     Float mis_power_;
     Scene* scene_;
     AccelKnn* vrl_accel_;
-    Volume* volume_;
+    Volume_Arepo* volume_;
     Film* film_;
     int max_verts_;
     Float rr_prob_;
-    Float impact_threshold_;
     std::optional<unsigned int> seed_;
     Component::Ptr<scheduler::Scheduler> sched_;
     long long spp_;
     Component::Ptr<Light> reprlight_;
-    bool save_vrls_;
+    Float impact_threshold_;
 
     std::vector<Float> star_coords_;
     std::vector<Float> star_ugriz_;
     Float model_scale_;
-    Vec3 camera_pos_;
+
 
 public:
     virtual void construct(const Json& prop) override {
-        strategy_ = json::value<std::string>(prop, "strategy");
-        mis_power_ = json::value<Float>(prop, "mis_power",2.0);
         scene_ = json::comp_ref<Scene>(prop, "scene");
-        vrl_accel_ = json::comp_ref<AccelKnn>(prop, "vrl_accel");
-        volume_= json::comp_ref<Volume>(prop, "volume");
-        film_ = json::comp_ref<Film>(prop, "output");
-        max_verts_ = json::value<int>(prop, "max_verts");
+        volume_= json::comp_ref<Volume_Arepo>(prop, "volume");
+
         seed_ = json::value_or_none<unsigned int>(prop, "seed");
         rr_prob_ = json::value<Float>(prop, "rr_prob", .2_f);
         const auto sched_name = json::value<std::string>(prop, "scheduler");
         spp_ = json::value<long long>(prop, "spp");
-        save_vrls_ = json::value<bool>(prop, "save_vrls",true);
-        impact_threshold_ = json::value<Float>(prop, "impact_threshold");
+        impact_threshold_ = json::value<Float>(prop, "impact_threshold",1.0);
 
         star_coords_ = json::value<std::vector<Float>>(prop,"star_coords");
         star_ugriz_ = json::value<std::vector<Float>>(prop,"star_ugriz");
         model_scale_ = json::value<Float>(prop,"model_scale");
-        camera_pos_ = json::value<Vec3>(prop,"camera_pos");
-
         
         
         //want to cast direct lighting on sensor, each sample treating one light
         
-        auto copy = prop;
-        copy["num_samples"] = scene_->num_lights();
-        LM_INFO("num samples {}",scene_->num_lights());
-        sched_ = comp::create<scheduler::Scheduler>(
-            "scheduler::spi::" + sched_name, make_loc("scheduler"), copy);
-
 
 
     }
@@ -95,16 +105,13 @@ public:
 
 
     virtual Json render() const override {
-		scene_->require_renderable();
 
         //reconstruct scheduler with new sample count
+        Json info;
+        info["num_samples"] = star_coords_.size() / 3;
 
-        Json copy;
-        copy["num_samples"] = scene_->num_lights();
-        LM_INFO("num samples {}",scene_->num_lights());
-        
         auto ontheflysched_ = comp::create<scheduler::Scheduler>(
-            "scheduler::spi::sample", make_loc("scheduler"), copy);
+            "scheduler::spi::sample", make_loc("scheduler"), info);
 
         stats::clearGlobal<stats::CachedSampleId,int,long long>( );
 
@@ -115,13 +122,15 @@ public:
         stats::clearGlobal<stats::ResampleAccel,int,long long>( );
         stats::clearGlobal<stats::TotalTetraTests,int,long long>( );
 
-        stats::clearGlobal<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>();
+        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+
         stats::clearGlobal<stats::TetsPerLight,int,Float>();
 
 
-        film_->clear();
-        const auto size = film_->size();
+
         timer::ScopedTimer st;
+
+
 
         //to sRGB
         auto m0 = Vec3(3.2404542,-0.9692660,0.0556434);     
@@ -129,19 +138,13 @@ public:
         auto m2 = Vec3(  -0.4985314, 0.0415560, 1.0572252);
         auto M = Mat3(m0,m1,m2);
       
+        LM_INFO("star coords: {}, star photos {}",star_coords_.size()/3,star_ugriz_.size()/8);
+        //createdLights_.reserve(star_coords_.size() / 3);
 
 
         //the scheduler gives one sample per light
         const auto processed = ontheflysched_->run([&](long long pixel_index, long long sample_index, int threadid) {
-
-            // Per-thread random number generator
-            thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
             
-            Vec2 raster_pos{};
-
-            //store the sample id that this thread currently works on 
-            stats::set<stats::CachedSampleId,int,long long>(0,sample_index);
-
             //parse light
             Json lightprop;
             auto ind = sample_index;
@@ -186,73 +189,73 @@ public:
             star.position = model_scale_ * Vec3(star_coords_[coord_i],star_coords_[coord_i+1],star_coords_[coord_i+2]);
             star.intensity = rgb;
             star.index = ind;
-
-            auto cam_light_connection = glm::normalize(star.position - camera_pos_);
- 
-
-            auto cdfSoFar = 0.0;
-            auto tSoFar = 0.0;
             
 
-            std::function<void(Vec3,RaySegmentCDF const &, int)> raysegmentVisitor = [&] (Vec3 boundarypos,RaySegmentCDF const & tetrasegment, int tetraI) -> void {
-                //add an entry for the current tetrahedron
-                LightToCameraRaySegmentCDF segment;
-                segment.weight = star.intensity;
-                segment.localcdf = tetrasegment.localcdf;
-                segment.t = tetrasegment.t;
-                segment.a = tetrasegment.a;
-                segment.b = tetrasegment.b;
-                segment.p = boundarypos;
-                segment.d = -cam_light_connection;
-                segment.tSoFar = tSoFar;
-                segment.cdfSoFar = cdfSoFar;
+            // Per-thread random number generator
+            thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
+            
+            Vec2 raster_pos{};
 
-                Float intensity = glm::max(segment.weight[0],glm::max(segment.weight[1],segment.weight[2]));
+            //store the sample id that this thread currently works on 
+            stats::set<stats::CachedSampleId,int,long long>(0,sample_index);
 
-                bool comp = intensity * glm::exp(-segment.cdfSoFar) > impact_threshold_;//BIAS
-                if(save_vrls_ && comp) {
-                    
-                    stats::update<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>(
+            int currentBFSLayer = 0;
+            bool addedAny = true;
+            int numLs = 0;
+            volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<Float> corners, int bfsLayer) -> bool {
+                //first try: store where this star is located in. 
+                //store information directly instead of indices. more cache efficient? but more storage.
+                
+                bool enteredNewLayer = currentBFSLayer != bfsLayer;
+                bool haveAddedAnyInLastLayer = addedAny;
+                
+                if(enteredNewLayer) //reset
+                    addedAny = false;
+                currentBFSLayer = bfsLayer;
+
+                Vec3 starpos = star.position;
+                Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
+                
+                glm::tmat4x3<Float> pVs;
+                connectP(corners,starpos,pVs);
+                Vec4 dets;
+                computeDeterminants(pVs,dets);
+                Float mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
+                bool isInside = inside(dets, mainDeterminant);
+                //smallest distance to tetra ? well something simila..?
+                auto sth = (glm::abs(dets[0]) + glm::abs(dets[1]) + glm::abs(dets[2]) + glm::abs(dets[3])) - glm::abs(mainDeterminant);
+                
+                bool comp = isInside || (starintens / sth) > impact_threshold_;//BIAS
+
+
+                if(comp) {
+                    stats::update<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>(
                         tetraI, 
                         [&](auto & vec) {
-                            vec.push_back(segment);
+                            vec.push_back(star);
                         }
                     );
-                    stats::add<stats::TetsPerLight,int,Float>(tetraI,1);
-
+                    numLs++;
+                    addedAny = true;
                 }
-                cdfSoFar += tetrasegment.localcdf;
-                tSoFar += tetrasegment.t;
-            };
-            stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int)>>(0,raysegmentVisitor);
-          
-            //importance sample distance following volume 
-            const auto* medium = scene_->node_at(scene_->medium_node()).primitive.medium;
-            const auto ds = medium->sample_distance(rng, {star.position, -cam_light_connection }, 0_f, Inf);
+             
+                bool continu = !enteredNewLayer || (enteredNewLayer && haveAddedAnyInLastLayer);
+                if(!continu) {
+                    stats::set<stats::TetsPerLight,int,Float>(ind,numLs);
+                    //LM_INFO("gonna stop at bfs layer {}, add {} myself",bfsLayer,numLs);
+                }
+                return continu; //continue if didnt stop adding
 
-
-            //this is very important, to unregister the function in subsequent render passes(!)
-            stats::set<stats::BoundaryVisitor,int,std::function<void(Vec3,RaySegmentCDF const &,int)>>(0,{});
-
-            //splat result to pixel (test)
-            const auto rp_ = path::raster_position(scene_, cam_light_connection);
-            auto Tr = glm::exp(- cdfSoFar);
-            if(rp_) { //it is part of the sensor?
-                auto tosplat = Tr * star.intensity;
-                //LM_INFO("splat  {},{},{} on sensor {},{}",tosplat[0],tosplat[1],tosplat[2],
-                //rp_->x,rp_->y);
-                //LM_INFO("{},{},{}",sp.geom.p.x,sp.geom.p.y,sp.geom.p.z);
-
-                film_->splat(*rp_,tosplat);
-            }
+            });
+    
             
 
         },  
         [&](auto pxlindx,auto smplindx,auto threadid) {
-
-            stats::clear<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>();
-
             stats::clear<stats::CachedSampleId,int,long long>();
+
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
+
             stats::clear<stats::TetsPerLight,int,Float>();
 
             stats::clear<stats::SampleIdCacheHits,int,long long>( );
@@ -265,13 +268,15 @@ public:
         } , 
         [&](auto pxlindx,auto smplindx,auto threadid) {
             
+        
+
             
             //merge the per tetrahedron vectors of star light sources
-            stats::mergeToGlobal<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>( 
+            stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>( 
                 [](auto & vector1, auto & vector2 ) { vector1.insert(vector1.begin(),vector2.begin(), vector2.end());return vector1;}
             );
 
-            stats::clear<stats::VRL,stats::TetraIndex,std::deque<LightToCameraRaySegmentCDF>>();
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::deque<StarSource>>();
 
 
             stats::mergeToGlobal<stats::TetsPerLight,int,Float>( 
@@ -299,38 +304,17 @@ public:
         auto tetraneighborhits = stats::getGlobal<stats::UsedNeighborTetra,int,long long>(0 );
         auto accelsmpls = stats::getGlobal<stats::ResampleAccel,int,long long>( 0);
         auto totaltetratests = stats::getGlobal<stats::TotalTetraTests,int,long long>(0 );
-        
+
         auto & tetsPerLight = stats::getGlobalRef<stats::TetsPerLight,int,Float>();
         Float numlights = tetsPerLight.size();
         Float avg = 0.0;
         for(auto p : tetsPerLight) {
             avg += p.second / numlights;
         }
-        LM_INFO("average number vrl per tetra: {}", avg);
 
-#ifdef USE_KNN_EMBREE
+        LM_INFO("average number of tetrahedra a light is associated with: {}", avg);
 
-        if(numvrls > 0) {
-            std::function<bool(Mat4&,int&)> nextObject = [&](Mat4 & out_global_transform,int & out_someindex) {
-                auto & vrl = vrls[currentIndex];
-                transform = glm::mat4(1.0);
-                transform[3] = glm::vec4(vrl.p + vrl.d * vrl.t * 0.5,1);
-                out_someindex = currentIndex;
-                currentIndex++;
-                //LM_INFO("vrl {}",currentIndex);
-                if(currentIndex <= numvrls)
-                    return true;
-                return false;
-            };
-
-            vrl_accel_->build(numvrls,nextObject);
-
-
-        }
-#endif
         
-
-
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,
          smplmisses,
@@ -340,17 +324,12 @@ public:
          totaltetratests
          );
 
-        // Rescale film
-        #if VOLPT_IMAGE_SAMPLING
-        film_->rescale(Float(size.w* size.h) / processed);
-        #else
-        //film_->rescale(1_f / processed);
-        #endif
+        
 
         return { {"processed", processed}, {"elapsed", st.now()} };
     }
 };
 
-LM_COMP_REG_IMPL(Renderer_Arepo_VRL, "renderer::volpt_arepo_vrl");
+LM_COMP_REG_IMPL(Renderer_Arepo_Preprocess, "renderer::volpt_arepo_preprocess");
 
 LM_NAMESPACE_END(LM_NAMESPACE)
