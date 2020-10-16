@@ -215,16 +215,42 @@ public:
                 Vec3 starpos = star.position;
                 Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
                 
+                bool isInside = false;
+                Float mainDeterminant = 0.0;
                 glm::tmat4x3<Float> pVs;
-                connectP(corners,starpos,pVs);
-                Vec4 dets;
-                computeDeterminants(pVs,dets);
-                Float mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
-                bool isInside = inside(dets, mainDeterminant);
-                //smallest distance to tetra ? well something simila..?
-                auto sth = (glm::abs(dets[0]) + glm::abs(dets[1]) + glm::abs(dets[2]) + glm::abs(dets[3])) - glm::abs(mainDeterminant);
+                {
+                    connectP(corners,starpos,pVs);
+                    Vec4 dets;
+                    computeDeterminants(pVs,dets);
+                    mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
+                    isInside = inside(dets, mainDeterminant);
+                }
+
+                //take farthest tetra point as sphere center
+                //and longest edge as radius, test if inside radius
+
+                int farthestI;
+                Float dist = 0.0;
+                //compute farthest corner 
+                for(int i = 0; i < 4; i ++) {
+                    auto d = glm::length2(pVs[i]);
+                    if(d > dist) {
+                        farthestI = i;
+                        dist = d;
+                    }
+                }
+                //compute longest edge in tetra
+                dist = 0.0;
+                for(int i = 1; i < 4; i++)
+                    dist = glm::max( dist, 
+                        glm::distance(corners[(farthestI + i) % 4], corners[farthestI]));
+                //compute distance between sphere and star
+                dist = glm::max(0.0,glm::distance(starpos, corners[farthestI]) - dist);
+
+
+                //smallest distance to tetra ? well, the above is something similar..?
                 
-                bool comp = isInside || (starintens / sth) > impact_threshold_;//BIAS
+                bool comp = isInside || (starintens / dist) > impact_threshold_;//BIAS
 
 
                 if(comp) {

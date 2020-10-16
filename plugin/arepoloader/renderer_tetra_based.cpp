@@ -338,8 +338,17 @@ public:
         }
         LM_INFO("lights per tetra {}",lightspertetra);
 
-
-
+        LM_INFO("num threads: {}",parallel::num_threads());
+        auto sqrtthreads = glm::sqrt(static_cast<Float>(parallel::num_threads()));
+        int blockedge = static_cast<int>(sqrtthreads);
+        int blocksize = blockedge*blockedge;
+        
+        /*int localX = pixel_index % blockedge;
+        int localY = pixel_index / blockedge;
+        int globalX = pixel_index / blocksize;
+        int blocksX = size.w / blockedge;
+        int blocksY = size.h / blockedge;*/
+        
         const auto processed = sched_->run([&](long long pixel_index, long long sample_index, int threadid) {
             LM_KEEP_UNUSED(sample_index);
         
@@ -671,11 +680,11 @@ public:
                                             zetaTransmittance *= glm::exp(-  normcdf );
                                             queryTs[i] = travelT + t;   
                                             //queryTs[i] = minT + zetas[i] * (totalT-minT); 
-                                            queryPDFs[i] = 1.0;
-                                            //queryPDFs[i] = tetrasegment.b + tetrasegment.t * tetrasegment.a; 
-                                            //queryPDFs[i] *= zetaTransmittance; 
                                             //queryPDFs[i] /=  totalTau;
-                                            //queryPDFs[i] /=  lowDensityNormalizationFactor;
+                                            queryPDFs[i] = 1.0;
+                                            /*debatable: queryPDFs[i] = tetrasegment.b + tetrasegment.t * tetrasegment.a; 
+                                            queryPDFs[i] *= zetaTransmittance; 
+                                            queryPDFs[i] /=  lowDensityNormalizationFactor;*/
                                             queryTetraInds[i] = tetrasegment.tetraI;
                                             zetaAccCdf += normcdf;
                                             //break;
