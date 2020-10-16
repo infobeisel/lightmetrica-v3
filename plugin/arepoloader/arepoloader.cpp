@@ -919,7 +919,7 @@ namespace ArepoLoaderInternals {
             if(inside) { // we found a tetrahedron where we are inside
                 int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                 cachedS.numNeighbors = ns;
-                //cachedS.sampleIndex = currentSample;
+                cachedS.sampleIndex = currentSample;
                 cachedS.hydroI = -1;
                 cachedS.minDistI = -1;
                 cacheCornerValues(cachedS);
