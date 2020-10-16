@@ -226,26 +226,6 @@ static const Vec3 blackBodyCIEs[199] =
 
 
 
-void to_json(Json& j, const LightToCameraRaySegmentCDF& p) {
-    j = {
-        {"weight" , {
-            {"x",p.weight.x},
-            {"y",p.weight.y},
-            {"z",p.weight.z}
-            }
-        },
-        {"cdfSoFar" , p.cdfSoFar},
-        {"localcdf" , p.localcdf},
-        {"t" , p.t},
-        {"a" , p.a},
-        {"b" , p.b}
-    };
-}
-
-
-void from_json(const Json& j, LightToCameraRaySegmentCDF& p) {
-    //do nothing;
-}
 
 class Renderer_VolPT_Base : public Renderer {
 protected:
