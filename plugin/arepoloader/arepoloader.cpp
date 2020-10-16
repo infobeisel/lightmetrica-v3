@@ -661,8 +661,8 @@ namespace ArepoLoaderInternals {
     inline void cacheCornerValues(CachedSample & cachedS)  {
 
         for(int i = 0; i < 4; i++) {
-            for (int j = 0; j < 9; j++)
-                cachedS.cornerVals[i][j] = 0.0f;
+            //for (int j = 0; j < 9; j++)
+            //    cachedS.cornerVals[i][j] = 0.0f;
             int num = arepoMeshRef->getDP()[ cachedS.tetraInds[i]].index;
 #ifdef MOCK_AREPO
             cachedS.cornerVals[i][TF_VAL_DENS] = arepoMeshRef->getDensity(num);
@@ -670,10 +670,11 @@ namespace ArepoLoaderInternals {
 #else
             if(num >= 0) {
                 int hydroIndex = getCorrectedHydroInd(num);
-                
                 if(hydroIndex > -1 && num  < NumGas) {
+                    cachedS.cornerVals[i][TF_VAL_DENS] = DENSITY_CRANKUP * arepoMeshRef->getDensity(hydroIndex);
+                    cachedS.cornerVals[i][TF_VAL_TEMP] = arepoMeshRef->getTemperature(hydroIndex);
                     //addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP/MODEL_SCALE);//lengths[minDistIndex] / totalD );
-                    addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP);//lengths[minDistIndex] / totalD );
+                    //addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP);//lengths[minDistIndex] / totalD );
                 }  
             }
 #endif

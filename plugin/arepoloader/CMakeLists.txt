@@ -66,10 +66,10 @@ pybind11::module
 liblm
 )
 
+#set_target_properties(arepoloader PROPERTIES DEBUG_POSTFIX "-debug")
 
 target_compile_definitions(arepoloader PRIVATE -DLM_AREPO_EXPORTS)
 set_target_properties(arepoloader PROPERTIES PREFIX "")
-set_target_properties(arepoloader PROPERTIES DEBUG_POSTFIX "-debug")
 set_target_properties(arepoloader PROPERTIES FOLDER "lm/plugin")
 set_target_properties(arepoloader PROPERTIES
 ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
