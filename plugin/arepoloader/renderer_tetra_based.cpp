@@ -224,7 +224,7 @@ static const Vec3 blackBodyCIEs[199] =
 ,{5.29984890e-05,5.38710211e-05,7.48731251e-05}};
 
 
-#define ALL_LIGHTS
+//#define ALL_LIGHTS
 
 
     
