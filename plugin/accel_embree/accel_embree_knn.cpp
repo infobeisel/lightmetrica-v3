@@ -17,6 +17,7 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 struct KNNNode {
     Vec3 global_pos;  // Global transform of the primitive
     int nodeIndex; //lm scene node index
+    Float radius; //impact radius of the node
 };
 
 namespace {  
@@ -27,14 +28,24 @@ namespace {
     {
         
 
-        const KNNNode * nodes = ((KNNResult *) args->userPtr)->nodes;
+        KNNNode * nodes = ((KNNResult *) args->userPtr)->nodes;
 
         
         RTCPointQuery* query = (RTCPointQuery*)args->query;
         const unsigned int primID = args->primID;
         const lm::Vec3 q(query->x, query->y, query->z);
-        const KNNNode& node = nodes[primID];
-        const lm::Vec3 p(node.global_pos[0],
+        KNNNode& node = nodes[primID];
+
+        KNNResult& result = *(KNNResult*)args->userPtr;
+
+        if(result.results.size() < result.numResults) {
+            result.results.push_back(node.nodeIndex);
+        } else {
+            result.results[result.numResults] = node.nodeIndex;
+        }
+        result.numResults++;
+
+        /*const lm::Vec3 p(node.global_pos[0],
                             node.global_pos[1],
                             node.global_pos[2]);
         //const float d = glm::distance(p, q);
@@ -72,7 +83,7 @@ namespace {
             query->radius = R;
             return true;
             }
-        }
+        }*/
         return false;
     }
 //--------------------------------------------------------------------------------------------------
@@ -84,52 +95,60 @@ namespace {
     {
         const std::vector<KNNNode> & nodes = * (const std::vector<KNNNode> *) args->geometryUserPtr;
 
+        
 
         RTCBounds* bounds_o = args->bounds_o;
         auto primID = args->primID;
         const KNNNode& node = nodes[primID];
-        /*LM_INFO("bounds {},{},{},  {},{},{},,",
-                node.global_transform[3][0],
-                node.global_transform[3][1],
-                node.global_transform[3][2],
-                node.global_transform[3][0],
-                node.global_transform[3][1],
-                node.global_transform[3][2]
+        
 
-                );*/
         bounds_o->lower_x = node.global_pos[0];
         bounds_o->lower_y = node.global_pos[1];
         bounds_o->lower_z = node.global_pos[2];
         bounds_o->upper_x = node.global_pos[0];
         bounds_o->upper_y = node.global_pos[1];
         bounds_o->upper_z = node.global_pos[2];
+
+        bounds_o->lower_x -= node.radius;
+        bounds_o->lower_y -=  node.radius;
+        bounds_o->lower_z -=  node.radius;
+        bounds_o->upper_x +=  node.radius;
+        bounds_o->upper_y +=  node.radius;
+        bounds_o->upper_z +=  node.radius;
     }
 
 
     bool pointQueryFunc(struct RTCPointQueryFunctionArguments* args)
     {
-        const KNNNode * nodes = ((KNNResult *) args->userPtr)->nodes;
+        KNNNode * nodes = ((KNNResult *) args->userPtr)->nodes;
 
         
         RTCPointQuery* query = (RTCPointQuery*)args->query;
         const unsigned int primID = args->primID;
-        const lm::Vec3 q(query->x, query->y, query->z);
-        const KNNNode& node = nodes[primID];
+        //const lm::Vec3 q(query->x, query->y, query->z);
+        KNNNode& node = nodes[primID];
         //const lm::Vec3 p(node.global_pos[0],
         //                    node.global_pos[1],
         //                    node.global_pos[2]);
-        const float d = glm::distance(node.global_pos, q);
+        //const float d = glm::distance(node.global_pos, q);
             
         assert(args->query);
-        KNNResult* result = (KNNResult*)args->userPtr;
+        //Neighbour neighbour;
+        //neighbour.nodeIndex = node.nodeIndex;
+        //neighbour.d = d;
+        KNNResult& result = *(KNNResult*)args->userPtr;
         //result->visited.push_back(primID);
-
-        if (d < query->radius && (result->knn.size() < result->k || d < result->knn.top().d))
+        if(result.results.size() <= result.numResults) {
+            result.results.push_back(node.nodeIndex);
+        } else {
+            result.results[result.numResults] = node.nodeIndex;
+        }
+        result.numResults++;
+        
+        /*if (d < query->radius && (result->knn.size() < result->k || d < result->knn.top().d))
         {
 
-            Neighbour neighbour;
-            neighbour.nodeIndex = node.nodeIndex;
-            neighbour.d = d;
+            
         
             if (result->knn.size() == result->k)
             result->knn.pop();
@@ -142,7 +161,7 @@ namespace {
             query->radius = R;
             return true;
             }
-        }
+        }*/
         return false;
     }
 //--------------------------------------------------------------------------------------------------
@@ -165,7 +184,6 @@ private:
     RTCBuildArguments settings_;
     RTCSceneFlags sf_;
     std::string strategy_;
-    
     
     std::vector<KNNNode> flattened_nodes_;
 
@@ -272,6 +290,7 @@ public:
                 // Record flattened primitive
                 flattened_nodes_[lighId].global_pos = t[3];
                 flattened_nodes_[lighId].nodeIndex = node.index;
+                flattened_nodes_[lighId].radius = 0.0; //for the moment
                 
                 lighId++;
             }
@@ -295,13 +314,13 @@ public:
     }
 
 
-    virtual void build(size_t numObjects, std::function<bool(Mat4&,int&)> nextObject) override {
+    virtual void build(size_t numObjects, std::function<bool(Vec3&,int&,Float&)> nextObject) override {
         exception::ScopedDisableFPEx guard_;
 
         /* create scene */
         size_t N = numObjects;
         flattened_nodes_.resize(N);
-        LM_INFO("build vrls {}",numObjects);
+        LM_INFO("build accel {}",numObjects);
         //ref_flattened_nodes_ = &flattened_nodes_;
 
         reset();
@@ -310,14 +329,14 @@ public:
         RTCGeometry geom = rtcNewGeometry(device_, RTC_GEOMETRY_TYPE_USER);
         unsigned int geomID = rtcAttachGeometry(scene_, geom);
 
-        Mat4 global_transform;
+        Vec3 global_transform;
         int someIndex;
-        for ( int currentIndex = 0; currentIndex < numObjects && nextObject(global_transform,someIndex); currentIndex++){
-            flattened_nodes_[currentIndex].global_pos = global_transform[3];
+        Float someradius;
+        for ( int currentIndex = 0; currentIndex < numObjects && nextObject(global_transform,someIndex,someradius); currentIndex++){
+            flattened_nodes_[currentIndex].global_pos = global_transform;
             flattened_nodes_[currentIndex].nodeIndex = someIndex;
+            flattened_nodes_[currentIndex].radius = someradius;
             
-            //LM_INFO("knn node {}",currentIndex);
-
         }
 
 
@@ -349,6 +368,7 @@ public:
         RTCPointQueryContext context;
         rtcInitPointQueryContext(&context);
         out_result.nodes = (KNNNode*)&flattened_nodes_[0];
+        out_result.numResults = 0;
         //rtcPointQuery(scene_, &query, &context, pointQueryFunc, (void*)&out_result);
         rtcPointQuery(scene_, &query, &context,nullptr, (void*)&out_result); //out_result is the user ptr, therefore it has to contain flattened nodes omg
         

@@ -306,7 +306,7 @@ public:
             avg += p.second / numlights;
         }
         LM_INFO("average number vrl per tetra: {}", avg);
-
+/*
 #ifdef USE_KNN_EMBREE
 
         if(numvrls > 0) {
@@ -328,7 +328,7 @@ public:
         }
 #endif
         
-
+*/
 
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,

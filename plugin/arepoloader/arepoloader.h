@@ -401,6 +401,9 @@ namespace stats {
     typedef int TetraIndex;
 
     struct LightsInTetra{};
+    
+    struct LightSet{}; 
+
 
     struct SceneLightsInTetra{};
 

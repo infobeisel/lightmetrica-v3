@@ -545,7 +545,7 @@ public:
 
 unsigned int primID;
   float d;
-*/
+
 
             int key = 0;
             auto & visitor = *stats::get<stats::LightKnnVisitor,int,std::function<void(int,Float)>*>(key);
@@ -592,7 +592,7 @@ unsigned int primID;
                 pL
             };
 
-
+*/
             //return LightSelectionSample{
             //    finalSelectedNodeIndex,
             //    pL

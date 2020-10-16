@@ -54,7 +54,7 @@ protected:
     std::string strategy_;
     Float mis_power_;
     Scene* scene_;
-    AccelKnn* vrl_accel_;
+    AccelKnn* light_accel_;
     Volume_Arepo* volume_;
     Film* film_;
     int max_verts_;
@@ -68,6 +68,10 @@ protected:
     std::vector<Float> star_coords_;
     std::vector<Float> star_ugriz_;
     Float model_scale_;
+
+    std::string mode_;
+
+
 
 
 public:
@@ -84,9 +88,11 @@ public:
         star_coords_ = json::value<std::vector<Float>>(prop,"star_coords");
         star_ugriz_ = json::value<std::vector<Float>>(prop,"star_ugriz");
         model_scale_ = json::value<Float>(prop,"model_scale");
+
+        mode_ = json::value<std::string>(prop, "mode"); 
         
-        
-        //want to cast direct lighting on sensor, each sample treating one light
+        light_accel_ = json::comp_ref<AccelKnn>(prop, "light_accel");
+
         
         Json info;
         info["num_samples"] = star_coords_.size() / 3;
@@ -121,7 +127,9 @@ public:
         stats::clearGlobal<stats::ResampleAccel,int,long long>( );
         stats::clearGlobal<stats::TotalTetraTests,int,long long>( );
 
-        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+        //stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+        stats::clearGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
+        stats::clearGlobal<stats::LightSet,int,std::vector<StarSource>>();
 
         stats::clearGlobal<stats::TetsPerLight,int,Float>();
 
@@ -195,83 +203,96 @@ public:
             
             Vec2 raster_pos{};
 
-            //store the sample id that this thread currently works on 
-            stats::set<stats::CachedSampleId,int,long long>(0,sample_index);
+            //if(mode_ == "save_per_tetra") {
 
-            int currentBFSLayer = 0;
-            bool addedAny = true;
-            int numLs = 0;
-            volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<Float> corners, int bfsLayer) -> bool {
-                //first try: store where this star is located in. 
-                //store information directly instead of indices. more cache efficient? but more storage.
-                
-                bool enteredNewLayer = currentBFSLayer != bfsLayer;
-                bool haveAddedAnyInLastLayer = addedAny;
-                
-                if(enteredNewLayer) //reset
-                    addedAny = false;
-                currentBFSLayer = bfsLayer;
+                //store the sample id that this thread currently works on 
+                stats::set<stats::CachedSampleId,int,long long>(0,sample_index);
 
-                Vec3 starpos = star.position;
-                Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
-                
-                bool isInside = false;
-                Float mainDeterminant = 0.0;
-                glm::tmat4x3<Float> pVs;
-                {
-                    connectP(corners,starpos,pVs);
-                    Vec4 dets;
-                    computeDeterminants(pVs,dets);
-                    mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
-                    isInside = inside(dets, mainDeterminant);
-                }
+                int currentBFSLayer = 0;
+                bool addedAny = true;
+                int numLs = 0;
+                volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<Float> corners, int bfsLayer) -> bool {
+                    //first try: store where this star is located in. 
+                    //store information directly instead of indices. more cache efficient? but more storage.
+                    
+                    bool enteredNewLayer = currentBFSLayer != bfsLayer;
+                    bool haveAddedAnyInLastLayer = addedAny;
+                    
+                    if(enteredNewLayer) //reset
+                        addedAny = false;
+                    currentBFSLayer = bfsLayer;
 
-                //take farthest tetra point as sphere center
-                //and longest edge as radius, test if inside radius
-
-                int farthestI;
-                Float dist = 0.0;
-                //compute farthest corner 
-                for(int i = 0; i < 4; i ++) {
-                    auto d = glm::length2(pVs[i]);
-                    if(d > dist) {
-                        farthestI = i;
-                        dist = d;
+                    Vec3 starpos = star.position;
+                    Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
+                    
+                    bool isInside = false;
+                    Float mainDeterminant = 0.0;
+                    glm::tmat4x3<Float> pVs;
+                    {
+                        connectP(corners,starpos,pVs);
+                        Vec4 dets;
+                        computeDeterminants(pVs,dets);
+                        mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
+                        isInside = inside(dets, mainDeterminant);
                     }
-                }
-                //compute longest edge in tetra
-                dist = 0.0;
-                for(int i = 1; i < 4; i++)
-                    dist = glm::max( dist, 
-                        glm::distance(corners[(farthestI + i) % 4], corners[farthestI]));
-                //compute distance between sphere and star
-                dist = glm::max(0.0,glm::distance(starpos, corners[farthestI]) - dist);
 
+                    //take farthest tetra point as sphere center
+                    //and longest edge as radius, test if inside radius
 
-                //smallest distance to tetra ? well, the above is something similar..?
-                
-                bool comp = isInside || (starintens / dist) > impact_threshold_;//BIAS
-
-
-                if(comp) {
-                    stats::update<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>(
-                        tetraI, 
-                        [&](auto & vec) {
-                            vec.push_back(star);
+                    int farthestI;
+                    Float dist = 0.0;
+                    //compute farthest corner 
+                    for(int i = 0; i < 4; i ++) {
+                        auto d = glm::length2(pVs[i]);
+                        if(d > dist) {
+                            farthestI = i;
+                            dist = d;
                         }
-                    );
-                    numLs++;
-                    addedAny = true;
-                }
-             
-                bool continu = !enteredNewLayer || (enteredNewLayer && haveAddedAnyInLastLayer);
-                if(!continu) {
-                    stats::set<stats::TetsPerLight,int,Float>(ind,numLs);
-                    //LM_INFO("gonna stop at bfs layer {}, add {} myself",bfsLayer,numLs);
-                }
-                return continu; //continue if didnt stop adding
+                    }
+                    //compute longest edge in tetra
+                    dist = 0.0;
+                    for(int i = 1; i < 4; i++)
+                        dist = glm::max( dist, 
+                            glm::distance(corners[(farthestI + i) % 4], corners[farthestI]));
+                    //compute distance between sphere and star
+                    dist = glm::max(0.0,glm::distance(starpos, corners[farthestI]) - dist);
 
-            });
+
+                    //smallest distance to tetra ? well, the above is something similar..?
+                    
+                    bool comp = isInside || (starintens / dist) > impact_threshold_;//BIAS
+
+
+                    if(comp) {
+                        //stats::update<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>(
+                        stats::update<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>(
+                            tetraI, 
+                            [&](auto & vec) {
+                            //    vec.push_back(star);
+                                vec.push_back(star.index);
+                            }
+                        );
+                        numLs++;
+                        addedAny = true;
+                    }
+                
+                    bool continu = !enteredNewLayer || (enteredNewLayer && haveAddedAnyInLastLayer);
+                    if(!continu) {
+                        stats::set<stats::TetsPerLight,int,Float>(ind,numLs);
+                        //LM_INFO("gonna stop at bfs layer {}, add {} myself",bfsLayer,numLs);
+                    }
+                    return continu; //continue if didnt stop adding
+
+                });
+            //} else if(mode_ == "all_lights") {
+                stats::update<stats::LightSet,int,std::vector<StarSource>>(
+                    0, 
+                    [&](auto & vec) {
+                        vec.push_back(star);
+                    }
+                );
+
+            //}
     
             
 
@@ -279,7 +300,9 @@ public:
         [&](auto pxlindx,auto smplindx,auto threadid) {
             stats::clear<stats::CachedSampleId,int,long long>();
 
-            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+            //stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
+            stats::clear<stats::LightSet,int,std::vector<StarSource>>();
 
             stats::clear<stats::TetsPerLight,int,Float>();
 
@@ -297,11 +320,20 @@ public:
 
             
             //merge the per tetrahedron vectors of star light sources
-            stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>( 
+            //stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>( 
+            stats::mergeToGlobal<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>( 
                 [] (auto & vector1, auto & vector2 )   { vector1.insert(vector1.end(),vector2.begin(), vector2.end());return vector1;}
             );
 
-            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+            //if strategy is all lights, merge like this
+            stats::mergeToGlobal<stats::LightSet,int,std::vector<StarSource>>( 
+                [] (auto & vector1, auto & vector2 )   { vector1.insert(vector1.end(),vector2.begin(), vector2.end());return vector1;}
+            );
+
+            //stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+            stats::clear<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
+
+            stats::clear<stats::LightSet,int,std::vector<StarSource>>();
 
 
             stats::mergeToGlobal<stats::TetsPerLight,int,Float>( 
@@ -339,7 +371,27 @@ public:
 
         LM_INFO("average number of tetrahedra a light is associated with: {}", avg);
 
-        
+        auto lights = stats::getGlobalRef<stats::LightSet,int,std::vector<StarSource>>()[0];
+        LM_INFO("in case of strategy all lights: total number of lights: {}", lights.size());
+#ifdef USE_KNN_EMBREE
+        if(lights.size() > 0) {
+            int currentIndex = 0;
+            auto nextObject = 
+            [&] (Vec3 & out_global_transform,int & out_someindex,Float & out_someradius) -> bool {
+                auto & light = lights[currentIndex];
+                out_global_transform = light.position;
+                out_someindex = currentIndex;
+                Float starintens = glm::max(light.intensity[0],glm::max(light.intensity[1],light.intensity[2]));
+
+                out_someradius = starintens /impact_threshold_;
+                currentIndex++;
+                if(currentIndex <= lights.size())
+                    return true;
+                return false;
+            };
+            light_accel_->build(lights.size(),nextObject);
+        }
+#endif
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,
          smplmisses,

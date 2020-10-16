@@ -330,13 +330,22 @@ public:
         LM_INFO("vrls {}",vrls);
 
         int lightspertetra = 0;
-        auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+        //auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>();
+        auto & tetraToPointLights = stats::getGlobalRefUnsafe<stats::LightsInTetra,stats::TetraIndex,std::vector<int>>();
         for(auto p : tetraToPointLights)  {
             for(auto v : p.second) 
                 lightspertetra++; 
             //LM_INFO("tetra {}, light {}",p.first,v.index);
         }
         LM_INFO("lights per tetra {}",lightspertetra);
+
+        auto & lightSet = stats::getGlobalRefUnsafe<stats::LightSet,int,std::vector<StarSource>>()[0];
+        int numlights = lightSet.size();
+       
+        LM_INFO("total num lights {}",numlights);
+
+        
+
 
         LM_INFO("num threads: {}",parallel::num_threads());
         auto sqrtthreads = glm::sqrt(static_cast<Float>(parallel::num_threads()));
@@ -385,6 +394,7 @@ public:
             int num_pointlights = scene_->num_lights(); 
 
 
+            thread_local KNNResult point_knn_res;
 
             // Per-thread random number generator
             thread_local Rng rng(seed_ ? *seed_ + threadid : math::rng_seed());
@@ -706,7 +716,6 @@ public:
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
                                 int tetraI = queryTetraInds[queryI];
 
-                                int visitedLightCount = 0;
                                 //int acceptedBFSLayer = 10;
                                 
                                 stats::set<stats::TetraIdGuess,int,int>(0,tetraI);
@@ -1128,10 +1137,24 @@ public:
                             //for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                 //auto & tetrasegment =  cameraSegments[segmentI];
                                 //int tetraI = tetrasegment.tetraI;
+#ifdef USE_KNN_EMBREE
+                            
+                            for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
+                                auto queryPos = a + a_d * queryTs[queryI];
+                                //LM_INFO("going to query knn ");
+                                point_knn_res.k = 0;
+
+                                pointLightAccel_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
+                                            0.001, point_knn_res );
+                                //LM_INFO("queried {} objects ",point_knn_res.numResults);
+
+                                for(int knnI = 0; knnI < point_knn_res.numResults; knnI ++) {
+                                    auto starI = point_knn_res.results[knnI];
+                                    auto & starSource = lightSet[starI];
+#else
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
                                 int tetraI = queryTetraInds[queryI];
 
-                                int visitedLightCount = 0;
                                 //int acceptedBFSLayer = 10;
                                 
                                 stats::set<stats::TetraIdGuess,int,int>(0,tetraI);
@@ -1142,10 +1165,11 @@ public:
 
                                 auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
 
-                                for(auto & starSource : lightNodeIndicesInThisTetra) {
+                                for(auto & starSourceI : lightNodeIndicesInThisTetra) {
+#endif                              
+                                    auto & starSource = lightSet[starSourceI];
                                     if(!stats::has<stats::DuplicateWatchdog,int,int>(starSource.index)){ //if this light hasnt been handled yet, perform lighting!
                                         stats::set<stats::DuplicateWatchdog,int,int>(starSource.index,1); 
-                                        visitedLightCount++;
 
                                         Vec3 lightPos = starSource.position;
 

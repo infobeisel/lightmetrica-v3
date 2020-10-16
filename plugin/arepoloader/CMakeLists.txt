@@ -26,7 +26,7 @@ message(STATUS "GSL package was found: '${GSL_INCLUDE_DIRS}','${GSL_LIBRARIES}'"
 message(STATUS "GMP package was found: '${GMP_INCLUDES}','${GMP_LIBRARIES}'")
 
 
-add_library(arepoloader SHARED "pluecker.h" "statstags.h" "arepoloader.h" "raytetrapluecker.cpp" "arepoloader.cpp" "mesh_arepo.cpp" "medium_het_arepo.cpp" "renderer_volpt_arepo.cpp" "renderer_tetra_based.cpp" "renderer_arepo_vrls.cpp" "renderer_arepo_preprocess.cpp" "lightscene.cpp")
+add_library(arepoloader SHARED "pluecker.h" "statstags.h" "arepoloader.h" "raytetrapluecker.cpp" "arepoloader.cpp" "mesh_arepo.cpp" "medium_het_arepo.cpp" "renderer_tetra_based.cpp" "renderer_arepo_vrls.cpp" "renderer_arepo_preprocess.cpp" "lightscene.cpp")
 
 option(MOCK_AREPO "Mock Arepo Data" OFF)
 if(MOCK_AREPO)
