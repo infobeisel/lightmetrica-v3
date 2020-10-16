@@ -224,7 +224,7 @@ static const Vec3 blackBodyCIEs[199] =
 ,{5.29984890e-05,5.38710211e-05,7.48731251e-05}};
 
 
-
+#define ALL_LIGHTS
 
 
     
@@ -1137,6 +1137,11 @@ public:
                             //for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
                                 //auto & tetrasegment =  cameraSegments[segmentI];
                                 //int tetraI = tetrasegment.tetraI;
+#ifdef ALL_LIGHTS
+                            for(auto & starSource : lightSet) {
+                                int queryI = 0;
+#else 
+
 #ifdef USE_KNN_EMBREE
                             
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
@@ -1170,7 +1175,7 @@ public:
                                     auto & starSource = lightSet[starSourceI];
                                     if(!stats::has<stats::DuplicateWatchdog,int,int>(starSource.index)){ //if this light hasnt been handled yet, perform lighting!
                                         stats::set<stats::DuplicateWatchdog,int,int>(starSource.index,1); 
-
+#endif
                                         Vec3 lightPos = starSource.position;
 
                                         auto b = lightPos;
@@ -1484,10 +1489,12 @@ public:
                                         }
                                         
                                         contributionIndex_emissive[num_verts]++;
-
+#ifdef ALL_LIGHTS
+#else
                                     }//if not yet seen
 
                                 }//for every light that has impact
+#endif
                             }
 
                         }

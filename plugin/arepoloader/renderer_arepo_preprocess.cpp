@@ -203,7 +203,7 @@ public:
             
             Vec2 raster_pos{};
 
-            //if(mode_ == "save_per_tetra") {
+            if(mode_ != "all_lights") {
 
                 //store the sample id that this thread currently works on 
                 stats::set<stats::CachedSampleId,int,long long>(0,sample_index);
@@ -284,7 +284,7 @@ public:
                     return continu; //continue if didnt stop adding
 
                 });
-            //} else if(mode_ == "all_lights") {
+            }// else if(mode_ == "all_lights") {
                 stats::update<stats::LightSet,int,std::vector<StarSource>>(
                     0, 
                     [&](auto & vec) {
