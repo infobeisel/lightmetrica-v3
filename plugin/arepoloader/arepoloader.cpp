@@ -826,20 +826,20 @@ namespace ArepoLoaderInternals {
     inline bool findAndCacheTetra( CachedSample & cachedS, lm::Vec3 p, lm::Vec3 dir, lm::ArepoLMMesh * toQueryTetraId)  {
         int h = 0;
 
+        bool returnValue = false;
         //gather a guess that might have been set before calling this method!
         auto guess = lm::stats::get<lm::stats::TetraIdGuess,int,int>(h);
 
 
         auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
-        lm::stats::add<lm::stats::TotalTetraTests,int,long long>(h,1);
+        //lm::stats::add<lm::stats::TotalTetraTests,int,long long>(h,1);
 
-        bool returnValue = false;
 
         if(cachedS.sampleIndex == currentSample) { //is cached
-            lm::stats::add<lm::stats::SampleIdCacheHits,int,long long>(h,1);
+            //lm::stats::add<lm::stats::SampleIdCacheHits,int,long long>(h,1);
             if (insideCachedTetra(p,cachedS)) {
                 //evaluateDensityCached(toVals);
-                lm::stats::add<lm::stats::UsedCachedTetra,int,long long>(h,1);
+                //lm::stats::add<lm::stats::UsedCachedTetra,int,long long>(h,1);
                 return true; //most efficient case, still in cached tetra
             }
             else {
@@ -861,7 +861,7 @@ namespace ArepoLoaderInternals {
                 if(inside) { //sample changed to a neighbor
                     int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                     cachedS.numNeighbors = ns;
-                    lm::stats::add<lm::stats::UsedNeighborTetra,int,long long>(h,1);
+                    //lm::stats::add<lm::stats::UsedNeighborTetra,int,long long>(h,1);
                     //need to invalidate some information
                     cachedS.hydroI = -1;
                     cachedS.tetraI = tetraIndex;
@@ -893,7 +893,7 @@ namespace ArepoLoaderInternals {
             //cachedTraversal().clear();
         }
         
-        lm::stats::add<lm::stats::ResampleAccel,int,long long>(h,1);
+        //lm::stats::add<lm::stats::ResampleAccel,int,long long>(h,1);
         //uncached, need to ray intersect with volume
         lm::Ray r; 
         r.o = p;
@@ -901,58 +901,33 @@ namespace ArepoLoaderInternals {
         auto hit = accelRef->intersect(r,0.0,std::numeric_limits<lm::Float>::max());
 
         if (hit != std::nullopt && hit.value().face >= 0 && hit.value().face < toQueryTetraId->num_triangles()) { //check if inside the tetra of hit triangle
-            //LM_INFO("hit sth");
             cachedS.lastHit = hit.value(); //save hit value
             int localFaceIndex = (hit.value().face ) % 4;
             cachedS.looksAtTriId = localFaceIndex;
             int tetraIndex =  toQueryTetraId->correspondingTetra(hit.value().face);
             cachedS.lastHitTri =  toQueryTetraId->triangle_at(hit.value().face);
-            //auto ni = arepoMeshRef->DT[tetraIndex].t[localFaceIndex];
-            bool inside = insideTetra(tetraIndex, p, cachedS) ;//|| insideTetra(ni, p, cachedS);
-            //LM_INFO("inside {} : {}", tetraIndex, inside);
-            //can be outside because we have double triangles in mesh, 
-            //having exact same positions but belonging to two opposing tetrahedra,
-            //need to check for both.
-            //check neighbors
-           // if(!inside) {
-            //    LM_INFO("test shit?");
-            //}
-           for(int i = 0; i < 4; i++) {
+            bool inside = insideTetra(tetraIndex, p, cachedS);
+            
+            for(int i = 0; i < 4; i++) {
                 auto ni = arepoMeshRef->getDT()[tetraIndex].t[i];
                 if(ni >= 0 && arepoMeshRef->getDT()[ni].t[0] >= 0 ) { //only check if the neighbor was not deleted
                     inside = inside ||  insideTetra(ni, p, cachedS);
-                   // LM_INFO("inside {} : {}", tetraIndex, inside);
                 }
             }
-            //if(!inside) {
-            //    LM_INFO("we really should be inside somewhere now!");
-            //}
             
             if(inside) { // we found a tetrahedron where we are inside
                 int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                 cachedS.numNeighbors = ns;
-                //LM_INFO("found tetra inside");
-                cachedS.sampleIndex = currentSample;
-                //need to invalidate some information
+                //cachedS.sampleIndex = currentSample;
                 cachedS.hydroI = -1;
                 cachedS.minDistI = -1;
-               //LM_ERROR("this doesnt happend unfortunately?!");
                 cacheCornerValues(cachedS);
-                //add traversed tetra
-                //cachedTraversal().push_back(cachedS);
-
                 returnValue = true;
             }
             if(!inside) { 
-                //LM_INFO("found intersection but not corresponding tetra");
-                //cachedS.lastHit.t = std::numeric_limits<lm::Float>::infinity(); 
                 returnValue = false;
-                //this is a weird case: we have hit sth with the intersection test but 
-                //didnt find the corresponding tetrahedron...!?
             }
         } else {
-            //cachedTraversal().clear();
-
             returnValue = false;
             cachedS.lastHit.t = std::numeric_limits<lm::Float>::infinity(); 
         }

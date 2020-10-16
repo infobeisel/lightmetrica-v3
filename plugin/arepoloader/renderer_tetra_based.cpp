@@ -710,7 +710,6 @@ public:
                         }
 
                         //auto a = sp.geom.p + a_d * currentTransmittanceDistanceSample; //dont use camera ray but camera point
-                        auto maxAllowedT = regularT;//tetrasegment.t;//glm::min(
                             
                         if(sample_vrls_) {
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
@@ -797,18 +796,55 @@ public:
                                     Float b_ = totalT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                     //Float b_ = maxT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                     
-
-
-
-                                    auto cam_scatter_pdf_regular = regularStratRegularSmplPDF;
-                                    auto segmentThroughput_regular = Vec3(
+                                    //sample a new regular t for every light!
+                                    auto cam_scatter_pdf_regular = 0.0;//regularStratRegularSmplPDF;
+                                    Vec3 segmentThroughput_regular = Vec3(0);/* = Vec3(
                                                 A_R_A_V_S * regularMuT * glm::exp(-A_R_A_V_T*tauUntilRegularT),
                                                 A_G_A_V_S * regularMuT * glm::exp(-A_G_A_V_T*tauUntilRegularT),
                                                 A_B_A_V_S * regularMuT * glm::exp(-A_B_A_V_T*tauUntilRegularT)
+                                                );*/
+
+                                    auto t_regular = 0.0;// = regularT;
+                                    int tetraILandedIn_regular = -1;//lastDistanceSampleTetraI;
+
+                                    auto zeta_regular = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
+                                    lm::Float logzeta_regular = -gsl_log1p(-zeta_regular);
+                                    auto zetaTransmittance_regular = 1.0;
+                                    {
+                                        auto travelT = 0.0;
+                                        auto accCdf = 0.0;
+                                        for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
+                                            auto & tetrasegment =  cameraSegments[segmentI];
+                                            if (accCdf  + tetrasegment.localcdf  > logzeta_regular) {
+                                                auto normcdf =  accCdf ;
+                                                lm::Float t = sampleCachedICDF_andCDF( logzeta_regular,zeta_regular , tetrasegment.t ,
+                                                normcdf ,  tetrasegment.a ,   tetrasegment.b );
+                                                normcdf = sampleCDF(t,tetrasegment.a,tetrasegment.b );
+                                                zetaTransmittance_regular *= glm::exp(-  normcdf );
+                                                
+                                                auto mu_t = tetrasegment.b + tetrasegment.a * t;
+
+                                                cam_scatter_pdf_regular = mu_t * zetaTransmittance_regular / lowDensityNormalizationFactor;  
+                                                t_regular = travelT + t;   
+
+                                                //also save per channel transmittance
+                                                segmentThroughput_regular = Vec3(
+                                                A_R_A_V_S * mu_t * glm::exp(-A_R_A_V_T*(normcdf+accCdf)),
+                                                A_G_A_V_S * mu_t * glm::exp(-A_G_A_V_T*(normcdf+accCdf)),
+                                                A_B_A_V_S * mu_t * glm::exp(-A_B_A_V_T*(normcdf+accCdf))
                                                 );
 
-                                    auto t_regular = regularT;
-                                    int tetraILandedIn_regular = lastDistanceSampleTetraI;
+                                                tetraILandedIn_regular = tetrasegment.tetraI;
+                                                break;
+                                            }
+                                            travelT += tetrasegment.t;
+                                            accCdf += tetrasegment.localcdf;
+                                            zetaTransmittance_regular = glm::exp(-  accCdf );
+                                        }
+                                    }
+
+
+                                    
                                     
 
                                     auto theta_a = glm::atan(a_,equih);
@@ -1193,16 +1229,53 @@ public:
 
                                         Float b_ =  totalT - th;//-th;//ray.o + ray.d * 999999.0 - lightPos;
                                         
-
-                                        auto cam_scatter_pdf_regular = regularStratRegularSmplPDF;
-                                        auto segmentThroughput_regular = Vec3(
+                                        
+                                        //sample a new regular t for every light!
+                                        auto cam_scatter_pdf_regular = 0.0;//regularStratRegularSmplPDF;
+                                        Vec3 segmentThroughput_regular = Vec3(0);/* = Vec3(
                                                     A_R_A_V_S * regularMuT * glm::exp(-A_R_A_V_T*tauUntilRegularT),
                                                     A_G_A_V_S * regularMuT * glm::exp(-A_G_A_V_T*tauUntilRegularT),
                                                     A_B_A_V_S * regularMuT * glm::exp(-A_B_A_V_T*tauUntilRegularT)
+                                                    );*/
+
+                                        auto t_regular = 0.0;// = regularT;
+                                        int tetraILandedIn_regular = -1;//lastDistanceSampleTetraI;
+
+                                        auto zeta_regular = rng.u() * lowDensityNormalizationFactor; //a new sample with same normFac
+                                        lm::Float logzeta_regular = -gsl_log1p(-zeta_regular);
+                                        auto zetaTransmittance_regular = 1.0;
+                                        {
+                                            auto travelT = 0.0;
+                                            auto accCdf = 0.0;
+                                            for(int segmentI = 0; segmentI < segmentCount; segmentI++) {
+                                                auto & tetrasegment =  cameraSegments[segmentI];
+                                                if (accCdf  + tetrasegment.localcdf  > logzeta_regular) {
+                                                    auto normcdf =  accCdf ;
+                                                    lm::Float t = sampleCachedICDF_andCDF( logzeta_regular,zeta_regular , tetrasegment.t ,
+                                                    normcdf ,  tetrasegment.a ,   tetrasegment.b );
+                                                    normcdf = sampleCDF(t,tetrasegment.a,tetrasegment.b );
+                                                    zetaTransmittance_regular *= glm::exp(-  normcdf );
+                                                    
+                                                    auto mu_t = tetrasegment.b + tetrasegment.a * t;
+
+                                                    cam_scatter_pdf_regular = mu_t * zetaTransmittance_regular / lowDensityNormalizationFactor;  
+                                                    t_regular = travelT + t;   
+
+                                                    //also save per channel transmittance
+                                                    segmentThroughput_regular = Vec3(
+                                                    A_R_A_V_S * mu_t * glm::exp(-A_R_A_V_T*(normcdf+accCdf)),
+                                                    A_G_A_V_S * mu_t * glm::exp(-A_G_A_V_T*(normcdf+accCdf)),
+                                                    A_B_A_V_S * mu_t * glm::exp(-A_B_A_V_T*(normcdf+accCdf))
                                                     );
 
-                                        auto t_regular = regularT;
-                                        int tetraILandedIn_regular = lastDistanceSampleTetraI;
+                                                    tetraILandedIn_regular = tetrasegment.tetraI;
+                                                    break;
+                                                }
+                                                travelT += tetrasegment.t;
+                                                accCdf += tetrasegment.localcdf;
+                                                zetaTransmittance_regular = glm::exp(-  accCdf );
+                                            }
+                                        }
                                         
 
                                         auto theta_a = glm::atan(a_,equih);

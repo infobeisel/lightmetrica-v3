@@ -151,7 +151,12 @@ public:
 
         //the scheduler gives one sample per light
         const auto processed = sched_->run([&](long long pixel_index, long long sample_index, int threadid) {
-            
+            if(sample_index > star_coords_.size()/3) {
+                LM_INFO("YOU THERE! STOOP!");
+                return;
+            }
+
+
             //parse light
             Json lightprop;
             auto ind = sample_index;
@@ -214,7 +219,7 @@ public:
                 volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<Float> corners, int bfsLayer) -> bool {
                     //first try: store where this star is located in. 
                     //store information directly instead of indices. more cache efficient? but more storage.
-                    
+                    //no store indices.
                     bool enteredNewLayer = currentBFSLayer != bfsLayer;
                     bool haveAddedAnyInLastLayer = addedAny;
                     
