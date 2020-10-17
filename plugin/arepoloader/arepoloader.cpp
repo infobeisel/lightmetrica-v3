@@ -43,6 +43,7 @@ namespace ArepoLoaderInternals {
 
 
     static lm::Float MODEL_SCALE = 1.0;
+    static float MODEL_SCALE_F = 1.0f;
 
     class  ArepoTempQuantities {
     public:
@@ -87,7 +88,7 @@ namespace ArepoLoaderInternals {
             TetraPoint p;
             for (int i = 0; i < ref->Ndp; i++) {
                 auto & from = ref->DP[i];
-                p.position = glm::tvec3<float>(from.x,from.y,from.z);
+                p.position = MODEL_SCALE_F * glm::tvec3<float>(from.x,from.y,from.z);
                 p.index = from.index;
                 ps.push_back(p);
             }
@@ -744,7 +745,7 @@ namespace ArepoLoaderInternals {
         glm::tmat4x3<float> verts;
         for(int i = 0; i < 4; i++) {
             auto & av =  arepoMeshRef->getDP()[tetra.p[i]];
-            verts[i] = static_cast<float>(MODEL_SCALE) * av.position;
+            verts[i] = av.position;
         }
         return insideTetra<float>(tetraIndex,static_cast<glm::tvec3<float>>(p),tetra,verts,cachedS);
         
@@ -996,6 +997,7 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         // scale
         scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
         MODEL_SCALE = scale_;
+        MODEL_SCALE_F = static_cast<float>(scale_);
         usepluecker_ = lm::json::value<bool>(prop, "usepluecker", false);
         auto pos = cutoutPath.find(".hdf5");
         cutoutPath = cutoutPath.substr(0, pos);
@@ -1053,8 +1055,8 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             bound_.max = glm::max(bound_.max,static_cast<lm::Vec3>(currentP));
             bound_.min = glm::min(bound_.min,static_cast<lm::Vec3>(currentP));
         }
-        bound_.min *=  MODEL_SCALE;
-        bound_.max *= MODEL_SCALE;
+        //bound_.min *=  MODEL_SCALE;
+        //bound_.max *= MODEL_SCALE;
         LM_INFO("spatial bounds {},{},{} ; {},{},{}",bound_.min.x,bound_.min.y,bound_.min.z, bound_.max.x, bound_.max.y, bound_.max.z);
 
     
@@ -1193,10 +1195,10 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
                     //gather corner positions for processor
                     auto & tetToVisit = arepoMeshRef->getDT()[visitTetras[i]];
                     auto vs = glm::tmat4x3<lm::Float>();
-                    for(int i = 0; i < 4; i++) {
-                        auto v =  arepoMeshRef->getDP()[tetToVisit.p[i]];
-                        vs[i] = static_cast<float>(MODEL_SCALE) * v.position;
-                    }
+                    vs[0] =  arepoMeshRef->getDP()[tetToVisit.p[0]].position;
+                    vs[1] =  arepoMeshRef->getDP()[tetToVisit.p[1]].position;
+                    vs[2] =  arepoMeshRef->getDP()[tetToVisit.p[2]].position;
+                    vs[3] =  arepoMeshRef->getDP()[tetToVisit.p[3]].position;
 
                     keepVisiting = keepVisiting && processor(visitTetras[i],vs,layer);
                     if(!keepVisiting) break;
