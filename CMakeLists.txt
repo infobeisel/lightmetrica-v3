@@ -22,7 +22,7 @@ option(LM_USE_EXTERNAL_DIR   "Use in-project external directory to find dependen
 option(LM_INSTALL            "Enable install"  ${LM_MASTER_PROJECT})
 option(LM_BUILD_TESTS        "Enable tests"    ${LM_MASTER_PROJECT})
 option(LM_BUILD_EXAMPLES     "Enable examples" ${LM_MASTER_PROJECT})
-
+add_compile_options(-O3)
 # -------------------------------------------------------------------------------------------------
 
 # CMake module path
