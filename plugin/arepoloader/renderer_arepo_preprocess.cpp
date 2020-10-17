@@ -216,10 +216,11 @@ public:
                 int currentBFSLayer = 0;
                 bool addedAny = true;
                 int numLs = 0;
-                volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<Float> corners, int bfsLayer) -> bool {
+                volume_->visitBFS(star.position, [&] (int tetraI,glm::tmat4x3<lm::Float> corners, int bfsLayer) -> bool {
                     //first try: store where this star is located in. 
                     //store information directly instead of indices. more cache efficient? but more storage.
                     //no store indices.
+                    
                     bool enteredNewLayer = currentBFSLayer != bfsLayer;
                     bool haveAddedAnyInLastLayer = addedAny;
                     
@@ -227,17 +228,21 @@ public:
                         addedAny = false;
                     currentBFSLayer = bfsLayer;
 
-                    Vec3 starpos = star.position;
-                    Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
+                    lm::Vec3 starpos = star.position;
+                    lm::Float starintens = glm::max(star.intensity[0],glm::max(star.intensity[1],star.intensity[2]));
                     
                     bool isInside = false;
-                    Float mainDeterminant = 0.0;
-                    glm::tmat4x3<Float> pVs;
+                    lm::Float mainDeterminant = 0.0;
+                    glm::tmat4x3<lm::Float> pVs;
                     {
                         connectP(corners,starpos,pVs);
-                        Vec4 dets;
+                        lm::Vec4 dets;
                         computeDeterminants(pVs,dets);
-                        mainDeterminant = det3x3(corners[0] - corners[3],corners[1] - corners[3],corners[2] - corners[3]);
+                        auto a = corners[0] - corners[3];
+                        auto b = corners[1] - corners[3];
+                        auto c = corners[2] - corners[3];
+                        
+                        mainDeterminant = det3x3(a,b,c);
                         isInside = inside(dets, mainDeterminant);
                     }
 
@@ -245,7 +250,7 @@ public:
                     //and longest edge as radius, test if inside radius
 
                     int farthestI;
-                    Float dist = 0.0;
+                    lm::Float dist = 0.0;
                     //compute farthest corner 
                     for(int i = 0; i < 4; i ++) {
                         auto d = glm::length2(pVs[i]);
@@ -266,7 +271,6 @@ public:
                     //smallest distance to tetra ? well, the above is something similar..?
                     
                     bool comp = isInside || (starintens / dist) > impact_threshold_;//BIAS
-
 
                     if(comp) {
                         //stats::update<stats::LightsInTetra,stats::TetraIndex,std::vector<StarSource>>(

@@ -32,7 +32,22 @@
 ConfigSet Config;
 
 
+//copied from ArepoVTK
+// get primary hydro IND - handle local ghosts
+inline int getCorrectedHydroInd(int dpInd)
+{
+    int SphP_ID = -1;
 
+    if (dpInd >= 0 && dpInd < NumGas)
+        SphP_ID = dpInd;
+    else if (dpInd >= NumGas)
+        SphP_ID = dpInd - NumGas;
+    
+    if (SphP_ID < 0)
+        LM_ERROR("1135");
+        
+    return SphP_ID;
+}
 
 
 namespace ArepoLoaderInternals {
@@ -43,7 +58,6 @@ namespace ArepoLoaderInternals {
 
 
     static lm::Float MODEL_SCALE = 1.0;
-    static float MODEL_SCALE_F = 1.0f;
 
     class  ArepoTempQuantities {
     public:
@@ -62,97 +76,103 @@ namespace ArepoLoaderInternals {
 
 
         ArepoMesh * ref;
-        std::vector<lm::Float> emptyDensities;
 
-        std::vector<TetraPoint> ps;
         std::vector<Tetra> ts;
 
-        std::vector<lm::Float> densities;
-        std::vector<lm::Float> temperatures;
+
+        lm::Bound worldBound_;
 
         ArepoMeshWrapper(ArepoMesh*m) : ref(m) {
+
+
             //re-parse stuff
+
+            worldBound_.max = lm::Vec3(- std::numeric_limits<lm::Float>::max());
+            worldBound_.min = lm::Vec3(  std::numeric_limits<lm::Float>::max());
+
             ts.clear();
             ts.reserve(ref->Ndt);
-            Tetra t;
             for (int i = 0; i < ref->Ndt; i++) {
-                auto & from = ref->DT[i];
-                t.t[0] = from.t[0];t.t[1] = from.t[1];t.t[2] = from.t[2];t.t[3] = from.t[3];
-                t.p[0] = from.p[0];t.p[1] = from.p[1];t.p[2] = from.p[2];t.p[3] = from.p[3];
+                auto & fromT = ref->DT[i];
+                Tetra t;
+                t.valid = true;//assume valid 
+                for( int j = 0; j < 4 ; j++) {
+                    
+                    t.p[j] = fromT.p[j];
+                    t.t[j] = fromT.t[j];
+                    
+                    if(fromT.p[j] < 0 || t.t[j] < 0) {
+                        t.valid = false;
+                    } 
+                    if(t.valid) {
+                        
+                        auto & from = ref->DP[fromT.p[j]];
+
+                        t.positions[j] =  MODEL_SCALE * lm::Vec3(from.x,from.y,from.z);
+
+                        worldBound_.max = glm::max(worldBound_.max, lm::Vec3(t.positions[j]));
+                        worldBound_.min = glm::min(worldBound_.min, lm::Vec3(t.positions[j]));
+
+                        int hydroIndex = getCorrectedHydroInd(from.index);
+                        if(hydroIndex > -1 && from.index  < NumGas) {
+                            t.temperatures[j] =  SphP[hydroIndex].Utherm;
+                            t.densities[j] = SphP[hydroIndex].Density * DENSITY_CRANKUP ;/// MODEL_SCALE;
+                        }  
+                    }
+                    
+                }
                 ts.push_back(t);
             }
             LM_INFO("copied {} tetras",ts.size() );
             
-            ps.clear();
-            ps.reserve(ref->Ndp);
-            TetraPoint p;
-            for (int i = 0; i < ref->Ndp; i++) {
-                auto & from = ref->DP[i];
-                p.position = MODEL_SCALE_F * glm::tvec3<float>(from.x,from.y,from.z);
-                p.index = from.index;
-                ps.push_back(p);
-            }
-            LM_INFO("copied {} positions",ps.size() );
-
-            densities.clear();
-            densities.reserve(ref->Ndp);
-            for (int i = 0; i < ref->Ndp; i++) {
-                densities.push_back(SphP[i].Density);
-            }
-            LM_INFO("copied {} densities",densities.size() );
-
-            temperatures.clear();
-            temperatures.reserve(ref->Ndp);
-            for (int i = 0; i < ref->Ndp; i++) {
-                temperatures.push_back(SphP[i].Utherm);
-            }
-            LM_INFO("copied {} temperatures",temperatures.size() );
-
+            
             
 
         }
 
         virtual Tetra * getDT() override {return &ts[0];}
-        virtual TetraPoint * getDP() override {return &ps[0];}
-        virtual std::vector<lm::Float> & getdensities() {LM_ERROR("getdensities: not implemented");return emptyDensities;}
+        //virtual TetraPoint * getDP() override {return &ps[0];}
+        //virtual std::vector<lm::Float> & getdensities() {LM_ERROR("getdensities: not implemented");return emptyDensities;}
         virtual int getNdt() {return ts.size();}
-        virtual int getNdp() {return ps.size();}
+        //virtual int getNdp() {return ref->Ndp;//ps.size();
+        //}
 
         virtual lm::Bound WorldBound() override {
-            auto b  = ref->WorldBound();
-            lm::Bound ret;
-            ret.max.x = b.pMax.x;ret.max.y = b.pMax.y;ret.max.z = b.pMax.z;
-            ret.min.x = b.pMin.x;ret.min.y = b.pMin.y;ret.min.z = b.pMin.z;
-            return ret;
+            return worldBound_;
         }
-        virtual lm::Float getDensity(int index) {return densities[index];}
-        virtual lm::Float getTemperature(int index) {return temperatures[index];}
+        //virtual lm::Float getDensity(int index) {return densities[index];}
+        //virtual lm::Float getTemperature(int index) {return temperatures[index];}
         virtual lm::Float max_density() {LM_ERROR("max_density: not implemented");return -1;}
 
     
     };
     struct ArepoMeshMock : public IArepoMeshMock {
         std::vector<Tetra> DT;
-        std::vector<TetraPoint> DP;
-        std::vector<lm::Float> densities;
-        std::vector<lm::Float> temperatures;
+        //std::vector<TetraPoint> DP;
+        //std::vector<lm::Float> densities;
+        //std::vector<lm::Float> temperatures;
         int Ndt;
         int Ndp;
 
+        lm::Float maxDensity; 
+
+
         virtual Tetra * getDT() override {return &DT[0];}
-        virtual TetraPoint * getDP() override {return &DP[0];}
-        virtual std::vector<lm::Float> & getdensities() override {return densities;}
+        //virtual TetraPoint * getDP() override {return &DP[0];}
+        //virtual std::vector<lm::Float> & getdensities() override {return densities;}
         virtual int getNdt() override {return Ndt;}
-        virtual int getNdp() override {return Ndp;}
+        //virtual int getNdp() override {return Ndp;}
 
         virtual lm::Bound WorldBound() override  {
             lm::Bound b;
             
-            auto pmin = glm::tvec3<float>(   std::numeric_limits<float>::max());
-            auto pmax = glm::tvec3<float>( - std::numeric_limits<float>::max());
-            for (auto p : DP) {
-                pmin = glm::min(pmin, p.position);
-                pmax = glm::max(pmax, p.position);
+            auto pmin = lm::Vec3(   std::numeric_limits<lm::Float>::max());
+            auto pmax = lm::Vec3( - std::numeric_limits<lm::Float>::max());
+            for (auto t : DT) {
+                for(int pi = 0; pi < 4; pi++) {
+                    pmin = glm::min(pmin, t.positions[pi]);
+                    pmax = glm::max(pmax, t.positions[pi]);    
+                }
                 //b.pMin.x = std::min(b.pMin.x, p.x);b.pMin.y = std::min(b.pMin.y, p.y);b.pMin.z = std::min(b.pMin.z, p.z);
                 //b.pMax.x = std::max(b.pMax.x, p.x);b.pMax.y = std::max(b.pMax.y, p.y);b.pMax.z = std::max(b.pMax.z, p.z);
             }
@@ -166,11 +186,26 @@ namespace ArepoLoaderInternals {
         //    albedo_ = json::value<Vec3>(prop, "albedo");
         
         //}
-        ArepoMeshMock(lm::Json const & prop)  {
+        ArepoMeshMock(lm::Json const & prop) : DT{} {
 
-            densities = lm::json::value<std::vector<lm::Float>>(prop,"densities");
-            temperatures = lm::json::value<std::vector<lm::Float>>(prop,"temperatures");
+            std::vector<lm::Float> densities = lm::json::value<std::vector<lm::Float>>(prop,"densities");
+            std::vector<lm::Float> temperatures = lm::json::value<std::vector<lm::Float>>(prop,"temperatures");
 
+            maxDensity = 0.0;
+            for (auto d : densities) {
+                maxDensity = glm::max(maxDensity, d);
+            }
+
+
+            auto pos0 = lm::Vec3( -10,10,10)* MODEL_SCALE;
+            auto pos1 = lm::Vec3( 10,10,10)* MODEL_SCALE;
+            auto pos2 = lm::Vec3( -10,-10,10)* MODEL_SCALE;
+            auto pos3 = lm::Vec3(10,-10,10 )* MODEL_SCALE;
+
+            auto pos4 = lm::Vec3(-10,10,-10 ) * MODEL_SCALE;
+            auto pos5 = lm::Vec3( 10,10,-10) * MODEL_SCALE;
+            auto pos6 = lm::Vec3(-10,-10,-10 ) * MODEL_SCALE;
+            auto pos7 = lm::Vec3(10,-10,-10 ) * MODEL_SCALE;
 
 
 
@@ -181,13 +216,30 @@ namespace ArepoLoaderInternals {
                 t.t[1] = 4;
                 t.t[2] = 5;
                 t.t[3] = 5;
-
+                
 
                 t.p[0] = 0;
                 t.p[1] = 2;
                 t.p[2] = 3;
                 t.p[3] = 6;
-              
+
+                t.positions[0] = pos0;
+                t.positions[1] = pos2;
+                t.positions[2] = pos3;
+                t.positions[3] = pos6;
+                              t.valid = true;
+
+                t.densities[0] = densities[0];
+                t.densities[1] = densities[2];
+                t.densities[2] = densities[3];
+                t.densities[3] = densities[6];
+
+                t.temperatures[0] = temperatures[0];
+                t.temperatures[1] = temperatures[2];
+                t.temperatures[2] = temperatures[3];
+                t.temperatures[3] = temperatures[6];
+
+
 
                 DT.push_back(t);
             }
@@ -205,7 +257,25 @@ namespace ArepoLoaderInternals {
                 t.p[1] = 5;
                 t.p[2] = 6;
                 t.p[3] = 7;
-              
+
+                t.positions[0] = pos3;
+                t.positions[1] = pos5;
+                t.positions[2] = pos6;
+                t.positions[3] = pos7;
+                t.valid = true;
+
+
+                t.densities[0] = densities[3];
+                t.densities[1] = densities[5];
+                t.densities[2] = densities[6];
+                t.densities[3] = densities[7];
+
+                t.temperatures[0] = temperatures[3];
+                t.temperatures[1] = temperatures[5];
+                t.temperatures[2] = temperatures[6];
+                t.temperatures[3] = temperatures[7];
+
+
                 DT.push_back(t);
             }
 
@@ -217,12 +287,31 @@ namespace ArepoLoaderInternals {
                 t.t[2] = 5;
                 t.t[3] = 5;
 
-
                 t.p[0] = 0;
                 t.p[1] = 4;
                 t.p[2] = 5;
                 t.p[3] = 6;
-               
+
+
+                t.positions[0] = pos0;
+                t.positions[1] = pos4;
+                t.positions[2] = pos5;
+                t.positions[3] = pos6;
+                t.valid = true;
+
+                
+
+                t.densities[0] = densities[0];
+                t.densities[1] = densities[4];
+                t.densities[2] = densities[5];
+                t.densities[3] = densities[6];
+
+                t.temperatures[0] = temperatures[0];
+                t.temperatures[1] = temperatures[4];
+                t.temperatures[2] = temperatures[5];
+                t.temperatures[3] = temperatures[6];
+
+
                 DT.push_back(t);
             }
 
@@ -234,12 +323,29 @@ namespace ArepoLoaderInternals {
                 t.t[2] = 5;
                 t.t[3] = 5;
 
-
                 t.p[0] = 0;
                 t.p[1] = 1;
                 t.p[2] = 5;
                 t.p[3] = 3;
-             
+
+
+                t.positions[0] = pos0;
+                t.positions[1] = pos1;
+                t.positions[2] = pos5;
+                t.positions[3] = pos3;
+                t.valid = true;
+
+                t.densities[0] = densities[0];
+                t.densities[1] = densities[1];
+                t.densities[2] = densities[5];
+                t.densities[3] = densities[3];
+
+                t.temperatures[0] = temperatures[0];
+                t.temperatures[1] = temperatures[1];
+                t.temperatures[2] = temperatures[5];
+                t.temperatures[3] = temperatures[3];
+
+
                 DT.push_back(t);
             }
 
@@ -251,12 +357,28 @@ namespace ArepoLoaderInternals {
                 t.t[2] = 2;
                 t.t[3] = 3;
 
-
                 t.p[0] = 0;
                 t.p[1] = 5;
                 t.p[2] = 3;
                 t.p[3] = 6;
-               
+
+
+                t.positions[0] = pos0;
+                t.positions[1] = pos5;
+                t.positions[2] = pos3;
+                t.positions[3] = pos6;
+                t.valid = true;
+
+                t.densities[0] = densities[0];
+                t.densities[1] = densities[5];
+                t.densities[2] = densities[3];
+                t.densities[3] = densities[6];
+
+                t.temperatures[0] = temperatures[0];
+                t.temperatures[1] = temperatures[5];
+                t.temperatures[2] = temperatures[3];
+                t.temperatures[3] = temperatures[6];
+
 
                 DT.push_back(t);
             }
@@ -264,42 +386,42 @@ namespace ArepoLoaderInternals {
             
 
        
-            DP.clear();
+            /*DP.clear();
             TetraPoint p;
 
 
-            p.position = glm::tvec3<float>( -10,10,10);p.index = 0;
+            auto pos0 = lm::Vec3( -10,10,10);//p.index = 0;
+            //DP.push_back(p);
+            //densities.push_back(0.000000003);
+
+            p.position = lm::Vec3(10,10,10);p.index=1;
             DP.push_back(p);
             //densities.push_back(0.000000003);
 
-            p.position = glm::tvec3<float>(10,10,10);p.index=1;
+            p.position = lm::Vec3( -10,-10,10);p.index=2;
             DP.push_back(p);
             //densities.push_back(0.000000003);
 
-            p.position = glm::tvec3<float>( -10,-10,10);p.index=2;
+            p.position = lm::Vec3(10,-10,10);p.index=3;
             DP.push_back(p);
             //densities.push_back(0.000000003);
 
-            p.position = glm::tvec3<float>(10,-10,10);p.index=3;
+            p.position = lm::Vec3( -10,10,-10);p.index=4;
             DP.push_back(p);
             //densities.push_back(0.000000003);
 
-            p.position = glm::tvec3<float>( -10,10,-10);p.index=4;
+            p.position = lm::Vec3( 10,10,-10);p.index = 5; //F
             DP.push_back(p);
             //densities.push_back(0.000000003);
 
-            p.position = glm::tvec3<float>( 10,10,-10);p.index = 5; //F
+            p.position = lm::Vec3(-10,-10,-10);p.index=6;
             DP.push_back(p);
             //densities.push_back(0.000000003);
 
-            p.position = glm::tvec3<float>(-10,-10,-10);p.index=6;
+            p.position = lm::Vec3( 10,-10,-10);p.index=7;
             DP.push_back(p);
             //densities.push_back(0.000000003);
-
-            p.position = glm::tvec3<float>( 10,-10,-10);p.index=7;
-            DP.push_back(p);
-            //densities.push_back(0.000000003);
-
+*/
 
            
 
@@ -314,6 +436,12 @@ namespace ArepoLoaderInternals {
             tDel.p[1] = -1;
             tDel.p[2] = -1;
             tDel.p[3] = -1;
+
+            tDel.valid = false;
+            /*tDel.p[0] = -1;
+            tDel.p[1] = -1;
+            tDel.p[2] = -1;
+            tDel.p[3] = -1;*/
          
             DT.push_back(tDel);
 
@@ -323,16 +451,16 @@ namespace ArepoLoaderInternals {
 
         }
 
-        virtual lm::Float getDensity(int index) override  {
+        /*virtual lm::Float getDensity(int index) override  {
 
             return densities[index] / MODEL_SCALE;
         }
         virtual lm::Float getTemperature(int index) {
             return temperatures[index] / MODEL_SCALE;
-        }
+        }*/
 
         virtual lm::Float max_density() override  {
-            return (*std::max_element(densities.begin(), densities.end())) / MODEL_SCALE;
+            return maxDensity ;
         }
     };
 
@@ -349,44 +477,31 @@ namespace ArepoLoaderInternals {
         public:
         long long sampleIndex; //the id of the sample that is currently cached
         int tetraI;
-        int hydroI;
-        int minDistI;
-        glm::tmat4x3<float> tetraVs;
-        glm::ivec4 tetraInds;
-        std::vector<float> values;
-
-        glm::tmat4x3<float> tmpPVs; //some point to vertex connections
-        glm::tvec4<float> tmpDets; //determinants
+        Tetra tetra;
+        
+        glm::tmat4x3<lm::Float> tmpPVs; //some point to vertex connections
+        glm::tvec4<lm::Float> tmpDets; //determinants
 
         //T^-1, a barycentric coordinates matrix
-        float mainDeterminant; //the tetrahedron's determinant
+        lm::Float mainDeterminant; //the tetrahedron's determinant
         lm::Mat3 baryInvT;
-        std::vector<std::vector<float>> cornerVals;
 
         int numNeighbors; //seems more efficient to never call vector.clear().
         std::vector<Tetra> neighbors;
         std::vector<int> neighborInds;
 
-        glm::tvec4<float> dirDets;
+        glm::tvec4<lm::Float> dirDets;
 
         int looksAtTriId;//the tetrahedron's triangle index (0-3) the current sample ray looks at.
         lm::Accel::Hit lastHit;
         lm::Mesh::Tri lastHitTri;
 
-        //lm::Float max_scalar_;
-
-
         CachedSample() : 
         sampleIndex(std::numeric_limits<long long>::max()),
         tetraI(-1),
-        hydroI(-1),
-        minDistI(-1),
-        values(9,0.0f),
-        cornerVals(4,{0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f}),
         looksAtTriId(0),
         neighbors(100),
         neighborInds(100,0)
-
         {
             
         }
@@ -423,36 +538,20 @@ namespace ArepoLoaderInternals {
     
     
 
-
-    //this only works iff the tetrahedron is specified with a specific vertex order, namely, see mesh_arepo.cpp !!!
-    inline bool insideOld(lm::Vec4 & determinants) {
-        auto ret0 = determinants[0] > 0.0 && determinants[1] < 0.0 && determinants[2] > 0.0 && determinants[3] < 0.0;
-        auto ret1 = determinants[0] < 0.0 && determinants[1] > 0.0 && determinants[2] < 0.0 && determinants[3] > 0.0;
-        return ret0 || ret1;
-    }
-
-
     template<typename F>
     inline bool insideCachedTetra(glm::tvec3<F> p, CachedSample & c) {
-        connectP<float>(c.tetraVs,p,c.tmpPVs);
-        computeDeterminants<float>(c.tmpPVs,c.tmpDets);
-        return inside<float>(c.tmpDets, c.mainDeterminant);
+        connectP<lm::Float>(c.tetra.positions,p,c.tmpPVs);
+        computeDeterminants<lm::Float>(c.tmpPVs,c.tmpDets);
+        return inside<lm::Float>(c.tmpDets, c.mainDeterminant);
     }
 
     inline void sampleCachedScalarCoefficients(lm::Ray ray, lm::Float & a, lm::Float &  b, CachedSample const & cached, int quantityIndex = TF_VAL_DENS) {
         auto lambda012_a = cached.baryInvT * ray.d;
-        auto lambda012_b = cached.baryInvT * (ray.o - static_cast<lm::Vec3>(cached.tetraVs[3]));
-
-        auto densities = lm::Vec4(
-            cached.cornerVals[0][quantityIndex] ,
-            cached.cornerVals[1][quantityIndex] ,
-            cached.cornerVals[2][quantityIndex] ,
-            cached.cornerVals[3][quantityIndex] );
-
-        b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z), densities);
-        a = glm::dot( lambda012_a, lm::Vec3(densities));
-        a +=  densities[3] * (- lambda012_a.x - lambda012_a.y - lambda012_a.z);
-
+        auto lambda012_b = cached.baryInvT * (ray.o - static_cast<lm::Vec3>(cached.tetra.positions[3]));
+        b = glm::dot( lm::Vec4(lambda012_b, 1.0 - lambda012_b.x - lambda012_b.y - lambda012_b.z),
+            quantityIndex == TF_VAL_DENS?  cached.tetra.densities : cached.tetra.temperatures);
+        a = glm::dot( lambda012_a, lm::Vec3(cached.tetra.densities));
+        a +=  cached.tetra.densities[3] * (- lambda012_a.x - lambda012_a.y - lambda012_a.z);
     }
 
 
@@ -467,8 +566,6 @@ namespace ArepoLoaderInternals {
 
         //assumes ray.o is within cached tetra!
 
-
-        
         
         //find out in which of the the 4 sub tetras (spanned by ray.o and the current tetrahedron )
         //the ray direction lies, determine vertex indices that represent the triangle the ray dir looks at.
@@ -476,18 +573,18 @@ namespace ArepoLoaderInternals {
         // where negative means dir is "right of", positive "left of" axis XR
         glm::ivec3 indices; 
 
-        cached.dirDets[0] = det3x3<float>(ray.d,cached.tmpPVs[1],cached.tmpPVs[3]);
+        cached.dirDets[0] = det3x3<lm::Float>(ray.d,cached.tmpPVs[1],cached.tmpPVs[3]);
         bool det_B_D =  cached.mainDeterminant < 0.0 ? cached.dirDets[0] > 0.0 : cached.dirDets[0] < 0.0;
         indices.x = det_B_D ? 0 : 2; //A or C is guaranteed first vertex of final triangle
 
-        cached.dirDets[1] = det3x3<float>(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[3]);
+        cached.dirDets[1] = det3x3<lm::Float>(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[3]);
         bool det_AorC_D = cached.mainDeterminant < 0.0 ? cached.dirDets[1] < 0.0 : cached.dirDets[1] > 0.0;
         indices.y = det_B_D   ? 
         (det_AorC_D ? 1 : 2) : 
         (det_AorC_D ? 0 : 1);
 
 
-        cached.dirDets[2] = det3x3<float>(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[indices.y]);
+        cached.dirDets[2] = det3x3<lm::Float>(ray.d,cached.tmpPVs[indices.x],cached.tmpPVs[indices.y]);
         //left of horizontal x to y ?
         bool det_horizontal = cached.mainDeterminant < 0.0 ? cached.dirDets[2] < 0.0 :cached.dirDets[2] > 0.0;
         //the top or the bottom?
@@ -533,19 +630,18 @@ namespace ArepoLoaderInternals {
         
         
         //construct determinants : ray direction (assume it is normalized) and PVs
-        auto p = ray.o + ray.d;
-        glm::tmat4x3<float> pVs;//point to vertex connections
-        glm::tmat4x3<float> verts;
-        connectP<float>(cached.tetraVs,p, pVs);
+        lm::Vec3 p = ray.o + ray.d;
+        glm::tmat4x3<lm::Float> pVs;//point to vertex connections
+        connectP<lm::Float>(cached.tetra.positions,p, pVs);
 
 
         //TODO already better but still having t issues O:O
-        lm::Float volumeRelation = std::abs(mainD) + std::abs(det3x3<float>(pVs[indices[0]],pVs[indices[1]], pVs[indices[2]]));
+        lm::Float volumeRelation = std::abs(mainD) + std::abs(det3x3<lm::Float>(pVs[indices[0]],pVs[indices[1]], pVs[indices[2]]));
         volumeRelation =  volumeRelation / std::abs(mainD); 
         //ray.d *= abs(mainD);
-        lm::Float bary0 = std::abs( det3x3<float>(cached.tmpPVs[indices[1]],cached.tmpPVs[indices[2]], ray.d) );
-        lm::Float bary1 = std::abs( det3x3<float>(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[2]], ray.d) );
-        lm::Float bary2 = std::abs( det3x3<float>(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[1]], ray.d) );
+        lm::Float bary0 = std::abs( det3x3<lm::Float>(cached.tmpPVs[indices[1]],cached.tmpPVs[indices[2]], ray.d) );
+        lm::Float bary1 = std::abs( det3x3<lm::Float>(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[2]],ray.d) );
+        lm::Float bary2 = std::abs( det3x3<lm::Float>(cached.tmpPVs[indices[0]],cached.tmpPVs[indices[1]], ray.d) );
         lm::Float baryOrigin = 1.0 - bary0 - bary1 - bary2;
         
         auto t =  abs(mainD) / (bary0 + bary1 + bary2); 
@@ -569,72 +665,30 @@ namespace ArepoLoaderInternals {
                LM_INFO("maindet {}",mainD);*/
         cached.looksAtTriId = faceid;
 
-        if(!usepluecker) {
-            //test plucker instead
-            return t;
+        return t;
 
-        } else {
-        
-        
-            lm::Float plueckert = 0.0;
-            std::vector<lm::Vec3> vertList = {cached.tetraVs[0],cached.tetraVs[1],cached.tetraVs[2],cached.tetraVs[3]};
-            int enterface, leaveface;
-            lm::Vec3 enterpoint, leavepoint;
-            lm::Float uenter1, uenter2, uleave1, uleave2, tenter, tleave;
-            bool retval = RayTetraPluecker(ray.o, ray.d,
-                vertList.data(),
-                enterface, leaveface,
-                enterpoint,leavepoint,
-                uenter1, uenter2, uleave1,uleave2,
-                tenter, tleave);
-                // LM_INFO(" {} t enter and leave {}, {} vs {}",retval,tenter,tleave, accelT  );
-            if(retval) {
-                if(tleave < tenter) { 
-                    if(tleave < 0.0 && tenter > 0.0)  // tenter is valid
-                        plueckert = tenter;
-                    if(tleave > 0.0) // tleave is valud
-                        plueckert = tleave;
-                }
-            }
-            return plueckert;
-        }
 
         
     }
 
 
-    //copied from ArepoVTK
-    // get primary hydro IND - handle local ghosts
-    inline int getCorrectedHydroInd(int dpInd)
-    {
-        int SphP_ID = -1;
-  
-        if (dpInd >= 0 && dpInd < NumGas)
-            SphP_ID = dpInd;
-        else if (dpInd >= NumGas)
-            SphP_ID = dpInd - NumGas;
-        
-        if (SphP_ID < 0)
-            LM_ERROR("1135");
-            
-        return SphP_ID;
-    }
+    
 
 
 
     inline void updateCachedBaryInvT(CachedSample & cachedS)  {
          //need to calculate a barycentric coordinates matrix 
-        lm::Float a = cachedS.tetraVs[0].x - cachedS.tetraVs[3].x;
-        lm::Float d = cachedS.tetraVs[0].y - cachedS.tetraVs[3].y;
-        lm::Float g = cachedS.tetraVs[0].z - cachedS.tetraVs[3].z;
+        lm::Float a = cachedS.tetra.positions[0].x - cachedS.tetra.positions[3].x;
+        lm::Float d = cachedS.tetra.positions[0].y - cachedS.tetra.positions[3].y;
+        lm::Float g = cachedS.tetra.positions[0].z - cachedS.tetra.positions[3].z;
 
-        lm::Float b = cachedS.tetraVs[1].x - cachedS.tetraVs[3].x;
-        lm::Float e = cachedS.tetraVs[1].y - cachedS.tetraVs[3].y;
-        lm::Float h = cachedS.tetraVs[1].z - cachedS.tetraVs[3].z;
+        lm::Float b = cachedS.tetra.positions[1].x - cachedS.tetra.positions[3].x;
+        lm::Float e = cachedS.tetra.positions[1].y - cachedS.tetra.positions[3].y;
+        lm::Float h = cachedS.tetra.positions[1].z - cachedS.tetra.positions[3].z;
         
-        lm::Float c = cachedS.tetraVs[2].x - cachedS.tetraVs[3].x;
-        lm::Float f = cachedS.tetraVs[2].y - cachedS.tetraVs[3].y;
-        lm::Float i = cachedS.tetraVs[2].z - cachedS.tetraVs[3].z;
+        lm::Float c = cachedS.tetra.positions[2].x - cachedS.tetra.positions[3].x;
+        lm::Float f = cachedS.tetra.positions[2].y - cachedS.tetra.positions[3].y;
+        lm::Float i = cachedS.tetra.positions[2].z - cachedS.tetra.positions[3].z;
         //https://en.wikipedia.org/wiki/Invertible_matrix#Inversion_of_3_%C3%97_3_matrices
 
         lm::Float A =   e * i - f * h; 
@@ -659,79 +713,35 @@ namespace ArepoLoaderInternals {
     }
 
     
-    inline void cacheCornerValues(CachedSample & cachedS)  {
-
-        for(int i = 0; i < 4; i++) {
-            //for (int j = 0; j < 9; j++)
-            //    cachedS.cornerVals[i][j] = 0.0f;
-            int num = arepoMeshRef->getDP()[ cachedS.tetraInds[i]].index;
-#ifdef MOCK_AREPO
-            cachedS.cornerVals[i][TF_VAL_DENS] = arepoMeshRef->getDensity(num);
-            cachedS.cornerVals[i][TF_VAL_TEMP] = arepoMeshRef->getTemperature(num);
-#else
-            if(num >= 0) {
-                int hydroIndex = getCorrectedHydroInd(num);
-                if(hydroIndex > -1 && num  < NumGas) {
-                    cachedS.cornerVals[i][TF_VAL_DENS] = DENSITY_CRANKUP * arepoMeshRef->getDensity(hydroIndex);
-                    cachedS.cornerVals[i][TF_VAL_TEMP] = arepoMeshRef->getTemperature(hydroIndex);
-                    //addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP/MODEL_SCALE);//lengths[minDistIndex] / totalD );
-                    //addValsContribution(cachedS.cornerVals[i],hydroIndex,DENSITY_CRANKUP);//lengths[minDistIndex] / totalD );
-                }  
-            }
-#endif
-        }
-        
-         
-    }
     template<typename F>
-    inline bool insideTetra(int tetraIndex,glm::tvec3<F> const & loc, Tetra const & tetra,
-        glm::tmat4x3<F> & verts, CachedSample & cachedS)  {
+    inline bool insideTetra(int tetraIndex,Tetra const & tetra,glm::tvec3<F> const & loc, CachedSample & cachedS)  {
 
         glm::tmat4x3<F> pVs;//point to vertex connections
-        //glm::tmat4x3<lm::Float> verts;
-        glm::ivec4 vertInds;
         glm::tvec4<F> determinants;
 
-
-        for(int i = 0; i < 4; i++) {
-            vertInds[i] = tetra.p[i];
-            pVs[i] = verts[i] - loc;
-        }
-
         //also transports sign (choose vertex 3 as "roof"): negative means ccw, positive cw tetrahedron definition
-        F mainDeterminant = det3x3(verts[0] - verts[3],verts[1] - verts[3],verts[2] - verts[3]);
-        //if(mainDeterminant > 0.0)
-            //   LM_INFO( "cw");
-
+        lm::Vec3 b = tetra.positions[0] - tetra.positions[3];
+        lm::Vec3 c = tetra.positions[1] - tetra.positions[3];
+        lm::Vec3 d = tetra.positions[2] - tetra.positions[3];
+        
+        F mainDeterminant = det3x3(b,c,d);
 
         //skip points 
-        //wtf see arepo vtk
-        DPinfinity = -1;
-        if  (
-        (tetra.t[0] < 0 ||tetra.p[0] <= DPinfinity || tetra.p[1] <= DPinfinity
-        || tetra.p[2] <= DPinfinity || tetra.p[3] <= DPinfinity)
-        || tetra.t[0] == -1)
+        if (tetra.t[0] < 0 || !tetra.valid )
         {
-            //LM_INFO("skip");
             return false;
         }
 
-
-
-        connectP(verts,loc,pVs);
+        connectP(tetra.positions,loc,pVs);
         computeDeterminants(pVs,determinants);
         bool insideTet = inside(determinants,mainDeterminant);
         if(insideTet) {
             cachedS.tetraI = tetraIndex;
-            cachedS.tetraVs = verts;
-            cachedS.tetraInds = vertInds;
+            cachedS.tetra = tetra;
             cachedS.tmpPVs = pVs;
             cachedS.tmpDets = determinants;
             cachedS.mainDeterminant = mainDeterminant;
             updateCachedBaryInvT(cachedS);
-            cachedS.hydroI = -1;
-            cachedS.minDistI = -1;
-            cacheCornerValues(cachedS);
         }
 
         return insideTet;
@@ -739,21 +749,9 @@ namespace ArepoLoaderInternals {
     }
     
 
-    //performs point in tetrahedron test, returns result. 
-    //stores all relevant test data into cachedS if p is in the tetra
-    inline bool insideTetra(int tetraIndex, Tetra const & tetra, lm::Vec3 const & p, CachedSample & cachedS)  {
-        glm::tmat4x3<float> verts;
-        for(int i = 0; i < 4; i++) {
-            auto & av =  arepoMeshRef->getDP()[tetra.p[i]];
-            verts[i] = av.position;
-        }
-        return insideTetra<float>(tetraIndex,static_cast<glm::tvec3<float>>(p),tetra,verts,cachedS);
-        
-    }
-
     //overload
     inline bool insideTetra(int tetra, lm::Vec3 const & p, CachedSample & cachedS)  {
-        return insideTetra(tetra, arepoMeshRef->getDT()[tetra], p, cachedS);
+        return insideTetra<lm::Float>(tetra, arepoMeshRef->getDT()[tetra], p, cachedS);
     }
 
     //returns number of found neighbors.
@@ -762,33 +760,28 @@ namespace ArepoLoaderInternals {
         bool foundNeighbor = false;
         bool foundBoundary = false;
         
-        //if(out_neighbors)
-        //    out_neighbors->clear();
-        
-        //out_neighborInds.clear();
         int neighborIndI = 0;
         
-        auto * ps = arepoMeshRef->getDT()[ofTetra].p;
+        auto & ps = arepoMeshRef->getDT()[ofTetra].p;//position indices
         auto * ts = arepoMeshRef->getDT();
-        //auto mostprobable = arepoMeshRef->getDT()[ofTetra].t[(cached.looksAtTriId - 1) % 4];
 
         for(int p = 0; p < 4; p++) {
-            //LM_INFO("adjacents of vertex {}",ps[p] );
-            auto & adjacents = toQueryTetraId->adjacentTs(ps[p]);
-            for(auto & i : adjacents) {
-                //LM_INFO("adjacent tetra {} of vertex {}",i,ps[p] );
-                if(out_neighborInds.size() <= neighborIndI)
-                    out_neighborInds.push_back(i);
-                else out_neighborInds[neighborIndI] = i;
+            if(ps[p] >= 0 ) {
+                auto & adjacents = toQueryTetraId->adjacentTs(ps[p]);
+                for(auto i : adjacents) {
+                    if(out_neighborInds.size() <= neighborIndI)
+                        out_neighborInds.push_back(i);
+                    else out_neighborInds[neighborIndI] = i;
 
-                if(out_neighbors) { 
-                    //the same for the data itself
-                    if(out_neighbors->size() <= neighborIndI)
-                        out_neighbors->push_back(ts[i]);
-                    else (*out_neighbors)[neighborIndI] = ts[i];
+                    if(out_neighbors) { 
+                        //the same for the data itself
+                        if(out_neighbors->size() <= neighborIndI)
+                            out_neighbors->push_back(ts[i]);
+                        else (*out_neighbors)[neighborIndI] = ts[i];
+                    }
+                        
+                    neighborIndI++;
                 }
-                    
-                neighborIndI++;
             }
         }
 
@@ -806,42 +799,27 @@ namespace ArepoLoaderInternals {
         bool foundBoundary = false;
         //double check if in original tetra
         auto & neighbors = cached.neighbors;    
-        
         for(int i = 0; i < cached.numNeighbors; i ++) {
-            foundNeighbor = insideTetra(cached.neighborInds[i], neighbors[i],p, cached);
+            foundNeighbor = insideTetra<lm::Float>(cached.neighborInds[i], neighbors[i],p, cached);
             if(foundNeighbor) {
                 return cached.neighborInds[i];
             }
         }
-
-
-        //still not found !?
-        //then we are outside of the arepo mesh! 
-        //if(!foundBoundary)
-        //   LM_ERROR("tetra mesh traversal: didnt find neighbor but was not at boundary");
         return -1; 
-
     }
 
    
 
     inline bool findAndCacheTetra( CachedSample & cachedS, lm::Vec3 p, lm::Vec3 dir, lm::ArepoLMMesh * toQueryTetraId)  {
         int h = 0;
-
         bool returnValue = false;
         //gather a guess that might have been set before calling this method!
         auto guess = lm::stats::get<lm::stats::TetraIdGuess,int,int>(h);
 
-
         auto currentSample = lm::stats::get<lm::stats::CachedSampleId,int,long long>(h);
-        //lm::stats::add<lm::stats::TotalTetraTests,int,long long>(h,1);
-
 
         if(cachedS.sampleIndex == currentSample) { //is cached
-            //lm::stats::add<lm::stats::SampleIdCacheHits,int,long long>(h,1);
             if (insideCachedTetra(p,cachedS)) {
-                //evaluateDensityCached(toVals);
-                //lm::stats::add<lm::stats::UsedCachedTetra,int,long long>(h,1);
                 return true; //most efficient case, still in cached tetra
             }
             else {
@@ -853,7 +831,6 @@ namespace ArepoLoaderInternals {
                     inside = insideTetra(guess, p, cachedS) ;//|| insideTetra(ni, p, cachedS);
                     tetraIndex = guess;
                 }
-
                 //for continuous query positions, probably it changed to one of the neighbours!
                 if(!inside) {
                     //check neighbors
@@ -863,39 +840,24 @@ namespace ArepoLoaderInternals {
                 if(inside) { //sample changed to a neighbor
                     int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                     cachedS.numNeighbors = ns;
-                    //lm::stats::add<lm::stats::UsedNeighborTetra,int,long long>(h,1);
-                    //need to invalidate some information
-                    cachedS.hydroI = -1;
                     cachedS.tetraI = tetraIndex;
-                    cachedS.minDistI = -1;
-                    //also store density at corners
-                    cacheCornerValues(cachedS);
-                    //add it to the queue of traversed tetras
+                    cachedS.sampleIndex = currentSample;
                     return true;
 
-                } else {
-                    //we totally lost the tetrahedron, need to make request to acceleration structure
-                }
+                } 
+                //else: we totally lost the tetrahedron, need to make request to acceleration structure
             }
         } else {
             cachedS.sampleIndex = std::numeric_limits<long long>::max();
-
             if(guess >= 0) { //try guess
                 if(insideTetra(guess, p, cachedS)){
                     int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                     cachedS.numNeighbors = ns;
-                    //need to invalidate some information
-                    cachedS.hydroI = -1;
-                    //also store density at corners
-                    cacheCornerValues(cachedS);
                     return true;
                 }
             }
-            //empty cached traversal queue
-            //cachedTraversal().clear();
         }
         
-        //lm::stats::add<lm::stats::ResampleAccel,int,long long>(h,1);
         //uncached, need to ray intersect with volume
         lm::Ray r; 
         r.o = p;
@@ -921,9 +883,6 @@ namespace ArepoLoaderInternals {
                 int ns = updateCachedNeighbors(cachedS.tetraI,cachedS.neighborInds,toQueryTetraId,&cachedS.neighbors);
                 cachedS.numNeighbors = ns;
                 cachedS.sampleIndex = currentSample;
-                cachedS.hydroI = -1;
-                cachedS.minDistI = -1;
-                cacheCornerValues(cachedS);
                 returnValue = true;
             }
             if(!inside) { 
@@ -997,21 +956,18 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         // scale
         scale_ = lm::json::value<lm::Float>(prop, "scale", 1.0);
         MODEL_SCALE = scale_;
-        MODEL_SCALE_F = static_cast<float>(scale_);
-        usepluecker_ = lm::json::value<bool>(prop, "usepluecker", false);
+        //usepluecker_ = lm::json::value<bool>(prop, "usepluecker", false);
         auto pos = cutoutPath.find(".hdf5");
         cutoutPath = cutoutPath.substr(0, pos);
         
-       //Scene * am = reinterpret_cast<ArepoMesh*> ( prop["arepoMesh_addr"].get<uintptr_t>() );
 
-        //only need ArepoMesh implementation (Spectrum and TransferFunction aren't used) 
 #ifdef MOCK_AREPO
         arepoMesh = std::make_unique<ArepoMeshMock>(prop);
         arepoMeshRef = arepoMesh.get();
         auto arepoBound = arepoMesh->WorldBound();
 
-        auto Ndp = arepoMesh->getNdp();
-        auto DP = arepoMesh->getDP();
+        //auto Ndp = arepoMesh->getNdp();
+        //auto DP = arepoMesh->getDP();
 #else 
         Config.ReadFile( configPath );
         arepo = std::make_unique<Arepo>(cutoutPath, Config.paramFilename);
@@ -1040,28 +996,31 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         
         max_scalar_ = max_scalar();
         LM_INFO("max scalar  {}",max_scalar_);
-        LM_INFO("mean scalar  {}", arepo->valBounds[TF_VAL_DENS*3 + 2] / MODEL_SCALE);
+        LM_INFO("mean scalar  {}", DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 2]);// / MODEL_SCALE);
         LM_INFO("num gas  {}",NumGas);
         LM_INFO("test delaunay mesh");
         auto arepoBound = arepoMeshWrapper->WorldBound();
-        int Ndp = arepoMeshWrapper->getNdp();
-        TetraPoint * DP = arepoMeshWrapper->getDP();
+        //int Ndp = arepoMeshWrapper->getNdp();
+        //TetraPoint * DP = arepoMeshWrapper->getDP();
+
+        
 #endif
-        bound_.max = lm::Vec3(arepoBound.min.x,arepoBound.min.y,arepoBound.min.z);
-        bound_.min = lm::Vec3(arepoBound.max.x,arepoBound.max.y,arepoBound.max.z);
+        bound_.min = lm::Vec3(arepoBound.min.x,arepoBound.min.y,arepoBound.min.z);
+        bound_.max = lm::Vec3(arepoBound.max.x,arepoBound.max.y,arepoBound.max.z);
+
         //bound
-        for (int i = 0; i < Ndp; i++) {
-            auto currentP = DP[i].position;
-            bound_.max = glm::max(bound_.max,static_cast<lm::Vec3>(currentP));
-            bound_.min = glm::min(bound_.min,static_cast<lm::Vec3>(currentP));
-        }
+        /*for (int i = 0; i < arepoMeshWrapper->getNdt(); i++) {
+            auto & t = arepoMeshWrapper->getDT()[i];
+            LM_INFO("Tetra: {}, {},{},{},{}",t.valid, t.p[0],t.p[1],t.p[2],t.p[3]);
+            //auto currentP = DP[i].position;
+            //bound_.max = glm::max(bound_.max,static_cast<lm::Vec3>(currentP));
+            //bound_.min = glm::min(bound_.min,static_cast<lm::Vec3>(currentP));
+        }*/
+
         //bound_.min *=  MODEL_SCALE;
         //bound_.max *= MODEL_SCALE;
         LM_INFO("spatial bounds {},{},{} ; {},{},{}",bound_.min.x,bound_.min.y,bound_.min.z, bound_.max.x, bound_.max.y, bound_.max.z);
-
-    
-        
-
+                   LM_INFO("expecting hello: {}",arepoMeshRef->getNdt());
 
         meshAdapter = lm::comp::create<lm::ArepoLMMesh>( //lm::load<lm::Mesh>( 
         "mesh::arepo", make_loc("tetramesh"), {
@@ -1070,14 +1029,17 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //{"ps_count", arepoMesh->Ndp},
             //{"ts_addr", (const tetra*)arepoMesh->DT},
             //{"ts_addr", reinterpret_cast<uintptr_t>(arepoMesh->DT)},
-            {"arepoMesh_addr", reinterpret_cast<uintptr_t>(arepoMesh.get())},
+            //{"arepoMesh_addr", reinterpret_cast<uintptr_t>(arepoMesh.get())},
+            //{"arepoMesh_addr", reinterpret_cast<uintptr_t>(arepoMeshRef)},
+            {"tetras", (const Tetra*) arepoMeshRef->getDT()},
+            {"nT",   arepoMeshRef->getNdt()},
             {"scale", scale_}
             //{"ts_count", arepoMesh->Ndt}
         });
         
+
         auto & cached = Volume_Arepo_Impl::cachedDistanceSample();
         cached.sampleIndex = std::numeric_limits<long long>::max();
-        cached.hydroI = 0;
         cached.looksAtTriId = -1;
         cached.tetraI = 0;
         
@@ -1086,7 +1048,6 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             {"Kd", lm::Vec3(0.0f)}
         });
 
-        
         //tetraaccel = lm::comp::create<lm::Accel>("accel::nanort", make_loc("tetraaccel"), {});
         tetraaccel = lm::comp::create<lm::Accel>("accel::embree", make_loc("tetraaccel"), {});
         LM_INFO( tetraaccel->loc());
@@ -1106,22 +1067,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         //accel->build(*gastetrascene.get());
 
 
-        lighthierarchy = lm::comp::create<lm::AccelKnn>("accel::embree_knn", make_loc("lighthierarchy"), {});
+        /*lighthierarchy = lm::comp::create<lm::AccelKnn>("accel::embree_knn", make_loc("lighthierarchy"), {});
         //LM_INFO( accel->loc());
         lightscene = lm::comp::create<lm::Scene>("scene::default", make_loc("lightscene"), {
             {"accel", lighthierarchy->loc()}
-        });
-        //TODO fill light hierachy with star positions
-        //accelRef = accel.get();
-        //
-        //auto c = lightscene->create_primitive_node({
-        //     {"mesh" , meshAdapter->loc()},
-        //     {"material" , dummyMat->loc()}
-        //});
-        //lightscene->add_child(lightscene->root_node(), c);
-
-       // lightscene->build();
-
+        });*/
 
         
     }
@@ -1133,17 +1083,18 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 #ifdef MOCK_AREPO
         return arepoMesh->max_density();
 #else
-        return arepo->valBounds[TF_VAL_DENS*3 + 1] / MODEL_SCALE;
+        return DENSITY_CRANKUP * arepo->valBounds[TF_VAL_DENS*3 + 1] ;/// MODEL_SCALE;
 #endif
     }
     virtual lm::Float max_scalar(lm::Ray ray, lm::Float & out_t_forhowlong, lm::Float & out_a, lm::Float & out_b) const override {
 
         auto & info = cachedDistanceSample();
         bool inside = findAndCacheTetra(info, ray.o, ray.d, meshAdapter.get()); 
-        lm::Float maxScalarInCurrentTetra = inside ? glm::max(info.cornerVals[0][TF_VAL_DENS],
-        glm::max(info.cornerVals[1][TF_VAL_DENS],
-        glm::max(info.cornerVals[2][TF_VAL_DENS],
-                    info.cornerVals[3][TF_VAL_DENS]))) : 0.0;
+        lm::Float maxScalarInCurrentTetra = inside ?
+        glm::max(info.tetra.densities[0],
+        glm::max(info.tetra.densities[1],
+        glm::max(info.tetra.densities[2],
+                    info.tetra.densities[3]))) : 0.0;
         auto nextBound = inside ? intersectCachedTetra(ray,info,usepluecker_) : info.lastHit.t;
         out_t_forhowlong = nextBound;
         if(inside) {
@@ -1166,17 +1117,14 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
      	thread_local std::vector<int> buffer0;
         if(buffer0.size() < 1) buffer0.resize(1);
         buffer0[0] = cached.tetraI;
-        
-        //thread_local std::vector<glm::tmat4x3<lm::Float>> tempVs;
-        //if(tempVs.size() < 1) tempVs.resize(1);
-        //tempVs[0] = cached.tetraVs;
 
-        
+            
         thread_local std::unordered_map<int, bool> alreadyVisited;
         alreadyVisited.clear();//subsequent calls within a thread
         alreadyVisited.reserve(100); //?!
         int numToVisit = 1; //prepare first iteration
         alreadyVisited[cached.tetraI] = true;
+        
 
         thread_local std::vector<int> buffer1;// = cached.neighborInds;
 	    thread_local std::vector<int> temporary;
@@ -1194,13 +1142,13 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
 
                     //gather corner positions for processor
                     auto & tetToVisit = arepoMeshRef->getDT()[visitTetras[i]];
-                    auto vs = glm::tmat4x3<lm::Float>();
+                    /*auto vs = glm::tmat4x3<lm::Float>();
                     vs[0] =  arepoMeshRef->getDP()[tetToVisit.p[0]].position;
                     vs[1] =  arepoMeshRef->getDP()[tetToVisit.p[1]].position;
                     vs[2] =  arepoMeshRef->getDP()[tetToVisit.p[2]].position;
-                    vs[3] =  arepoMeshRef->getDP()[tetToVisit.p[3]].position;
+                    vs[3] =  arepoMeshRef->getDP()[tetToVisit.p[3]].position;*/
 
-                    keepVisiting = keepVisiting && processor(visitTetras[i],vs,layer);
+                    keepVisiting = keepVisiting && processor(visitTetras[i],tetToVisit.positions,layer);
                     if(!keepVisiting) break;
                     int ns = updateCachedNeighbors(visitTetras[i], temporary,meshAdapter.get());
                     for(auto tmpI = 0 ; tmpI < ns; tmpI++ ) {
@@ -1230,67 +1178,11 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
             //step
             correctedRay.o = ray.o;
             ray.o += ray.d * (t + tetraTestMargin);
-            /*if(inside) { //last iteration we were inside, can test neighbors
-                auto ni = arepoMeshRef->DT[info.tetraI].t[(info.looksAtTriId - 1) % 4]; //next tetrahedron with common face
-                if(ni >= 0 && ni < arepoMeshRef->Ndt) {
-                    auto oppositeNPoint = arepoMeshRef->DT[info.tetraI].s[(info.looksAtTriId - 1) % 4]; //next tetrahedron's opposite point (not part of the common face)
-                    auto tet = arepoMeshRef->DT[ni];
-                    inside = insideTetra(ni, tet,ray.o,info);
-                
-                    if(!inside && tet.t[0] >= 0) { //not the "simple" case where the ray resides in the next tetra... what to do?
-                        //check next after next? 
-                        for(int i = 1; i < 4 && ! inside; i++) {
-                            auto altI = (oppositeNPoint + i) % 4;
-                            auto nni = tet.t[altI];
-                            inside = insideTetra(nni,ray.o,info);
-                            //TODO maybe make intersection tests with deleted tetras!?
-                        }
-                    }
-                }
-
-            } */
-            //if(!inside) {
-                inside = findAndCacheTetra(info,ray.o, ray.d, meshAdapter.get());
-            //}
-
-            //this seems to be numerically unstable (depending on the vertex order of the triangle O.o)
-            //try to hide it by interpolating with barycentric coordinates 3 times (with all vertex combis)
-            //and average the result
-            auto accelT = info.lastHit.t;
-
-            
-            if(info.looksAtTriId >= 0 && !std::isinf(accelT) && usepluecker_) {
-                std::vector<lm::Vec3> verts = {info.tetraVs[0],info.tetraVs[1],info.tetraVs[2],info.tetraVs[3]};
-                int enterface, leaveface;
-                lm::Vec3 enterpoint, leavepoint;
-                lm::Float uenter1, uenter2, uleave1, uleave2, tenter, tleave;
-                bool retval = RayTetraPluecker(ray.o, ray.d,
-                    verts.data(),
-                    enterface, leaveface,
-                    enterpoint,leavepoint,
-                    uenter1, uenter2, uleave1,uleave2,
-                    tenter, tleave);
-                   // LM_INFO(" {} t enter and leave {}, {} vs {}",retval,tenter,tleave, accelT  );
-                if(retval) {
-                    if(tleave < tenter) { 
-                        if(tleave < 0.0 && tenter > 0.0)  // tenter is valid
-                            accelT = tenter;
-                        if(tleave > 0.0) // tleave is valud
-                            accelT = tleave;
-                    }
-                }
-                  //  accelT = tenter < 0.0 ? tleave : tenter;
-                
-            }
-            //LM_INFO("hit {} on fac {}",info.lastHit.primitive, info.lastHit.face );
-            //auto hitPoint = meshAdapter->surface_point(info.lastHit.face, info.lastHit.uv);
-            //auto accelT = glm::distance(hitPoint.p,ray.o);
-
+            inside = findAndCacheTetra(info,ray.o, ray.d, meshAdapter.get());
+            auto accelT = info.lastHit.t; //t from last embree call, only fallback
             t = (!inside ? accelT : 
                 intersectCachedTetra(ray,info,usepluecker_));
-            //t = info.lastHit.t;
             correctedRay.o = ray.o;//+= ray.d * t;
-            //LM_INFO("inside: {}, t: {}",inside,t);
         } while(processor(inside,correctedRay,t + tetraTestMargin ,info));
 
     }
@@ -1684,32 +1576,9 @@ class Volume_Arepo_Impl final : public lm::Volume_Arepo {
         }
 
 
-        //TODOOOOOOOOOOOOOOOOOOOOOOO
-        /*auto copy = cachedSample();
-        if(! findAndCacheTetra(cachedSample(),p)) {
-            cachedSample() = copy ;
-            return lm::Vec3(0.0); //wtf just add sth to land in tetra
-        }
-        cachedSample() = copy ;
-        return lm::Vec3(1.0);
-        int r = cachedSample().hydroI & 0x000000FF;
-        int g = (cachedSample().hydroI & 0x0000FF00) >> 8;
-        int b = (cachedSample().hydroI & 0x00FF0000) >> 16;
-
-        tmpVals2.clear();
-        //gatherValsAtPoint(p, tmpVals2.vals);
-        return lm::Vec3(
-            (lm::Float) r / 256.0,
-            (lm::Float) g / 256.0,
-            (lm::Float) b / 256.0); //some random stuff 
-        //return Vec3(tmpVals2.vals[TF_VAL_BMAG],tmpVals2.vals[TF_VAL_METAL],tmpVals2.vals[TF_VAL_VMAG]); //some random stuff 
-        */
 
     }
 
-    //virtual void march(Ray ray, Float tmin, Float tmax, Float marchStep, const RaymarchFunc& raymarchFunc) const override {
-      //  
-    //}
 
     protected:
     lm::Float scale_;

@@ -332,8 +332,8 @@ public:
         if(numvrls > 0) {
             std::function<bool(Mat4&,int&)> nextObject = [&](Mat4 & out_global_transform,int & out_someindex) {
                 auto & vrl = vrls[currentIndex];
-                transform = glm::mat4(1.0);
-                transform[3] = glm::vec4(vrl.p + vrl.d * vrl.t * 0.5,1);
+                transform = lm::Mat4(1.0);
+                transform[3] = lm::Vec4(vrl.p + vrl.d * vrl.t * 0.5,1);
                 out_someindex = currentIndex;
                 currentIndex++;
                 //LM_INFO("vrl {}",currentIndex);

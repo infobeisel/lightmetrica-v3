@@ -457,7 +457,7 @@ public:
                 Light::PositionSampleU possample; //invalid pos sample, but not needed for point light sourcews
                 auto lightPos = node.primitive.light->sample_position(possample, Transform(global_transform)).value().geom.p;//dont forget to account for local position   
 
-                auto pos = glm::mat3(global_transform) * lightPos;
+                auto pos = lm::Mat3(global_transform) * lightPos;
                 int tet = volume_->findTetra(pos);
                 LM_INFO("light {} in tetra {}, {},{},{}",node.index,tet,pos[0],pos[1],pos[2]);
                 tetraToLights[tet].push_back(node.index);       

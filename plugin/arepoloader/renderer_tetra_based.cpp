@@ -241,7 +241,6 @@ protected:
     Float rr_prob_;
     std::optional<unsigned int> seed_;
     Component::Ptr<scheduler::Scheduler> sched_;
-    AccelKnn* vrlStorage_;
     AccelKnn* pointLightAccel_;
     long long spp_;
     int num_knn_queries_;
@@ -256,14 +255,13 @@ protected:
 public:
 
     LM_SERIALIZE_IMPL(ar) {
-        ar(scene_, film_, max_verts_, rr_prob_, sched_,vrlStorage_);
+        ar(scene_, film_, max_verts_, rr_prob_, sched_);
     }
 
     virtual void foreach_underlying(const ComponentVisitor& visit) override {
         comp::visit(visit, scene_);
         comp::visit(visit, film_);
         comp::visit(visit, sched_);
-        comp::visit(visit, vrlStorage_);
     }
 
     virtual void construct(const Json& prop) override {
@@ -288,7 +286,6 @@ public:
         rr_prob_ = json::value<Float>(prop, "rr_prob", .2_f);
         const auto sched_name = json::value<std::string>(prop, "scheduler");
         spp_ = json::value<long long>(prop, "spp");
-        vrlStorage_ = json::comp_ref<AccelKnn>(prop, "vrl_accel");
         pointLightAccel_ = json::comp_ref<AccelKnn>(prop, "pointlight_accel");
 
         impact_threshold_ = json::value<Float>(prop, "impact_threshold",1.0);
@@ -650,7 +647,7 @@ public:
 
                     if(boundaries != nullptr && totalTau > 0.0) { //the chance to have in-scattering                        
                         auto & cameraSegments = *boundaries;
-
+                   
 
                         //CHOOSE POINTS FOR KNN QUERIES ALONG RAY
                         std::vector<Float> queryTs;
@@ -1213,6 +1210,8 @@ public:
                                         stats::set<stats::DuplicateWatchdog,int,int>(starSource.index,1); 
 #endif
                                         Vec3 lightPos = starSource.position;
+
+                                       
 
                                         auto b = lightPos;
 

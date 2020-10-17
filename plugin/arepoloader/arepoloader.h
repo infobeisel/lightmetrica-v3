@@ -61,13 +61,23 @@ inline lm::Float sampleCDF(  lm::Float toT,lm::Float a, lm::Float b) {
 }
 
 template<typename F>
-inline F det3x3(glm::tvec3<F> b,glm::tvec3<F> c,glm::tvec3<F> d) {
+inline F det3x3(glm::tvec3<F> & b,glm::tvec3<F> & c,glm::tvec3<F> & d) {
     //glm::determinant(lm::Mat3(b0,b1,b2));
     return b[0]*c[1]*d[2] + c[0]*d[1]*b[2] + d[0]*b[1]*c[2] - d[0]*c[1]*b[2] - c[0]*b[1]*d[2] - b[0]*d[1]*c[2];
 }
 
 template<typename F>
-inline void connectP(glm::tmat4x3<F> const  & verts,glm::tvec3<F> const & p, glm::tmat4x3<F> & pToVerts) {
+inline F det3x3(glm::tmat3x3<F> & m) {
+    auto & b = m[0];
+    auto & c = m[1];
+    auto & d = m[2];
+    //glm::determinant(lm::Mat3(b0,b1,b2));
+    return b[0]*c[1]*d[2] + c[0]*d[1]*b[2] + d[0]*b[1]*c[2] - d[0]*c[1]*b[2] - c[0]*b[1]*d[2] - b[0]*d[1]*c[2];
+}
+
+
+template<typename F>
+inline void connectP(glm::tmat4x3<F> const & verts,glm::tvec3<F> const & p, glm::tmat4x3<F> & pToVerts) {
 
     for(int i = 0; i < 4; i++)
         pToVerts[i] = verts[i] - p;
@@ -92,25 +102,30 @@ inline bool inside(glm::tvec4<F> & determinants, F tetraDeterminant) {
 namespace ArepoLoaderInternals {
 
 
-    struct TetraPoint {
-        glm::tvec3<float> position;
-        int index;
-    };
+
+    
+    //struct alignas(16) Tetra {
     struct Tetra {
-        int t[4]; //neighbors
-        int p[4]; //indices to positions
+        glm::ivec4 t = glm::ivec4(-1); //neighbors
+        glm::ivec4 p = glm::ivec4(-1); //indices to positions, needed for higher order neighbor refs 
+        //glm::ivec4 hydroI; //hydro indices
+        //floats not doubles, for compactness. calculations are made in doubles
+        lm::Vec4 densities = lm::Vec4(0.0);//corner densities.
+        lm::Vec4 temperatures= lm::Vec4(0.0);//corner temperatures.
+        glm::tmat4x3<lm::Float> positions = glm::tmat4x3<lm::Float>(0.0);//corner positions.
+        bool valid = false;
     };
     
     struct IArepoMeshMock {
         virtual Tetra * getDT() = 0;
-        virtual TetraPoint * getDP() = 0;
-        virtual std::vector<lm::Float> & getdensities() = 0;
+        //virtual TetraPoint * getDP() = 0;
+        //virtual std::vector<lm::Float> & getdensities() = 0;
         virtual int getNdt() = 0;
-        virtual int getNdp() = 0;
+        //virtual int getNdp() = 0;
 
         virtual lm::Bound WorldBound() = 0;
-        virtual lm::Float getDensity(int index) = 0;
-        virtual lm::Float getTemperature(int index) = 0;
+        //virtual lm::Float getDensity(int index) = 0;
+        //virtual lm::Float getTemperature(int index) = 0;
 
         virtual lm::Float max_density() = 0;
     };
@@ -440,7 +455,7 @@ public:
 
     virtual int correspondingTetra(int face) const = 0;
 
-    virtual const std::vector<int> & adjacentTs(int pointIndex) const = 0;
+    virtual const std::vector<int> & adjacentTs(int pointIndex) = 0;
 
 
     virtual lm::Mesh::InterpolatedPoint surface_point(int face, lm::Vec2 uv) const = 0;
@@ -462,7 +477,7 @@ public:
     virtual Vec3 eval_color(Vec3 p) const = 0;
     virtual Float sample_distance(Ray ray,lm::Float tmin, lm::Float tmax, lm::Rng& rng,lm::Float & weight) const = 0;
     virtual Float eval_transmittance(lm::Ray ray, Float tmin, Float tmax) const = 0;
-    virtual void visitBFS(lm::Vec3 startPos, std::function<bool(int tetraI,glm::tmat4x3<lm::Float> corners, int bfsLayer)> processor) const = 0;
+    virtual void visitBFS(lm::Vec3 startPos, std::function<bool(int ,glm::tmat4x3<lm::Float>, int)> processor) const = 0;
     virtual int findTetra(lm::Vec3 pos) const = 0;
 
 };

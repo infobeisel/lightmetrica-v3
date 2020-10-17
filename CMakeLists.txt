@@ -12,7 +12,7 @@ project(lightmetrica VERSION 3.0.0)
 # -------------------------------------------------------------------------------------------------
 
 # Check if the directory is added via add_subdirectory
-set(LM_MASTER_PROJECT OFF)
+set(LM_MASTER_PROJECT ON)
 if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     set(LM_MASTER_PROJECT ON)
 endif()
