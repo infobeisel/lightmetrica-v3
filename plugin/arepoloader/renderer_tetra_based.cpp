@@ -1204,8 +1204,8 @@ public:
                                 auto & lightNodeIndicesInThisTetra = tetraToPointLights[tetraI];
 
                                 for(auto & starSourceI : lightNodeIndicesInThisTetra) {
-#endif                              
                                     auto & starSource = lightSet[starSourceI];
+#endif                              
                                     if(!stats::has<stats::DuplicateWatchdog,int,int>(starSource.index)){ //if this light hasnt been handled yet, perform lighting!
                                         stats::set<stats::DuplicateWatchdog,int,int>(starSource.index,1); 
 #endif
