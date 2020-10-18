@@ -710,7 +710,7 @@ public:
                             
                         if(sample_vrls_) {
 #ifdef ALL_LIGHTS
-                            for(auto & pairs : vrlsInThisTetra) {
+                            for(auto & pairs : tetraIToLightSegments) {
                                 for(auto & vrl : pairs.second) {
 
 #else
