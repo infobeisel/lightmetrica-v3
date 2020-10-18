@@ -16,9 +16,11 @@
 
 
 //scalling factors for scattering coefficient
-#define A_B_A_V_S 1.3034926470588235
-#define A_G_A_V_S 1.0346507352941177
-#define A_R_A_V_S 0.8905061025223759
+
+#define A_B_A_V_S 3.0343721//1.3034926470588235
+#define A_G_A_V_S 1.0//1.0346507352941177
+#define A_R_A_V_S 0.49774692//0.8905061025223759
+
 
 
 #define INSIDE_TOLERANCE 1.0 * std::numeric_limits<lm::Float>::epsilon()
