@@ -229,10 +229,10 @@ namespace ArepoLoaderInternals {
                 t.positions[3] = pos6;
                               t.valid = true;
 
-                t.densities[0] = densities[0];
-                t.densities[1] = densities[2];
-                t.densities[2] = densities[3];
-                t.densities[3] = densities[6];
+                t.densities[0] =DENSITY_CRANKUP *  densities[0];
+                t.densities[1] =DENSITY_CRANKUP *  densities[2];
+                t.densities[2] =DENSITY_CRANKUP *  densities[3];
+                t.densities[3] =DENSITY_CRANKUP *  densities[6];
 
                 t.temperatures[0] = temperatures[0];
                 t.temperatures[1] = temperatures[2];
@@ -265,10 +265,10 @@ namespace ArepoLoaderInternals {
                 t.valid = true;
 
 
-                t.densities[0] = densities[3];
-                t.densities[1] = densities[5];
-                t.densities[2] = densities[6];
-                t.densities[3] = densities[7];
+                t.densities[0] =DENSITY_CRANKUP *  densities[3];
+                t.densities[1] =DENSITY_CRANKUP *  densities[5];
+                t.densities[2] =DENSITY_CRANKUP *  densities[6];
+                t.densities[3] =DENSITY_CRANKUP *  densities[7];
 
                 t.temperatures[0] = temperatures[3];
                 t.temperatures[1] = temperatures[5];
@@ -301,10 +301,10 @@ namespace ArepoLoaderInternals {
 
                 
 
-                t.densities[0] = densities[0];
-                t.densities[1] = densities[4];
-                t.densities[2] = densities[5];
-                t.densities[3] = densities[6];
+                t.densities[0] =DENSITY_CRANKUP *  densities[0];
+                t.densities[1] =DENSITY_CRANKUP *  densities[4];
+                t.densities[2] =DENSITY_CRANKUP *  densities[5];
+                t.densities[3] =DENSITY_CRANKUP *  densities[6];
 
                 t.temperatures[0] = temperatures[0];
                 t.temperatures[1] = temperatures[4];
@@ -335,10 +335,10 @@ namespace ArepoLoaderInternals {
                 t.positions[3] = pos3;
                 t.valid = true;
 
-                t.densities[0] = densities[0];
-                t.densities[1] = densities[1];
-                t.densities[2] = densities[5];
-                t.densities[3] = densities[3];
+                t.densities[0] =DENSITY_CRANKUP *  densities[0];
+                t.densities[1] =DENSITY_CRANKUP *  densities[1];
+                t.densities[2] =DENSITY_CRANKUP *  densities[5];
+                t.densities[3] =DENSITY_CRANKUP *  densities[3];
 
                 t.temperatures[0] = temperatures[0];
                 t.temperatures[1] = temperatures[1];
@@ -369,10 +369,10 @@ namespace ArepoLoaderInternals {
                 t.positions[3] = pos6;
                 t.valid = true;
 
-                t.densities[0] = densities[0];
-                t.densities[1] = densities[5];
-                t.densities[2] = densities[3];
-                t.densities[3] = densities[6];
+                t.densities[0] =DENSITY_CRANKUP *  densities[0];
+                t.densities[1] =DENSITY_CRANKUP *  densities[5];
+                t.densities[2] =DENSITY_CRANKUP *  densities[3];
+                t.densities[3] =DENSITY_CRANKUP *  densities[6];
 
                 t.temperatures[0] = temperatures[0];
                 t.temperatures[1] = temperatures[5];
