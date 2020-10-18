@@ -120,7 +120,6 @@ public:
 
 
     virtual Json render() const override {
-		scene_->require_renderable();
 
         //reconstruct scheduler with new sample count
 
