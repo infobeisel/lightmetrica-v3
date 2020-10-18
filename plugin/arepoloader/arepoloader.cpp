@@ -52,7 +52,8 @@ inline int getCorrectedHydroInd(int dpInd)
 
 namespace ArepoLoaderInternals {
 
-    #define DENSITY_CRANKUP 1e-6
+    //#define DENSITY_CRANKUP 1e-6
+    #define DENSITY_CRANKUP 1.0
     #define REJECTION_SAMPLES_COUNT 10
     #define RAY_SEGMENT_ALLOC 200
 
