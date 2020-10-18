@@ -711,6 +711,7 @@ public:
                         if(sample_vrls_) {
 #ifdef ALL_LIGHTS
                             for(auto & pairs : tetraIToLightSegments) {
+                                int queryI = 0;
                                 for(auto & vrl : pairs.second) {
 
 #else
