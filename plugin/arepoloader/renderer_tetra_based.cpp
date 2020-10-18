@@ -709,6 +709,11 @@ public:
                         //auto a = sp.geom.p + a_d * currentTransmittanceDistanceSample; //dont use camera ray but camera point
                             
                         if(sample_vrls_) {
+#ifdef ALL_LIGHTS
+                            for(auto & pairs : vrlsInThisTetra) {
+                                for(auto & vrl : pairs.second) {
+
+#else
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
                                 int tetraI = queryTetraInds[queryI];
 
@@ -724,7 +729,7 @@ public:
 
 
                                 for(auto & vrl : vrlsInThisTetra) {
-                                        
+#endif                                        
                                     auto b_d = vrl.d;
                                     auto b = vrl.p;
                                     
