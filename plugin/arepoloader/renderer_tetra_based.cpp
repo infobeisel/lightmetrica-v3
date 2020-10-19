@@ -242,6 +242,7 @@ protected:
     std::optional<unsigned int> seed_;
     Component::Ptr<scheduler::Scheduler> sched_;
     AccelKnn* pointLightAccel_;
+    AccelKnn* vrlAccel_;
     long long spp_;
     int num_knn_queries_;
     bool sample_lights_;
@@ -251,6 +252,7 @@ protected:
     Float knn_min_percent_points_;
     Float knn_max_percent_points_;
     Float impact_threshold_;
+    Float knn_radius_;
 
 public:
 
@@ -265,6 +267,8 @@ public:
     }
 
     virtual void construct(const Json& prop) override {
+
+        knn_radius_ = json::value<Float>(prop, "knn_radius");
         
         knn_min_k_ = json::value<int>(prop, "knn_min_k",10);
         knn_min_percent_vrls_ = json::value<Float>(prop, "knn_min_percent_vrls",0.01);
@@ -287,6 +291,9 @@ public:
         const auto sched_name = json::value<std::string>(prop, "scheduler");
         spp_ = json::value<long long>(prop, "spp");
         pointLightAccel_ = json::comp_ref<AccelKnn>(prop, "pointlight_accel");
+        vrlAccel_ = json::comp_ref<AccelKnn>(prop, "vrl_accel");
+
+        
 
         impact_threshold_ = json::value<Float>(prop, "impact_threshold",1.0);
         LM_INFO("impact_threshold: {}", impact_threshold_);
@@ -318,8 +325,8 @@ public:
         timer::ScopedTimer st;
 
         int vrls = 0;
-        auto & tetraIToLightSegments =  stats::getGlobalRefUnsafe<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>();
-        for(auto p : tetraIToLightSegments)  {
+        auto & tetraIToVRLs =  stats::getGlobalRefUnsafe<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>();
+        for(auto p : tetraIToVRLs)  {
             for(auto v : p.second)  
                 vrls++;
             //
@@ -710,11 +717,28 @@ public:
                             
                         if(sample_vrls_) {
 #ifdef ALL_LIGHTS
-                            for(auto & pairs : tetraIToLightSegments) {
+                            for(auto & pairs : tetraIToVRLs) {
                                 int queryI = 0;
                                 for(auto & vrl : pairs.second) {
 
 #else
+#ifdef USE_KNN_EMBREE
+                            
+                            for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
+                                auto queryPos = a + a_d * queryTs[queryI];
+                                //LM_INFO("going to query knn ");
+                                int tetraI = queryTetraInds[queryI];
+                                vrl_knn_res.k = 0;
+
+                                vrlAccel_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
+                                            knn_radius_, vrl_knn_res );
+                                //LM_INFO("queried {} objects ",vrl_knn_res.numResults);
+
+                                for(int knnI = 0; knnI < vrl_knn_res.numResults; knnI ++) {
+                                    auto vrlI = vrl_knn_res.results[knnI];
+                                    //LM_INFO("caculate with vrl {} / {}",vrlI,tetraIToVRLs[0].size());
+                                    auto & vrl = tetraIToVRLs[0][vrlI];
+#else                       
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
                                 int tetraI = queryTetraInds[queryI];
 
@@ -723,13 +747,14 @@ public:
                                 stats::set<stats::TetraIdGuess,int,int>(0,tetraI);
 
                                 bool continueBFS = true;
-                                if (tetraIToLightSegments.find(tetraI) == tetraIToLightSegments.end())
+                                if (tetraIToVRLs.find(tetraI) == tetraIToVRLs.end())
                                     continue;
 
-                                auto & vrlsInThisTetra = tetraIToLightSegments[tetraI];
+                                auto & vrlsInThisTetra = tetraIToVRLs[tetraI];
 
 
                                 for(auto & vrl : vrlsInThisTetra) {
+#endif
 #endif                                        
                                     auto b_d = vrl.d;
                                     auto b = vrl.p;
@@ -1189,12 +1214,14 @@ public:
                                 point_knn_res.k = 0;
 
                                 pointLightAccel_->queryKnn(queryPos.x,queryPos.y,queryPos.z,
-                                            0.001, point_knn_res );
+                                            knn_radius_, point_knn_res );
                                 //LM_INFO("queried {} objects ",point_knn_res.numResults);
 
                                 for(int knnI = 0; knnI < point_knn_res.numResults; knnI ++) {
                                     auto starI = point_knn_res.results[knnI];
                                     auto & starSource = lightSet[starI];
+                                    //LM_INFO("caculate with star {} / {}",starI,lightSet.size());
+
 #else
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
                                 int tetraI = queryTetraInds[queryI];

@@ -231,7 +231,11 @@ public:
                 if(save_vrls_ && comp) {
                     
                     stats::update<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>(
+#ifdef USE_KNN_EMBREE
+                        0,
+#else   
                         tetraI, 
+#endif
                         [&](auto & vec) {
                             vec.push_back(segment);
                         }
@@ -325,29 +329,31 @@ public:
             avg += p.second / numlights;
         }
         LM_INFO("average number vrl per tetra: {}", avg);
-/*
-#ifdef USE_KNN_EMBREE
 
-        if(numvrls > 0) {
-            std::function<bool(Mat4&,int&)> nextObject = [&](Mat4 & out_global_transform,int & out_someindex) {
+#ifdef USE_KNN_EMBREE
+        auto & vrls = stats::getGlobalRef<stats::VRL,stats::TetraIndex,std::vector<LightToCameraRaySegmentCDF>>()[0];
+
+        if(vrls.size() > 0) {
+            int currentIndex = 0;
+            auto nextObject = 
+            [&] (Vec3 & out_global_transform,int & out_someindex,Float & out_someradius) -> bool {
                 auto & vrl = vrls[currentIndex];
-                transform = lm::Mat4(1.0);
-                transform[3] = lm::Vec4(vrl.p + vrl.d * vrl.t * 0.5,1);
+                
+                out_global_transform = vrl.p + vrl.d * vrl.t * 0.5;
                 out_someindex = currentIndex;
+                out_someradius = vrl.t * 0.5 / impact_threshold_;
                 currentIndex++;
                 //LM_INFO("vrl {}",currentIndex);
-                if(currentIndex <= numvrls)
+                if(currentIndex <= vrls.size())
                     return true;
                 return false;
             };
 
-            vrl_accel_->build(numvrls,nextObject);
+            vrl_accel_->build(vrls.size(),nextObject);
 
 
         }
 #endif
-        
-*/
 
         LM_INFO("sample hits: {}, misses : {}, tetra hits {}, tetra neighbor hits {}, accel smpls {} . total tetra probes {}", 
          smplhits,
