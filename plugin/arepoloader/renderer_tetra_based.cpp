@@ -723,7 +723,7 @@ public:
 
 #else
 #ifdef USE_KNN_EMBREE
-                            
+                            if (tetraIToVRLs[0].size() > 0)
                             for(int queryI = 0; queryI < num_knn_queries_; queryI++) {
                                 auto queryPos = a + a_d * queryTs[queryI];
                                 //LM_INFO("going to query knn ");
