@@ -338,10 +338,11 @@ public:
             auto nextObject = 
             [&] (Vec3 & out_global_transform,int & out_someindex,Float & out_someradius) -> bool {
                 auto & vrl = vrls[currentIndex];
-                
+                lm::Float starintens = glm::max(vrl.weight[0],glm::max(vrl.weight[1],vrl.weight[2]));
+
                 out_global_transform = vrl.p + vrl.d * vrl.t * 0.5;
                 out_someindex = currentIndex;
-                out_someradius = vrl.t * 0.5 / impact_threshold_;
+                out_someradius = starintens * vrl.t * 0.5 / impact_threshold_;
                 currentIndex++;
                 //LM_INFO("vrl {}",currentIndex);
                 if(currentIndex <= vrls.size())
