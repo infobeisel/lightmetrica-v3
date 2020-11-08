@@ -204,8 +204,9 @@ public:
             star.position = model_scale_ * Vec3(star_coords_[coord_i],star_coords_[coord_i+1],star_coords_[coord_i+2]);
             star.intensity = rgb;
             star.index = ind;
-
-            auto cam_light_connection = glm::normalize(star.position - camera_pos_);
+            auto cam_light_line = star.position - camera_pos_;
+            auto cam_light_dist = glm::length(cam_light_line);
+            auto cam_light_connection = glm::normalize(cam_light_line);
  
 
             auto cdfSoFar = 0.0;
@@ -260,7 +261,7 @@ public:
             const auto rp_ = path::raster_position(scene_, cam_light_connection);
             auto Tr = glm::exp(- cdfSoFar);
             if(rp_) { //it is part of the sensor?
-                auto tosplat = Tr * star.intensity;
+                auto tosplat = Tr * star.intensity / cam_light_dist / cam_light_dist ;
                 //LM_INFO("splat  {},{},{} on sensor {},{}",tosplat[0],tosplat[1],tosplat[2],
                 //rp_->x,rp_->y);
                 //LM_INFO("{},{},{}",sp.geom.p.x,sp.geom.p.y,sp.geom.p.z);
